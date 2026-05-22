@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tiny runtime SDK for dif.sh — pairs with the generated TypeScript client emitted by `dif build`.",
   "license": "MIT",
   "type": "module",
