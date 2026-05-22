@@ -88,8 +88,6 @@ GitHub release on every `v*` tag push and publishes both npm packages.
 
 v0.1.0 — pre-release. Every PLAN verb (`init`, `new`, `validate`, `build`,
 `qa`, `conclude`) is implemented and tested. Cross-language contract holds.
-What's NOT in v1: native analysis, hosted control plane, bandits — all on
-the roadmap.
 
 ## License
 
