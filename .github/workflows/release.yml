@@ -32,8 +32,12 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+          # Cross-compile x86_64 from the ARM macOS-latest runner. GitHub has
+          # been throttling macos-13 (Intel) capacity ahead of full
+          # deprecation; jobs can sit unscheduled indefinitely. The Mac SDK
+          # is universal and our crates are pure Rust, so this just works.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             archive: tar.gz
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -48,7 +52,7 @@ jobs:
       run:
         working-directory: cli
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -80,7 +84,7 @@ jobs:
           Compress-Archive -Path staging/dif-${{ matrix.target }} -DestinationPath dif-${{ matrix.target }}.zip
           (Get-FileHash dif-${{ matrix.target }}.zip -Algorithm SHA256).Hash | Out-File dif-${{ matrix.target }}.zip.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: dif-${{ matrix.target }}
           path: |
@@ -95,8 +99,8 @@ jobs:
     needs: build-binary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -119,8 +123,8 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
