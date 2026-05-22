@@ -1,0 +1,23 @@
+[package]
+name = "dif-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Engine for dif.sh — parses experiment .md files, resolves exclusion graphs, deterministic bucketing, and codegens the TS runtime client."
+
+[lib]
+name = "dif_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+serde_yaml  = { workspace = true }
+thiserror   = { workspace = true }
+miette      = { workspace = true }
+sha2        = { workspace = true }
+chrono      = { workspace = true }
+walkdir     = { workspace = true }
+regex       = { workspace = true }

@@ -1,0 +1,78 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dif-core",
+    "crates/dif-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/dif-sh/dif"
+rust-version = "1.78"
+
+[workspace.dependencies]
+# Core
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+serde_yaml  = "0.9"
+thiserror   = "1"
+miette      = { version = "7", features = ["fancy"] }
+sha2        = "0.10"
+chrono      = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+walkdir     = "2"
+regex       = "1"
+
+# CLI-only
+clap        = { version = "4", features = ["derive", "wrap_help"] }
+indicatif   = "0.17"
+console     = "0.15"
+
+# Internal crate refs
+dif-core    = { path = "crates/dif-core", version = "0.1.0" }
+
+[profile.release]
+lto         = "thin"
+codegen-units = 1
+strip       = "symbols"
+
+# -----------------------------------------------------------------------------
+# cargo-dist (release artifact builder)
+# https://opensource.axo.dev/cargo-dist/
+#
+# Produces signed, checksummed release tarballs for every supported triple on
+# every `v*` tag push. The release workflow in .github/workflows/release.yml
+# drives this; this metadata is the source of truth for what gets built.
+#
+# To bootstrap (one-time, on a machine with cargo-dist installed):
+#   cargo install --locked cargo-dist
+#   cargo dist init
+#
+# After that, every `git tag vX.Y.Z && git push --tags` triggers a release.
+# -----------------------------------------------------------------------------
+
+[workspace.metadata.dist]
+cargo-dist-version = "0.20.0"
+ci = "github"
+installers = ["shell", "powershell", "homebrew"]
+tap = "dif-sh/homebrew-tap"
+formula = "dif"
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+# Only ship the `dif` binary, not the library crate.
+publish-jobs = []
+pr-run-mode = "plan"
+# The npm wrapper publishes separately (see .github/workflows/release.yml).
+npm-scope = "@dif.sh"
+
+[workspace.metadata.dist.dependencies.apt]
+# Building on Linux runners — nothing exotic, but list explicitly.
+
+[workspace.metadata.dist.github-custom-runners]
+aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"

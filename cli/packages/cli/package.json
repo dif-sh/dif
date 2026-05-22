@@ -1,0 +1,31 @@
+{
+  "name": "@dif.sh/cli",
+  "version": "0.1.0",
+  "description": "The dif.sh CLI. Experiments live in the repo. This package downloads the matching Rust binary on install.",
+  "license": "MIT",
+  "bin": {
+    "dif": "./bin/dif.js"
+  },
+  "files": [
+    "bin",
+    "install.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dif-sh/dif",
+    "directory": "cli/packages/cli"
+  },
+  "keywords": ["experimentation", "ab-testing", "feature-flags", "dif.sh", "cli"],
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"]
+}

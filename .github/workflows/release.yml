@@ -1,0 +1,153 @@
+name: release
+
+# Two triggers:
+# - `v*` tag push: builds Rust binaries for every target, attaches them to a
+#   GitHub release, updates the Homebrew tap, publishes the npm packages.
+# - manual dispatch: same flow, useful for re-running a failed release.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # for creating the release + uploading assets
+  id-token: write   # for npm provenance
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Build the Rust binary for each target. cargo-dist orchestrates this in
+  # production; the matrix below is a hand-rolled fallback so the workflow
+  # works even before `cargo dist init` has been run.
+  # -------------------------------------------------------------------------
+  build-binary:
+    name: build dif (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            archive: tar.gz
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+          key: release-${{ matrix.target }}
+
+      - name: build
+        run: cargo build --release -p dif-cli --target ${{ matrix.target }}
+
+      - name: package (unix)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          mkdir -p staging/dif-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/dif staging/dif-${{ matrix.target }}/
+          cp ../README.md ../LICENSE staging/dif-${{ matrix.target }}/ 2>/dev/null || true
+          tar -czf dif-${{ matrix.target }}.tar.gz -C staging dif-${{ matrix.target }}
+          shasum -a 256 dif-${{ matrix.target }}.tar.gz > dif-${{ matrix.target }}.tar.gz.sha256
+
+      - name: package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging/dif-${{ matrix.target }} | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/dif.exe staging/dif-${{ matrix.target }}/
+          Copy-Item ../README.md staging/dif-${{ matrix.target }}/ -ErrorAction SilentlyContinue
+          Copy-Item ../LICENSE staging/dif-${{ matrix.target }}/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path staging/dif-${{ matrix.target }} -DestinationPath dif-${{ matrix.target }}.zip
+          (Get-FileHash dif-${{ matrix.target }}.zip -Algorithm SHA256).Hash | Out-File dif-${{ matrix.target }}.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dif-${{ matrix.target }}
+          path: |
+            cli/dif-${{ matrix.target }}.${{ matrix.archive }}
+            cli/dif-${{ matrix.target }}.${{ matrix.archive }}.sha256
+
+  # -------------------------------------------------------------------------
+  # Create the GitHub release and attach every artifact.
+  # -------------------------------------------------------------------------
+  release:
+    name: github release
+    needs: build-binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: collect
+        run: ls -la artifacts
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # -------------------------------------------------------------------------
+  # Publish @dif.sh/cli (the wrapper) and @dif.sh/client to npm. The wrapper's
+  # postinstall will download the matching binary from the release we just cut.
+  # -------------------------------------------------------------------------
+  npm-publish:
+    name: npm publish
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: sync version (cli wrapper)
+        working-directory: cli/packages/cli
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: publish wrapper
+        working-directory: cli/packages/cli
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: sync version (client)
+        working-directory: cli/packages/client
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: build client
+        working-directory: cli/packages/client
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: publish client
+        working-directory: cli/packages/client
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

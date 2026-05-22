@@ -1,0 +1,24 @@
+[package]
+name = "dif-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The dif.sh CLI — experiments live in the repo."
+
+[[bin]]
+name = "dif"
+path = "src/main.rs"
+
+[dependencies]
+dif-core    = { workspace = true }
+clap        = { workspace = true }
+miette      = { workspace = true }
+indicatif   = { workspace = true }
+console     = { workspace = true }
+serde_json  = { workspace = true }
+serde_yaml  = { workspace = true }
+thiserror   = { workspace = true }
+regex       = { workspace = true }
+chrono      = { workspace = true }

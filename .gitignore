@@ -1,0 +1,17 @@
+.env
+
+# Rust
+target/
+**/*.rs.bk
+
+# Node / TS
+node_modules/
+**/*.tsbuildinfo
+packages/*/dist/
+
+# npm wrapper postinstall output (downloaded binary, not committed)
+cli/packages/cli/bin/dif
+cli/packages/cli/bin/dif.exe
+
+# Build outputs
+dist/build/
