@@ -1,0 +1,47 @@
+{
+  "name": "@dif.sh/react",
+  "version": "0.1.0",
+  "description": "React adapter for @dif.sh/sdk — provider + useDif hook.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm run build"
+  },
+  "engines": {
+    "node": ">=20.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dif-sh/dif.git",
+    "directory": "cli/packages/react"
+  },
+  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "react", "dif.sh"],
+  "peerDependencies": {
+    "@dif.sh/sdk": "^0.2.0",
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@dif.sh/sdk": "file:../sdk",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "^5.4.0"
+  }
+}

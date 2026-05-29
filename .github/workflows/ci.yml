@@ -35,8 +35,8 @@ jobs:
       - name: test
         run: cargo test --workspace
 
-  client:
-    name: client (node ${{ matrix.node }})
+  sdk:
+    name: sdk (node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -44,7 +44,7 @@ jobs:
         node: ["20", "22"]
     defaults:
       run:
-        working-directory: cli/packages/client
+        working-directory: cli/packages/sdk
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -77,7 +77,7 @@ jobs:
         working-directory: cli
         run: cargo test -p dif-core --test bucket_fixture
       - name: ts side verifies it
-        working-directory: cli/packages/client
+        working-directory: cli/packages/sdk
         run: |
           npm install --no-audit --no-fund
           npm test

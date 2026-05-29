@@ -8,7 +8,7 @@
 //! The file shape:
 //! 1. Generated-by banner (with crate version — no timestamp, so PR diffs
 //!    only churn on real changes).
-//! 2. `import { __register } from "@dif.sh/client";`
+//! 2. `import { __register } from "@dif.sh/sdk";`
 //! 3. One `__register({...})` call per active experiment, sorted by id.
 //!
 //! Each `__register` call carries: id, surface, variants (as a `const` array
@@ -47,7 +47,7 @@ pub fn render_client(workspace: &Workspace) -> String {
 
     let mut out = String::new();
     out.push_str(&banner());
-    out.push_str("\nimport { __register } from \"@dif.sh/client\";\n\n");
+    out.push_str("\nimport { __register } from \"@dif.sh/sdk\";\n\n");
     for parsed in &active {
         out.push_str(&render_experiment_export(&parsed.spec));
         out.push_str("\n\n");

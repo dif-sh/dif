@@ -115,7 +115,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   # -------------------------------------------------------------------------
-  # Publish @dif.sh/cli (the wrapper) and @dif.sh/client to npm. The wrapper's
+  # Publish @dif.sh/cli (the wrapper) and @dif.sh/sdk to npm. The wrapper's
   # postinstall will download the matching binary from the release we just cut.
   # -------------------------------------------------------------------------
   npm-publish:
@@ -140,18 +140,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: sync version (client)
-        working-directory: cli/packages/client
+      - name: sync version (sdk)
+        working-directory: cli/packages/sdk
         run: |
           version=${GITHUB_REF_NAME#v}
           npm version "$version" --no-git-tag-version --allow-same-version
-      - name: build client
-        working-directory: cli/packages/client
+      - name: build sdk
+        working-directory: cli/packages/sdk
         run: |
           npm install --no-audit --no-fund
           npm run build
-      - name: publish client
-        working-directory: cli/packages/client
+      - name: publish sdk
+        working-directory: cli/packages/sdk
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

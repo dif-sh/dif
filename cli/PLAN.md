@@ -10,7 +10,7 @@ The discipline mirrors the brief: every piece earns its place either by serving 
 
 ## Architecture in one paragraph
 
-Three artifacts, two languages, one source of truth. **`dif-core`** is a Rust crate that owns correctness — parsing `.md` frontmatter, resolving the exclusion graph, deterministic bucketing, codegen. **`dif-cli`** is a thin Rust binary that wraps `dif-core` with `clap` + `miette` + `indicatif` and dispatches the six verbs. **`@dif.sh/client`** is a pure-TypeScript runtime SDK (~5 kB gzipped) that customers install and call from app code. The Rust side never ships into the customer's app — it produces a generated TypeScript file (`.dif/generated/client.ts`) and a `.dif/context.json` blob, and that pair is the entire contract. No FFI, no NAPI, no WASM at the runtime boundary.
+Three artifacts, two languages, one source of truth. **`dif-core`** is a Rust crate that owns correctness — parsing `.md` frontmatter, resolving the exclusion graph, deterministic bucketing, codegen. **`dif-cli`** is a thin Rust binary that wraps `dif-core` with `clap` + `miette` + `indicatif` and dispatches the six verbs. **`@dif.sh/sdk`** is a pure-TypeScript runtime SDK (~5 kB gzipped) that customers install and call from app code. The Rust side never ships into the customer's app — it produces a generated TypeScript file (`.dif/generated/client.ts`) and a `.dif/context.json` blob, and that pair is the entire contract. No FFI, no NAPI, no WASM at the runtime boundary.
 
 ```
    .md files in repo                customer's app
@@ -22,7 +22,7 @@ Three artifacts, two languages, one source of truth. **`dif-core`** is a Rust cr
  └─────────────┘                 └──────────────┘
         ▲                                │
         │                                ▼
-   dif-cli (Rust)                 @dif.sh/client (TS)
+   dif-cli (Rust)                 @dif.sh/sdk (TS)
                                         │
                                         ▼
                                    exposure sink
@@ -63,7 +63,7 @@ cli/
 │               ├── qa.rs
 │               └── conclude.rs
 └── packages/
-    └── client/                          # @dif.sh/client
+    └── client/                          # @dif.sh/sdk
         ├── package.json
         ├── tsconfig.json
         ├── README.md
@@ -188,7 +188,7 @@ USAGE: dif build [--out <dir>]
   - Declares one typed export per active experiment.
   - Embeds an `__EXPERIMENTS` constant with the resolved decision tree (audience predicates, exclusion graph adjacency, variant weights).
   - Embeds the bucketing salt per experiment.
-  - Imports the runtime from `@dif.sh/client` and calls `defineExperiment(...)` for each.
+  - Imports the runtime from `@dif.sh/sdk` and calls `defineExperiment(...)` for each.
 - The `context.json` file matches the shape shown in the site mockup ([site/index.html](../site/index.html) pane 3): `generated_at`, `active[]`, `surfaces[]`, `conventions[]`.
 - Exit 0 on success, 1 on any compile error.
 - **Invariant**: the generated TS file is byte-identical for identical inputs (deterministic codegen — required for sensible PR diffs).
@@ -228,7 +228,7 @@ USAGE: dif conclude <id> [--decision <text>] [--skip-learning]
 2. **Bucket-salt.** Each experiment gets a deterministic salt = `sha256("dif.sh/v1" || experiment.id)[:16]`. Re-generating produces the same salt; renaming an experiment changes it (which is correct — it's a different experiment).
 3. **Codegen.** Emit `client.ts` with a stable formatting rule (no `prettier` step — we control the writer). Emit `context.json` from a flat struct via `serde_json::to_string_pretty`.
 
-Deterministic bucketing (canonical algorithm, also implemented in `@dif.sh/client`):
+Deterministic bucketing (canonical algorithm, also implemented in `@dif.sh/sdk`):
 
 ```
 fn bucket(user_id: &str, salt: [u8; 16]) -> u16 {
@@ -258,10 +258,10 @@ This is encoded into the generated TS as a single decision tree the runtime walk
 
 ## The SDK contract
 
-`@dif.sh/client` exposes:
+`@dif.sh/sdk` exposes:
 
 ```ts
-// packages/client/src/index.ts
+// packages/sdk/src/index.ts
 export interface DifConfig {
   userId: () => string | null;
   sink: Sink | Sink[];
@@ -305,7 +305,7 @@ One event, one shape, every sink:
   surface: "checkout",
   bucket: 7142,
   fired_at: 1716304931542,    // unix ms
-  source: "@dif.sh/client@1.0.0",
+  source: "@dif.sh/sdk@1.0.0",
 }
 ```
 
@@ -316,7 +316,7 @@ Sinks normalize this into their native format. Segment becomes `analytics.track(
 ## Distribution
 
 - **`dif` CLI**: built with `cargo dist`. Three release artifacts: `dif-aarch64-apple-darwin.tar.gz`, `dif-x86_64-unknown-linux-gnu.tar.gz`, `dif-x86_64-pc-windows-msvc.zip`. Install via `curl | sh` (shipped script) or Homebrew tap. **Not** distributed via npm — the brief's "npm install -g @dif.sh/cli" pitch is preserved as a thin npm-wrapper package that downloads the right Rust binary on `postinstall`. This keeps the marketing claim true while keeping the CLI as a single static binary.
-- **`@dif.sh/client`**: published to npm. Dual-format (`module` + `main`), no dependencies, no peer-deps beyond TypeScript types.
+- **`@dif.sh/sdk`**: published to npm. Dual-format (`module` + `main`), no dependencies, no peer-deps beyond TypeScript types.
 - **Versioning**: SemVer on each artifact independently. The Rust binary embeds its own version into the generated TS file (`// generated by dif vX.Y.Z`) so a customer can audit drift.
 
 ## What's deliberately not in v1
@@ -341,7 +341,7 @@ Strict, sequential. Each step is shippable and unblocks the next.
 5. **`bucket.rs` + fixtures.** Deterministic hash, fixture JSON, Rust tests passing. Defer the TS port to step 8. ~1 day.
 6. **`exclusion.rs`.** Graph build + resolver + compile-time overlap detection. ~2 days.
 7. **`codegen.rs` + `context.rs`.** First version emits a hardcoded TS file shape; iterate on formatting. ~3 days. End state: `dif build` produces a real `.dif/generated/client.ts` that compiles under `tsc`.
-8. **`@dif.sh/client` runtime.** Port the bucketing algorithm. Implement `defineExperiment`. Wire the webhook sink first; segment/amplitude/mixpanel after. Match the Rust fixture file. ~4 days.
+8. **`@dif.sh/sdk` runtime.** Port the bucketing algorithm. Implement `defineExperiment`. Wire the webhook sink first; segment/amplitude/mixpanel after. Match the Rust fixture file. ~4 days.
 9. **`dif qa`.** Reads the compiled artifact and replays it for a given user. ~1 day.
 10. **`dif conclude`.** Atomic rename + Decision block insertion + surface log append. Transactional rollback on any failure. ~2 days.
 11. **`dif new`.** Surface-log-aware draft template. Last because it's the most agent-facing and we want the rest stable before iterating on prompts. ~2 days.

@@ -42,7 +42,7 @@ cli/                     # the CLI — Cargo workspace + npm packages
   crates/dif-core/       # parser, validator, resolver, codegen (Rust library)
   crates/dif-cli/        # the `dif` binary
   packages/cli/          # @dif.sh/cli — Node wrapper for `npm install -g`
-  packages/client/       # @dif.sh/client — runtime SDK (TypeScript)
+  packages/sdk/       # @dif.sh/sdk — runtime SDK (TypeScript)
 dist/                    # install.sh + Homebrew tap template
 .github/workflows/       # CI + release
 ```
@@ -55,7 +55,7 @@ Three artifacts, two languages, one source of truth.
   bucketing, exclusion graph, codegen. Where correctness lives.
 - **`dif-cli`** (Rust binary) — thin clap wrapper that dispatches the six
   verbs into `dif-core`. Single static binary.
-- **`@dif.sh/client`** (TypeScript SDK) — ~5 kB gzipped, zero deps. Lives in
+- **`@dif.sh/sdk`** (TypeScript SDK) — ~5 kB gzipped, zero deps. Lives in
   the customer's app. Reads the generated TS artifact, evaluates audience,
   buckets the user, fires one exposure event per (experiment, user) per
   session, returns the variant.
