@@ -10,7 +10,7 @@
 class Dif < Formula
   desc "Experimentation-as-code for AI-native teams"
   homepage "https://dif.sh"
-  version "0.1.1"
+  version "0.2.0"
   license "MIT"
 
   on_macos do

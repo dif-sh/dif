@@ -115,8 +115,10 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   # -------------------------------------------------------------------------
-  # Publish @dif.sh/cli (the wrapper) and @dif.sh/sdk to npm. The wrapper's
-  # postinstall will download the matching binary from the release we just cut.
+  # Publish @dif.sh/cli (the wrapper), @dif.sh/sdk, and @dif.sh/react to npm.
+  # The wrapper's postinstall will download the matching binary from the
+  # release we just cut. react is published last so that the just-published
+  # sdk version exists in the registry for downstream consumers.
   # -------------------------------------------------------------------------
   npm-publish:
     name: npm publish
@@ -155,3 +157,87 @@ jobs:
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: sync version (react)
+        working-directory: cli/packages/react
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: build react
+        working-directory: cli/packages/react
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: publish react
+        working-directory: cli/packages/react
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # -------------------------------------------------------------------------
+  # Patch dist/homebrew-tap/Formula/dif.rb with the real SHA-256 of each
+  # tarball we just released, then commit the change back to main. The
+  # formula remains hand-maintained in-tree until cargo-dist owns the tap.
+  # -------------------------------------------------------------------------
+  homebrew-formula:
+    name: update homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: patch formula
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          formula=dist/homebrew-tap/Formula/dif.rb
+
+          sha_arm_darwin=$(awk '{print $1}' artifacts/dif-aarch64-apple-darwin.tar.gz.sha256)
+          sha_intel_darwin=$(awk '{print $1}' artifacts/dif-x86_64-apple-darwin.tar.gz.sha256)
+          sha_intel_linux=$(awk '{print $1}' artifacts/dif-x86_64-unknown-linux-gnu.tar.gz.sha256)
+          sha_arm_linux=$(awk '{print $1}' artifacts/dif-aarch64-unknown-linux-gnu.tar.gz.sha256)
+
+          sed -i "s|^  version \".*\"|  version \"$version\"|" "$formula"
+          sed -i "s|REPLACE_ME_SHA256_AARCH64_DARWIN|$sha_arm_darwin|" "$formula"
+          sed -i "s|REPLACE_ME_SHA256_X86_64_DARWIN|$sha_intel_darwin|" "$formula"
+          sed -i "s|REPLACE_ME_SHA256_X86_64_LINUX|$sha_intel_linux|" "$formula"
+          sed -i "s|REPLACE_ME_SHA256_AARCH64_LINUX|$sha_arm_linux|" "$formula"
+
+          # Idempotent re-runs: replace any prior real SHA on subsequent
+          # releases by matching the canonical 64-hex shape next to each url.
+          python3 - "$formula" "$sha_arm_darwin" "$sha_intel_darwin" "$sha_intel_linux" "$sha_arm_linux" <<'PY'
+          import re, sys
+          path, sa_d, si_d, si_l, sa_l = sys.argv[1:6]
+          src = open(path).read()
+          targets = [
+              ("dif-aarch64-apple-darwin.tar.gz", sa_d),
+              ("dif-x86_64-apple-darwin.tar.gz",  si_d),
+              ("dif-x86_64-unknown-linux-gnu.tar.gz", si_l),
+              ("dif-aarch64-unknown-linux-gnu.tar.gz", sa_l),
+          ]
+          for fname, sha in targets:
+              pat = re.compile(
+                  r'(url\s+"[^"]*' + re.escape(fname) + r'"\s*\n\s*sha256\s+")[0-9a-f]{64}(")',
+                  re.MULTILINE,
+              )
+              src = pat.sub(lambda m: m.group(1) + sha + m.group(2), src)
+          open(path, "w").write(src)
+          PY
+      - name: commit + push
+        run: |
+          if git diff --quiet -- dist/homebrew-tap/Formula/dif.rb; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/homebrew-tap/Formula/dif.rb
+          git commit -m "chore: update homebrew formula for ${GITHUB_REF_NAME}"
+          git push origin HEAD:main

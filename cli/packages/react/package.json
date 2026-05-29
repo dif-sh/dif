@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/react",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React adapter for @dif.sh/sdk — provider + useDif hook.",
   "license": "MIT",
   "type": "module",
