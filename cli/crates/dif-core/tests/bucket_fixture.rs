@@ -1,6 +1,6 @@
 //! Cross-language bucketing anchor.
 //!
-//! The TS SDK (`@dif.sh/client`) reimplements the same algorithm and must
+//! The TS SDK (`@dif.sh/sdk`) reimplements the same algorithm and must
 //! produce byte-identical buckets for every entry in
 //! `tests/fixtures/bucket_tests.json`. CI runs both languages against the
 //! same file on every PR.

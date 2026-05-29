@@ -1,7 +1,7 @@
 {
-  "name": "@dif.sh/client",
-  "version": "0.1.1",
-  "description": "Tiny runtime SDK for dif.sh — pairs with the generated TypeScript client emitted by `dif build`.",
+  "name": "@dif.sh/sdk",
+  "version": "0.2.0",
+  "description": "Client SDK for dif.sh — experiment assignment + metric tracking.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
     }
   },
   "files": [
@@ -31,10 +35,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dif-sh/dif",
-    "directory": "cli/packages/client"
+    "url": "git+https://github.com/dif-sh/dif.git",
+    "directory": "cli/packages/sdk"
   },
-  "keywords": ["experimentation", "ab-testing", "feature-flags", "dif.sh"],
+  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "metrics", "dif.sh"],
   "devDependencies": {
     "typescript": "^5.4.0",
     "tsx": "^4.7.0"
