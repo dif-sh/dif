@@ -22,3 +22,6 @@ serde_yaml  = { workspace = true }
 thiserror   = { workspace = true }
 regex       = { workspace = true }
 chrono      = { workspace = true }
+
+[dev-dependencies]
+tempfile    = { workspace = true }

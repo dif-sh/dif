@@ -2,7 +2,7 @@
 
 import type { ExperimentSpec, ExposureEvent, Sink } from "./types.js";
 
-const SOURCE = "@dif.sh/sdk@0.2.0";
+const SOURCE = "@dif.sh/sdk@0.3.0";
 
 /** Per-session dedupe set. Cleared on page nav (the module is per-page). */
 const fired = new Set<string>();

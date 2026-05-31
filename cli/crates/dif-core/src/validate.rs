@@ -11,7 +11,9 @@
 //! - `E005` variant weights do not sum to 100
 //! - `E006` audience attribute not declared in config
 //! - `E007` exclusion conflict (same surface, no shared `exclusion_group`)
+//! - `E008` declared audience attribute has no `audiences/<name>.ts` file
 //! - `W001` orphan ref (call site references no active experiment)
+//! - `W002` orphan audience file (not declared in `audience_attributes`)
 
 use crate::{
     diag::{Diagnostic, Report},
@@ -31,6 +33,7 @@ pub fn run(workspace: &Workspace) -> Report {
     surface_exists(workspace, &mut report);
     variant_weights(workspace, &mut report);
     audience_attrs_declared(workspace, &mut report);
+    audience_files_paired(workspace, &mut report);
     exclusion_overlap(workspace, &mut report);
     orphan_refs(workspace, &mut report);
     sort_report(&mut report);
@@ -143,6 +146,66 @@ pub fn audience_attrs_declared(workspace: &Workspace, report: &mut Report) {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Pair every declared `audience_attributes` entry with an
+/// `audiences/<name>.ts` resolver file, and vice versa. Mismatches in either
+/// direction surface here:
+///
+/// - `E008` (error): declared attribute, no file. The runtime would have no
+///   way to compute the value, so this fails the build.
+/// - `W002` (warning): file exists, not declared. Could be an in-progress
+///   draft or a forgotten cleanup — surfaced but non-fatal.
+pub fn audience_files_paired(workspace: &Workspace, report: &mut Report) {
+    let declared: HashSet<&str> = workspace
+        .config
+        .audience_attributes
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    let on_disk: HashSet<&str> = workspace
+        .audiences
+        .iter()
+        .map(|a| a.slug.as_str())
+        .collect();
+
+    for attr in &workspace.config.audience_attributes {
+        if !on_disk.contains(attr.name.as_str()) {
+            report.errors.push(Diagnostic {
+                code: "E008".to_string(),
+                message: format!(
+                    "audience attribute `{}` has no implementation at `audiences/{}.ts`",
+                    attr.name, attr.name
+                ),
+                file: ".dif/config.yaml".to_string(),
+                line: 1,
+                column: 1,
+                help: Some(format!(
+                    "Create `audiences/{}.ts` exporting a default resolver, or remove the entry from `audience_attributes`. Run `dif scaffold-audiences` to pull in the starter set.",
+                    attr.name
+                )),
+            });
+        }
+    }
+
+    for file in &workspace.audiences {
+        if !declared.contains(file.slug.as_str()) {
+            report.warnings.push(Diagnostic {
+                code: "W002".to_string(),
+                message: format!(
+                    "audience file `audiences/{}.ts` has no matching entry in `audience_attributes`",
+                    file.slug
+                ),
+                file: relative_path(&file.path, &workspace.root),
+                line: 1,
+                column: 1,
+                help: Some(format!(
+                    "Add `{{ name: {}, type: ... }}` to `audience_attributes` in `.dif/config.yaml`, or delete the file if unused.",
+                    file.slug
+                )),
+            });
         }
     }
 }
@@ -292,6 +355,7 @@ mod tests {
             active: exps,
             concluded: vec![],
             surfaces,
+            audiences: vec![],
             call_sites: vec![],
             parse_errors: vec![],
         }
@@ -501,11 +565,17 @@ created: 2026-01-02";
                 kind: crate::config::AttrType::String,
                 values: vec![],
             });
-        let ws = make_workspace(
+        let mut ws = make_workspace(
             vec![parse(a, "a"), parse(b, "b")],
             vec![make_surface("home")],
             config,
         );
+        // Pair the declared `country` attribute with an implementation file
+        // so E008 doesn't fire and muddy the E007 assertion below.
+        ws.audiences.push(crate::AudienceFile {
+            slug: "country".into(),
+            path: PathBuf::from("/tmp/test/audiences/country.ts"),
+        });
         let report = run(&ws);
         assert!(
             !report.errors.iter().any(|d| d.code == "E007"),
@@ -555,5 +625,76 @@ created: 2026-01-02";
             "expected no E007 with shared exclusion_group: {:?}",
             report.errors
         );
+    }
+
+    #[test]
+    fn declared_attr_without_audience_file_emits_e008() {
+        let mut config = empty_config();
+        config
+            .audience_attributes
+            .push(crate::config::AudienceAttribute {
+                name: "device_type".into(),
+                kind: crate::config::AttrType::String,
+                values: vec![],
+            });
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        let report = run(&ws);
+        let e = report
+            .errors
+            .iter()
+            .find(|d| d.code == "E008")
+            .expect("E008");
+        assert!(e.message.contains("device_type"));
+        assert_eq!(e.file, ".dif/config.yaml");
+    }
+
+    #[test]
+    fn orphan_audience_file_emits_w002() {
+        let mut ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.audiences.push(crate::AudienceFile {
+            slug: "unused".into(),
+            path: PathBuf::from("/tmp/test/audiences/unused.ts"),
+        });
+        let report = run(&ws);
+        let w = report
+            .warnings
+            .iter()
+            .find(|d| d.code == "W002")
+            .expect("W002");
+        assert!(w.message.contains("unused"));
+        // No E008 — the declared set is empty, nothing to miss.
+        assert!(!report.errors.iter().any(|d| d.code == "E008"));
+    }
+
+    #[test]
+    fn paired_attr_and_file_clean() {
+        let mut config = empty_config();
+        config
+            .audience_attributes
+            .push(crate::config::AudienceAttribute {
+                name: "device_type".into(),
+                kind: crate::config::AttrType::Enum,
+                values: vec!["mobile".into(), "tablet".into(), "desktop".into()],
+            });
+        let mut ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        ws.audiences.push(crate::AudienceFile {
+            slug: "device_type".into(),
+            path: PathBuf::from("/tmp/test/audiences/device_type.ts"),
+        });
+        let report = run(&ws);
+        assert!(!report.errors.iter().any(|d| d.code == "E008"));
+        assert!(!report.warnings.iter().any(|d| d.code == "W002"));
     }
 }

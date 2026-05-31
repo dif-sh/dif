@@ -193,6 +193,7 @@ created: 2026-01-01";
             active: exps,
             concluded: vec![],
             surfaces,
+            audiences: vec![],
             call_sites: vec![],
             parse_errors: vec![],
         }

@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 
 pub mod audience;
+pub mod audience_files;
 pub mod bucket;
 pub mod codegen;
 pub mod config;
@@ -22,6 +23,7 @@ pub mod spec;
 pub mod validate;
 pub mod workspace;
 
+pub use audience_files::AudienceFile;
 pub use config::Config;
 pub use diag::{Diagnostic, Report};
 pub use parse::{ParsedExperiment, ParsedSurface};

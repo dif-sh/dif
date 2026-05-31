@@ -35,6 +35,8 @@ enum Command {
     Qa(cmd::qa::Args),
     /// Move an experiment to concluded/, draft Decision, append to surface log.
     Conclude(cmd::conclude::Args),
+    /// Idempotently scaffold the starter audience resolvers (locale, device_type).
+    ScaffoldAudiences(cmd::scaffold_audiences::Args),
 }
 
 fn main() -> ExitCode {
@@ -46,6 +48,7 @@ fn main() -> ExitCode {
         Command::Build(args) => cmd::build::run(args, cli.json),
         Command::Qa(args) => cmd::qa::run(args, cli.json),
         Command::Conclude(args) => cmd::conclude::run(args, cli.json),
+        Command::ScaffoldAudiences(args) => cmd::scaffold_audiences::run(args, cli.json),
     };
 
     match result {
