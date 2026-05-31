@@ -45,6 +45,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .unwrap_or_else(|| workspace.root.join(&workspace.config.build.out));
 
     codegen::emit_client(&workspace, &out_dir)?;
+    codegen::emit_audiences(&workspace, &out_dir)?;
     context::emit(&workspace)?;
 
     let active_count = workspace
@@ -53,6 +54,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .filter(|p| matches!(p.spec.status, Status::Active))
         .count();
     let client_path = out_dir.join("client.ts");
+    let audiences_path = out_dir.join("audiences.ts");
     let context_path = workspace.root.join(".dif").join("context.json");
 
     if json {
@@ -60,6 +62,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             "ok": true,
             "active": active_count,
             "client": client_path.display().to_string(),
+            "audiences": audiences_path.display().to_string(),
             "context": context_path.display().to_string(),
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
@@ -69,6 +72,10 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         println!(
             "{check} typed client → {}",
             relative_to_cwd(&client_path).display()
+        );
+        println!(
+            "{check} audiences   → {}",
+            relative_to_cwd(&audiences_path).display()
         );
         println!(
             "{check} context     → {}",

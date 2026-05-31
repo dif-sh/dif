@@ -7,6 +7,8 @@
 //! experiments/active/
 //! experiments/concluded/
 //! surfaces/<default-surface>.md
+//! audiences/locale.ts
+//! audiences/device_type.ts
 //! .dif/config.yaml
 //! .dif/.gitignore
 //! .dif/generated/         (gitignored)
@@ -44,6 +46,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         cwd.join("experiments").join("active"),
         cwd.join("experiments").join("concluded"),
         cwd.join("surfaces"),
+        cwd.join("audiences"),
         cwd.join(".dif").join("generated"),
     ];
     let files: Vec<(PathBuf, String)> = vec![
@@ -58,6 +61,14 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         (
             cwd.join("surfaces").join(format!("{surface}.md")),
             default_surface_md(&surface),
+        ),
+        (
+            cwd.join("audiences").join("locale.ts"),
+            DEFAULT_LOCALE_TS.to_string(),
+        ),
+        (
+            cwd.join("audiences").join("device_type.ts"),
+            DEFAULT_DEVICE_TYPE_TS.to_string(),
         ),
     ];
 
@@ -116,10 +127,13 @@ fn report_success(surface: &str, json: bool) {
                 "experiments/active",
                 "experiments/concluded",
                 "surfaces",
+                "audiences",
                 ".dif/generated",
                 ".dif/config.yaml",
                 ".dif/.gitignore",
                 format!("surfaces/{surface}.md"),
+                "audiences/locale.ts",
+                "audiences/device_type.ts",
             ],
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
@@ -128,9 +142,12 @@ fn report_success(surface: &str, json: bool) {
     let check = style("✓").green().bold();
     println!("{check} created experiments/{{active,concluded}}");
     println!("{check} created surfaces/");
+    println!("{check} created audiences/");
     println!("{check} wrote .dif/config.yaml");
     println!("{check} wrote .dif/.gitignore");
     println!("{check} wrote surfaces/{surface}.md");
+    println!("{check} wrote audiences/locale.ts");
+    println!("{check} wrote audiences/device_type.ts");
 }
 
 /// Render the default `config.yaml` as a string with helpful inline comments.
@@ -146,9 +163,15 @@ project: {project}
 default_surface: {surface}
 
 # Audience attribute schema. The audience predicate language is closed over
-# this set — anything not declared here is a validation error. Add what your
-# event system already knows about.
-audience_attributes: []
+# this set — anything not declared here is a validation error. Each entry
+# must have a matching resolver at `audiences/<name>.ts`. Run
+# `dif scaffold-audiences` to pull in starters.
+audience_attributes:
+  - name: locale
+    type: string
+  - name: device_type
+    type: enum
+    values: [mobile, tablet, desktop]
 
 # How users are bucketed.
 bucketing:
@@ -166,6 +189,38 @@ build:
 "
     )
 }
+
+/// Default audience resolver for the user's browser locale. Treated as
+/// user-owned the moment it's scaffolded — `dif init --force` will overwrite,
+/// but normal updates leave it alone.
+pub(crate) const DEFAULT_LOCALE_TS: &str = "// audiences/locale.ts — resolve the browser's UI locale (e.g. \"en-US\").
+//
+// Returns null on the server (no `navigator`); audience predicates referencing
+// `locale` therefore fail closed during SSR, which is the correct behavior.
+//
+// Edit this file freely — once scaffolded, dif treats it as yours. Update the
+// matching `audience_attributes` entry in .dif/config.yaml if you change the
+// return type.
+export default function resolve(): string | null {
+  if (typeof navigator === \"undefined\") return null;
+  return navigator.language ?? null;
+}
+";
+
+/// Default audience resolver for the user's device class. Breakpoints (640 /
+/// 1024 px) match the most common CSS defaults; tune for your design system.
+pub(crate) const DEFAULT_DEVICE_TYPE_TS: &str = "// audiences/device_type.ts — bucket users by viewport class.
+//
+// Returns null on the server (no `window`). Tweak the breakpoints to match
+// your design system; the return type union must stay in sync with
+// `audience_attributes.values` in .dif/config.yaml.
+export default function resolve(): \"mobile\" | \"tablet\" | \"desktop\" | null {
+  if (typeof window === \"undefined\") return null;
+  if (window.matchMedia(\"(max-width: 640px)\").matches) return \"mobile\";
+  if (window.matchMedia(\"(max-width: 1024px)\").matches) return \"tablet\";
+  return \"desktop\";
+}
+";
 
 /// Render the stub surface markdown for a freshly-created surface.
 fn default_surface_md(surface: &str) -> String {
@@ -203,7 +258,20 @@ mod tests {
         assert_eq!(config.bucketing.id, "user_id");
         assert_eq!(config.bucketing.fallback, "anon_cookie");
         assert_eq!(config.exposure.sink, "webhook");
-        assert!(config.audience_attributes.is_empty());
+        let names: Vec<&str> = config
+            .audience_attributes
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["locale", "device_type"]);
+    }
+
+    #[test]
+    fn scaffolded_audience_files_contain_resolver_default_export() {
+        assert!(DEFAULT_LOCALE_TS.contains("export default function resolve"));
+        assert!(DEFAULT_LOCALE_TS.contains("navigator.language"));
+        assert!(DEFAULT_DEVICE_TYPE_TS.contains("export default function resolve"));
+        assert!(DEFAULT_DEVICE_TYPE_TS.contains("matchMedia"));
     }
 
     #[test]

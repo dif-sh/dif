@@ -12,6 +12,7 @@
 //! every other check is meaningless.
 
 use crate::{
+    audience_files::{self, AudienceFile},
     config::Config,
     diag::Diagnostic,
     parse::{self, ParseError, ParsedExperiment, ParsedSurface},
@@ -34,6 +35,10 @@ pub struct Workspace {
     pub concluded: Vec<ParsedExperiment>,
     /// All surfaces.
     pub surfaces: Vec<ParsedSurface>,
+    /// Audience resolver files found under `audiences/`. Treated as opaque
+    /// TypeScript — Rust never opens them; the slug is enough to pair with
+    /// `config.audience_attributes` and tree-shake the generated bag.
+    pub audiences: Vec<AudienceFile>,
     /// Call sites: every `dif("<id>", ...)` reference found in source.
     /// Empty until [`Workspace::scan_call_sites`] runs.
     pub call_sites: Vec<CallSite>,
@@ -92,6 +97,7 @@ impl Workspace {
             &root,
         );
         let surfaces = load_surfaces(&root.join("surfaces"), &mut parse_errors, &root);
+        let audiences = audience_files::load_audience_files(&root.join("audiences"));
 
         Ok(Workspace {
             root,
@@ -99,6 +105,7 @@ impl Workspace {
             active,
             concluded,
             surfaces,
+            audiences,
             call_sites: Vec::new(),
             parse_errors,
         })

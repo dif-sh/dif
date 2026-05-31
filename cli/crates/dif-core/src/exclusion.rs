@@ -352,6 +352,7 @@ mod tests {
             active: exps,
             concluded: vec![],
             surfaces,
+            audiences: vec![],
             call_sites: vec![],
             parse_errors: vec![],
         }

@@ -21,3 +21,6 @@ sha2        = { workspace = true }
 chrono      = { workspace = true }
 walkdir     = { workspace = true }
 regex       = { workspace = true }
+
+[dev-dependencies]
+tempfile    = { workspace = true }

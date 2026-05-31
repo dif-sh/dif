@@ -17,17 +17,47 @@ npm install @dif.sh/sdk
 
 ```ts
 import { dif } from "@dif.sh/sdk";
+import { attributes } from "../.dif/generated/audiences";
 
 dif.init({
   project: "acme-shop",
   publishableKey: "dif_pk_live_…", // browser-safe write key
   userId: () => currentUser?.id ?? null,
+  attributes: () => attributes(),  // wired audience bag from `dif build`
 });
 ```
 
 Get a publishable key from your project's Settings → Keys tab in dif.sh
 Cloud. Publishable keys are safe to embed in browser bundles; they can only
 write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist.
+
+## Wiring audiences
+
+Every entry in `.dif/config.yaml`'s `audience_attributes` is paired with a
+resolver file at `audiences/<name>.ts`. `dif build` tree-shakes the folder
+against the attributes your active experiments reference, and emits a wired
+`.dif/generated/audiences.ts` that exposes a single `attributes(overrides)`
+helper. Pass it straight to `dif.init`:
+
+```ts
+import { attributes } from "../.dif/generated/audiences";
+
+dif.init({
+  userId: () => currentUser?.id ?? null,
+  attributes: () => attributes({
+    plan: currentUser?.plan,   // app-context override; wins on overlap
+  }),
+});
+```
+
+`dif init` scaffolds two starters — `audiences/locale.ts` (returns
+`navigator.language`) and `audiences/device_type.ts` (returns
+`"mobile" | "tablet" | "desktop"` via `matchMedia`). Both return `null` on
+the server, which fails the predicate match closed during SSR. Add your own
+file (`audiences/returning_visitor.ts`, etc.) and a matching
+`audience_attributes` entry to extend the set; `dif validate` errors with
+`E008` if a declared attribute has no resolver, and warns with `W002` if an
+orphan resolver has no declaration.
 
 ## Experiment assignment
 

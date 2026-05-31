@@ -6,6 +6,7 @@ pub mod conclude;
 pub mod init;
 pub mod new;
 pub mod qa;
+pub mod scaffold_audiences;
 pub mod validate;
 
 /// Shared error type for the CLI layer. We deliberately keep this small —
