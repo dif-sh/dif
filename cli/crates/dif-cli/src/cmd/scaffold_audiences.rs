@@ -7,8 +7,8 @@
 //! the YAML snippet the user should paste in instead). This is the safe path
 //! `dif init` cannot take for an existing workspace.
 
-use super::CmdError;
 use super::init::{DEFAULT_DEVICE_TYPE_TS, DEFAULT_LOCALE_TS};
+use super::CmdError;
 use clap::Args as ClapArgs;
 use console::style;
 use std::path::{Path, PathBuf};

@@ -83,10 +83,7 @@ pub fn render_audiences(workspace: &Workspace, out_dir: &Path) -> String {
     out.push_str("  return {\n");
     for file in &included {
         let var = camel_case(&file.slug);
-        out.push_str(&format!(
-            "    \"{}\": {var}(),\n",
-            js_escape(&file.slug)
-        ));
+        out.push_str(&format!("    \"{}\": {var}(),\n", js_escape(&file.slug)));
     }
     out.push_str("    ...overrides,\n");
     out.push_str("  };\n");

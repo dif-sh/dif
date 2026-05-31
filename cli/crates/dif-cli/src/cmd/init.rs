@@ -193,7 +193,8 @@ build:
 /// Default audience resolver for the user's browser locale. Treated as
 /// user-owned the moment it's scaffolded — `dif init --force` will overwrite,
 /// but normal updates leave it alone.
-pub(crate) const DEFAULT_LOCALE_TS: &str = "// audiences/locale.ts — resolve the browser's UI locale (e.g. \"en-US\").
+pub(crate) const DEFAULT_LOCALE_TS: &str =
+    "// audiences/locale.ts — resolve the browser's UI locale (e.g. \"en-US\").
 //
 // Returns null on the server (no `navigator`); audience predicates referencing
 // `locale` therefore fail closed during SSR, which is the correct behavior.
@@ -209,7 +210,8 @@ export default function resolve(): string | null {
 
 /// Default audience resolver for the user's device class. Breakpoints (640 /
 /// 1024 px) match the most common CSS defaults; tune for your design system.
-pub(crate) const DEFAULT_DEVICE_TYPE_TS: &str = "// audiences/device_type.ts — bucket users by viewport class.
+pub(crate) const DEFAULT_DEVICE_TYPE_TS: &str =
+    "// audiences/device_type.ts — bucket users by viewport class.
 //
 // Returns null on the server (no `window`). Tweak the breakpoints to match
 // your design system; the return type union must stay in sync with
