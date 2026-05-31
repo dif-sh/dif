@@ -73,7 +73,7 @@ pub fn render_audiences(workspace: &Workspace, out_dir: &Path) -> String {
         out.push_str(&format!("import {var} from \"{}\";\n", js_escape(&path)));
     }
 
-    out.push_str("\n");
+    out.push('\n');
     out.push_str("/**\n");
     out.push_str(" * Wired audience attribute bag. Each value is computed by the matching\n");
     out.push_str(" * `audiences/<slug>.ts` resolver. Anything in `overrides` wins on overlap\n");
