@@ -1,0 +1,18 @@
+# Force LF line endings on every text file on every platform.
+#
+# Why this matters: `dif-cli` uses `include_str!()` to bake the agent-onboarding
+# assets (CLAUDE.md, SKILL.md, etc.) into the binary at compile time. Without
+# this file, git's default `core.autocrlf=true` on Windows rewrites those
+# assets to CRLF on checkout, so the Windows CI runner ends up with CRLF-baked
+# strings — which breaks `extract_frontmatter` in the init.rs tests (it looks
+# for `"---\n"` exactly).
+#
+# `text=auto eol=lf` tells git: detect text vs binary automatically, and for
+# anything detected as text, always check it out with LF. Binary files
+# (images, archives) are unaffected.
+#
+# Effect: source on disk has LF endings everywhere, the test passes on every
+# platform, and the agent files scaffolded into customer repos by `dif init`
+# carry LF endings regardless of which platform built the binary.
+
+* text=auto eol=lf

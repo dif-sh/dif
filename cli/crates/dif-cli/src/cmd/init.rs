@@ -500,6 +500,31 @@ mod tests {
         }
     }
 
+    #[test]
+    fn extract_frontmatter_tolerates_crlf() {
+        // Simulates what `include_str!` sees on Windows when `.gitattributes`
+        // is missing and `core.autocrlf` rewrites checkouts to CRLF.
+        let lf = "---\nname: x\ndescription: y\n---\n\n# body\n";
+        let crlf = "---\r\nname: x\r\ndescription: y\r\n---\r\n\r\n# body\r\n";
+        let mixed = "---\nname: x\r\ndescription: y\n---\r\n\n# body\n";
+
+        let fm_lf = extract_frontmatter(lf).expect("LF");
+        let fm_crlf = extract_frontmatter(crlf).expect("CRLF");
+        let fm_mixed = extract_frontmatter(mixed).expect("mixed");
+
+        for fm in [fm_lf, fm_crlf, fm_mixed] {
+            assert!(
+                fm.contains("name: x"),
+                "frontmatter lost name field: {fm:?}"
+            );
+            assert!(fm.contains("description: y"));
+            assert!(
+                !fm.contains("# body"),
+                "frontmatter leaked into body: {fm:?}"
+            );
+        }
+    }
+
     /// Drift guard: every error code emitted by `dif-core::validate` must be
     /// documented in `references/validation-errors.md`. If you add a new code
     /// in validate.rs, also document it and append it to the list below. This
@@ -518,9 +543,22 @@ mod tests {
         }
     }
 
+    /// Extract the YAML frontmatter slice from a SKILL.md source string.
+    ///
+    /// Tolerant of both `\n` and `\r\n` line endings: `.gitattributes` pins
+    /// LF for in-tree assets, but defending here too keeps the test green if
+    /// someone builds from a working tree that's been touched by a Windows
+    /// editor or a stale `core.autocrlf=true` checkout.
     fn extract_frontmatter(source: &str) -> Option<&str> {
-        let s = source.trim_start().strip_prefix("---\n")?;
-        let end = s.find("\n---\n")?;
-        Some(&s[..end])
+        let s = source.trim_start();
+        let after_open = s
+            .strip_prefix("---\n")
+            .or_else(|| s.strip_prefix("---\r\n"))?;
+        // Closing fence: any combination of LF / CRLF on either side.
+        ["\n---\n", "\n---\r\n", "\r\n---\n", "\r\n---\r\n"]
+            .iter()
+            .filter_map(|marker| after_open.find(marker))
+            .min()
+            .map(|end| &after_open[..end])
     }
 }
