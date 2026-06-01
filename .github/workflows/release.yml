@@ -15,6 +15,13 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Force JS actions onto Node 24 ahead of the June 16, 2026 cutover so the
+  # release workflow doesn't surface deprecation warnings on every run. The
+  # affected actions in this workflow are actions/upload-artifact@v5,
+  # actions/download-artifact@v5, and softprops/action-gh-release@v2 — all
+  # still on Node 20 internals. Remove this env var once those publish
+  # Node-24-native major versions and we bump to them.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # -------------------------------------------------------------------------
