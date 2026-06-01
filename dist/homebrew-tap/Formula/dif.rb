@@ -10,28 +10,28 @@
 class Dif < Formula
   desc "Experimentation-as-code for AI-native teams"
   homepage "https://dif.sh"
-  version "0.2.0"
+  version "0.3.1"
   license "MIT"
 
   on_macos do
     on_arm do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-apple-darwin.tar.gz"
-      sha256 "a3e9904bf61187e3f3b27066feb47f7a2642e83a2a0ec0abb70001118470bbde"
+      sha256 "e991007c2233379e008e6ee9b1ce33e8b66e65d1b259b4cdb3532a4908dfd0bf"
     end
     on_intel do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-apple-darwin.tar.gz"
-      sha256 "2fb1618320f73a680b621bdcf93529e565ae84a1ed4a7366f387599869865233"
+      sha256 "d4fe24bd835cb2c402d5cd3a77f2d392822227fb22a040204402d119c77580b1"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "3d29972a295b10e626a4851a40ce90c6eed923fbe2ab64cfd91ae0496e5de9c7"
+      sha256 "463ddafdaab2ed03d5699a589d2d53a2c4aa41171f43cbf3c6f2fd3edb26003e"
     end
     on_arm do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "8bdc5e9b1c555336935ff4aa76ee1832d740edf99365e99a2f30a216725c9e17"
+      sha256 "b2b57faaa878fd2201b67e62fad3f6d127fd5b7e1193e27fdf9fffed131d9a17"
     end
   end
 
