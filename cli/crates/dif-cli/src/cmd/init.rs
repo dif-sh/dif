@@ -30,11 +30,24 @@ pub struct Args {
     /// Overwrite existing files. Off by default — refuses to clobber.
     #[arg(long)]
     pub force: bool,
+
+    /// Skip writing agent-onboarding files (CLAUDE.md, AGENTS.md, .cursorrules,
+    /// and the `.claude/skills/dif-*` directories). On by default — dif's
+    /// product thesis is "primary developer is now an AI agent", so the
+    /// guidance ships unless you opt out.
+    #[arg(long)]
+    pub no_agent_files: bool,
 }
 
 /// Entrypoint. See PLAN.md step 3.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
+    run_in(&cwd, args, json)
+}
+
+/// Test-friendly inner that takes an explicit cwd so the `current_dir()` side
+/// effect can be sidestepped. Mirrors the pattern in [`super::scaffold_audiences`].
+fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let project = cwd
         .file_name()
@@ -49,7 +62,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         cwd.join("audiences"),
         cwd.join(".dif").join("generated"),
     ];
-    let files: Vec<(PathBuf, String)> = vec![
+    let mut files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(".dif").join("config.yaml"),
             default_config_yaml(&project, &surface),
@@ -71,6 +84,9 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             DEFAULT_DEVICE_TYPE_TS.to_string(),
         ),
     ];
+    if !args.no_agent_files {
+        files.extend(agent_files(cwd));
+    }
 
     if !args.force {
         let collisions: Vec<&Path> = files
@@ -94,7 +110,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         std::fs::write(path, content)?;
     }
 
-    report_success(&surface, json);
+    report_success(&surface, json, !args.no_agent_files);
     Ok(ExitCode::from(0))
 }
 
@@ -119,22 +135,26 @@ fn report_collisions(paths: &[&Path], json: bool) {
     eprintln!("re-run with {} to overwrite.", style("--force").bold());
 }
 
-fn report_success(surface: &str, json: bool) {
+fn report_success(surface: &str, json: bool, include_agent_files: bool) {
     if json {
+        let mut created: Vec<String> = vec![
+            "experiments/active".into(),
+            "experiments/concluded".into(),
+            "surfaces".into(),
+            "audiences".into(),
+            ".dif/generated".into(),
+            ".dif/config.yaml".into(),
+            ".dif/.gitignore".into(),
+            format!("surfaces/{surface}.md"),
+            "audiences/locale.ts".into(),
+            "audiences/device_type.ts".into(),
+        ];
+        if include_agent_files {
+            created.extend(AGENT_FILE_PATHS.iter().map(|s| (*s).to_string()));
+        }
         let payload = serde_json::json!({
             "ok": true,
-            "created": [
-                "experiments/active",
-                "experiments/concluded",
-                "surfaces",
-                "audiences",
-                ".dif/generated",
-                ".dif/config.yaml",
-                ".dif/.gitignore",
-                format!("surfaces/{surface}.md"),
-                "audiences/locale.ts",
-                "audiences/device_type.ts",
-            ],
+            "created": created,
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
         return;
@@ -148,6 +168,12 @@ fn report_success(surface: &str, json: bool) {
     println!("{check} wrote surfaces/{surface}.md");
     println!("{check} wrote audiences/locale.ts");
     println!("{check} wrote audiences/device_type.ts");
+    if include_agent_files {
+        println!("{check} wrote CLAUDE.md, AGENTS.md, .cursorrules");
+        println!(
+            "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
+        );
+    }
 }
 
 /// Render the default `config.yaml` as a string with helpful inline comments.
@@ -245,6 +271,101 @@ anything that's bitten a previous test on this surface. One bullet per.)
     )
 }
 
+// -- agent onboarding files --------------------------------------------------
+//
+// CLAUDE.md, AGENTS.md, .cursorrules at the project root plus two Claude Code
+// skills under `.claude/skills/`. The content lives under `assets/` so it can
+// be edited as ordinary markdown; `include_str!` bakes it into the binary at
+// compile time so `dif init` writes the same bytes regardless of where it
+// runs.
+//
+// `cursorrules.txt` in `assets/` is intentionally not a dotfile — `cargo
+// package`'s defaults exclude some dotfiles, and we'd rather not depend on
+// that detail. The leading dot is added at write time.
+
+pub(crate) const CLAUDE_MD: &str = include_str!("../../assets/CLAUDE.md");
+pub(crate) const AGENTS_MD: &str = include_str!("../../assets/AGENTS.md");
+pub(crate) const CURSORRULES: &str = include_str!("../../assets/cursorrules.txt");
+pub(crate) const SKILL_AUTHOR: &str =
+    include_str!("../../assets/claude/skills/dif-author-experiment/SKILL.md");
+pub(crate) const SKILL_AUTHOR_FRONTMATTER: &str =
+    include_str!("../../assets/claude/skills/dif-author-experiment/references/frontmatter.md");
+pub(crate) const SKILL_AUTHOR_ERRORS: &str = include_str!(
+    "../../assets/claude/skills/dif-author-experiment/references/validation-errors.md"
+);
+pub(crate) const SKILL_AUTHOR_AUDIENCES: &str =
+    include_str!("../../assets/claude/skills/dif-author-experiment/references/audiences.md");
+pub(crate) const SKILL_CONCLUDE: &str =
+    include_str!("../../assets/claude/skills/dif-conclude-experiment/SKILL.md");
+pub(crate) const SKILL_GENERATE_SURFACES: &str =
+    include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
+
+/// Paths (relative to the workspace root) that `dif init` writes when
+/// agent-onboarding is enabled. Used by `report_success` for the JSON
+/// `created[]` array and by tests to assert the scaffolded set.
+pub(crate) const AGENT_FILE_PATHS: &[&str] = &[
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".cursorrules",
+    ".claude/skills/dif-author-experiment/SKILL.md",
+    ".claude/skills/dif-author-experiment/references/frontmatter.md",
+    ".claude/skills/dif-author-experiment/references/validation-errors.md",
+    ".claude/skills/dif-author-experiment/references/audiences.md",
+    ".claude/skills/dif-conclude-experiment/SKILL.md",
+    ".claude/skills/dif-generate-surfaces/SKILL.md",
+];
+
+/// Build the (path, content) tuples for the agent onboarding files, stamped
+/// with the current crate version so a user can detect drift between their
+/// scaffolded files and the binary that wrote them.
+fn agent_files(cwd: &Path) -> Vec<(PathBuf, String)> {
+    let v = env!("CARGO_PKG_VERSION");
+    let md_stamp =
+        format!("<!-- generated by dif v{v}; safe to re-run `dif init --force` to refresh -->\n\n");
+    let hash_stamp =
+        format!("# generated by dif v{v}; safe to re-run `dif init --force` to refresh\n\n");
+
+    let author = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-author-experiment");
+    let conclude = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-conclude-experiment");
+    let generate = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-generate-surfaces");
+
+    vec![
+        (cwd.join("CLAUDE.md"), format!("{md_stamp}{CLAUDE_MD}")),
+        (cwd.join("AGENTS.md"), format!("{md_stamp}{AGENTS_MD}")),
+        (
+            cwd.join(".cursorrules"),
+            format!("{hash_stamp}{CURSORRULES}"),
+        ),
+        (author.join("SKILL.md"), SKILL_AUTHOR.to_string()),
+        (
+            author.join("references").join("frontmatter.md"),
+            SKILL_AUTHOR_FRONTMATTER.to_string(),
+        ),
+        (
+            author.join("references").join("validation-errors.md"),
+            SKILL_AUTHOR_ERRORS.to_string(),
+        ),
+        (
+            author.join("references").join("audiences.md"),
+            SKILL_AUTHOR_AUDIENCES.to_string(),
+        ),
+        (conclude.join("SKILL.md"), SKILL_CONCLUDE.to_string()),
+        (
+            generate.join("SKILL.md"),
+            SKILL_GENERATE_SURFACES.to_string(),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +405,122 @@ mod tests {
         // The stub has zero real learnings (the parenthetical hint is not a
         // bullet, so the parser ignores it).
         assert!(surface.learnings.is_empty());
+    }
+
+    #[test]
+    fn scaffolds_agent_files_by_default() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                force: false,
+                no_agent_files: false,
+            },
+            true,
+        )
+        .expect("init");
+        for rel in AGENT_FILE_PATHS {
+            let p = tmp.path().join(rel);
+            assert!(p.exists(), "missing scaffolded file: {rel}");
+            let content = std::fs::read_to_string(&p).unwrap();
+            assert!(!content.is_empty(), "empty scaffolded file: {rel}");
+        }
+        // Top-level files carry the version stamp so users can detect skew.
+        let v = env!("CARGO_PKG_VERSION");
+        let claude_md = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        assert!(
+            claude_md.contains(&format!("generated by dif v{v}")),
+            "CLAUDE.md missing version stamp"
+        );
+        let cursorrules = std::fs::read_to_string(tmp.path().join(".cursorrules")).unwrap();
+        assert!(
+            cursorrules.contains(&format!("generated by dif v{v}")),
+            ".cursorrules missing version stamp"
+        );
+    }
+
+    #[test]
+    fn no_agent_files_flag_suppresses_them() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                force: false,
+                no_agent_files: true,
+            },
+            true,
+        )
+        .expect("init");
+        for rel in AGENT_FILE_PATHS {
+            let p = tmp.path().join(rel);
+            assert!(!p.exists(), "unexpected scaffolded file: {rel}");
+        }
+        // The non-agent scaffold still wrote.
+        assert!(tmp.path().join(".dif/config.yaml").exists());
+        assert!(tmp.path().join("surfaces/home.md").exists());
+        assert!(tmp.path().join("audiences/locale.ts").exists());
+    }
+
+    #[test]
+    fn skill_md_files_have_required_frontmatter() {
+        for (name, content) in [
+            ("dif-author-experiment", SKILL_AUTHOR),
+            ("dif-conclude-experiment", SKILL_CONCLUDE),
+            ("dif-generate-surfaces", SKILL_GENERATE_SURFACES),
+        ] {
+            let frontmatter = extract_frontmatter(content)
+                .unwrap_or_else(|| panic!("SKILL.md for {name} has no YAML frontmatter"));
+            let parsed: serde_yaml::Value =
+                serde_yaml::from_str(frontmatter).expect("frontmatter parses as YAML");
+            let map = parsed.as_mapping().expect("frontmatter is a YAML mapping");
+            assert_eq!(
+                map.get(serde_yaml::Value::String("name".into()))
+                    .and_then(|v| v.as_str()),
+                Some(name),
+                "{name} SKILL.md `name:` field must match directory name"
+            );
+            let desc = map
+                .get(serde_yaml::Value::String("description".into()))
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("{name} SKILL.md missing `description:` field"));
+            // Trigger surface: the description is what Claude Code matches on
+            // to decide whether to load the skill. Too-short descriptions
+            // under-trigger.
+            assert!(
+                desc.len() > 80,
+                "{name} description suspiciously short ({} chars); skills need an explicit trigger surface",
+                desc.len()
+            );
+            assert!(
+                desc.contains("dif"),
+                "{name} description doesn't mention `dif`; trigger word missing"
+            );
+        }
+    }
+
+    /// Drift guard: every error code emitted by `dif-core::validate` must be
+    /// documented in `references/validation-errors.md`. If you add a new code
+    /// in validate.rs, also document it and append it to the list below. This
+    /// test is the structural enforcement against doc rot.
+    #[test]
+    fn validation_errors_doc_lists_every_real_code() {
+        let codes = [
+            "E001", "E003", "E004", "E005", "E006", "E007", "E008", "W001", "W002",
+        ];
+        for code in codes {
+            assert!(
+                SKILL_AUTHOR_ERRORS.contains(code),
+                "validation-errors.md is missing documentation for `{code}` — \
+                 add a section for it, or remove `{code}` from `dif-core::validate` if obsolete."
+            );
+        }
+    }
+
+    fn extract_frontmatter(source: &str) -> Option<&str> {
+        let s = source.trim_start().strip_prefix("---\n")?;
+        let end = s.find("\n---\n")?;
+        Some(&s[..end])
     }
 }
