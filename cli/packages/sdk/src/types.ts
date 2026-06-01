@@ -74,7 +74,7 @@ export interface ExposureEvent {
   bucket: number;
   /** Unix milliseconds. */
   fired_at: number;
-  /** SDK version, e.g. `"@dif.sh/sdk@0.3.1"`. */
+  /** SDK version, e.g. `"@dif.sh/sdk@0.3.2"`. */
   source: string;
 }
 
