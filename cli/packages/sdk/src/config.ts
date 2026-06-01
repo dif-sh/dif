@@ -4,6 +4,7 @@
 // getState(). One config per bundle; calling init again overwrites. This is
 // intentional — there is only one "current user" per app instance.
 
+import { cloudSink } from "./sinks/cloud.js";
 import type { AttributeBag, DifConfig, DifInitConfig, Sink } from "./types.js";
 
 export type { DifInitConfig };
@@ -25,11 +26,25 @@ const DEFAULT_API_URL = "https://api.dif.sh";
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;
   const sinkVal = merged.sink;
-  const sinks = sinkVal === undefined ? [] : Array.isArray(sinkVal) ? sinkVal : [sinkVal];
+  const apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
+  const publishableKey = merged.publishableKey ?? null;
+
+  // Auto-attach the cloud sink when the caller didn't specify any sinks and a
+  // publishable key is configured. Without this, exposures fired by `dif(...)`
+  // call sites silently drop on the floor even though `dif.track` already
+  // posts to the same cloud. Opt out by passing `sink: []`; replace by passing
+  // `sink: yourSink` or `sink: [yourSink]`.
+  let sinks: Sink[];
+  if (sinkVal === undefined) {
+    sinks = publishableKey ? [cloudSink({ apiUrl, publishableKey })] : [];
+  } else {
+    sinks = Array.isArray(sinkVal) ? sinkVal : [sinkVal];
+  }
+
   state = {
     project: merged.project ?? null,
-    publishableKey: merged.publishableKey ?? null,
-    apiUrl: stripTrailing(merged.apiUrl ?? DEFAULT_API_URL),
+    publishableKey,
+    apiUrl,
     userId: merged.userId ?? (() => null),
     attributes: merged.attributes ?? (() => ({})),
     sinks,

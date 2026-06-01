@@ -151,7 +151,9 @@ useEffect(() => track("completed_checkout"), []);
 - Variant lookup against the generated experiment spec.
 - Deterministic SHA-256 bucketing — byte-compatible with `dif-core` (Rust).
 - Audience predicate evaluation + exclusion-group resolution.
-- One exposure event per `(experiment, user)` per session, to a configurable sink.
+- One exposure event per `(experiment, user)` per session. Posts to dif.sh
+  Cloud by default when `publishableKey` is set; pass `sink: [...]` to route
+  elsewhere, or `sink: []` to opt out.
 - Metric tracking (`dif.track`) to dif.sh Cloud, browser + server.
 
 **Does not (in v0):**

@@ -62,6 +62,7 @@ export type {
   TrackProps,
   UserIdFn,
 } from "./types.js";
+export { cloudSink } from "./sinks/cloud.js";
 export { webhookSink } from "./sinks/webhook.js";
 export { segmentSink } from "./sinks/segment.js";
 export { amplitudeSink } from "./sinks/amplitude.js";
