@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Client SDK for dif.sh — experiment assignment + metric tracking.",
   "license": "MIT",
   "type": "module",

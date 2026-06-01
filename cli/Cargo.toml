@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/dif-sh/dif"
@@ -30,7 +30,7 @@ indicatif   = "0.17"
 console     = "0.15"
 
 # Internal crate refs
-dif-core    = { path = "crates/dif-core", version = "0.3.0" }
+dif-core    = { path = "crates/dif-core", version = "0.3.1" }
 
 # Dev-only
 tempfile    = "3"

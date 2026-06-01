@@ -92,7 +92,7 @@ describe("dif.track", () => {
     assert.equal(body.user_id, "u-1");
     assert.equal(body.value, 49);
     assert.equal(body.currency, "USD");
-    assert.equal(body.source, "@dif.sh/sdk@0.3.0");
+    assert.equal(body.source, "@dif.sh/sdk@0.3.1");
     assert.ok(typeof body.fired_at === "number");
   });
 
