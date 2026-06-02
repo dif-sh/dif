@@ -20,9 +20,9 @@ The email regex is permissive (one `@`, at least one `.` after it). Catches typo
 
 ### E004 — surface does not exist
 
-The experiment's `surface:` field doesn't match any `surfaces/<name>.md`.
+The experiment's `surface:` field doesn't match any `dif/surfaces/<name>.md`.
 
-**Fix:** create `surfaces/<name>.md` (the stub `dif init` emits is a usable template), or fix the `surface:` value to an existing one. `dif new --surface <name>` only allows existing surfaces, so this typically arises from hand-editing.
+**Fix:** create `dif/surfaces/<name>.md` (the stub `dif init` emits is a usable template), or fix the `surface:` value to an existing one. `dif new --surface <name>` only allows existing surfaces, so this typically arises from hand-editing.
 
 ### E005 — variant weights don't sum to 100
 
@@ -32,9 +32,9 @@ The runtime bucketing math depends on the weights summing to exactly 100. `dif` 
 
 ### E006 — audience attribute not declared
 
-You used an attribute in an `audience:` predicate that isn't in `.dif/config.yaml`'s `audience_attributes` list.
+You used an attribute in an `audience:` predicate that isn't in `dif/config.yaml`'s `audience_attributes` list.
 
-**Fix:** add the attribute to `audience_attributes:` (with a `name` and `type`), or remove the predicate. There is intentionally no inline DSL — every attribute is a closed-set declaration with a paired resolver file. After declaring, also create the matching `audiences/<name>.ts` (or you'll trip E008 next).
+**Fix:** add the attribute to `audience_attributes:` (with a `name` and `type`), or remove the predicate. There is intentionally no inline DSL — every attribute is a closed-set declaration with a paired resolver file. After declaring, also create the matching `dif/audiences/<name>.ts` (or you'll trip E008 next).
 
 ### E007 — exclusion conflict
 
@@ -49,9 +49,9 @@ The disjointness check is conservative (scalar equality + list membership only),
 
 ### E008 — declared audience attribute is missing its resolver
 
-You declared `name: <attr>` in `audience_attributes` but `audiences/<attr>.ts` doesn't exist.
+You declared `name: <attr>` in `audience_attributes` but `dif/audiences/<attr>.ts` doesn't exist.
 
-**Fix:** create `audiences/<attr>.ts` exporting a default `resolve()` function returning the user's value (or `null` for fail-closed during SSR). Run `dif scaffold-audiences` to pull in the starter `locale.ts` / `device_type.ts` if those are the ones missing.
+**Fix:** create `dif/audiences/<attr>.ts` exporting a default `resolve()` function returning the user's value (or `null` for fail-closed during SSR). Run `dif scaffold-audiences` to pull in the starter `locale.ts` / `device_type.ts` if those are the ones missing.
 
 ## Warnings (non-fatal)
 
@@ -63,6 +63,6 @@ A `dif("<id>", ...)` call site in source code references an experiment that isn'
 
 ### W002 — orphan audience file
 
-`audiences/<name>.ts` exists but `audience_attributes` doesn't declare it. Could be an in-progress draft or a forgotten cleanup.
+`dif/audiences/<name>.ts` exists but `audience_attributes` doesn't declare it. Could be an in-progress draft or a forgotten cleanup.
 
-**Fix:** add the declaration to `.dif/config.yaml`, or delete the file if it's no longer used.
+**Fix:** add the declaration to `dif/config.yaml`, or delete the file if it's no longer used.

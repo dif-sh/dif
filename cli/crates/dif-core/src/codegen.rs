@@ -20,6 +20,7 @@ use crate::{
     audience_files::AudienceFile,
     bucket,
     parse::ParsedExperiment,
+    paths,
     spec::{Audience, Experiment, Status, Variant},
     workspace::Workspace,
     VERSION,
@@ -69,7 +70,7 @@ pub fn render_audiences(workspace: &Workspace, out_dir: &Path) -> String {
 
     for file in &included {
         let var = camel_case(&file.slug);
-        let path = format!("{prefix}audiences/{}", file.slug);
+        let path = format!("{prefix}{}/{}", paths::AUDIENCES_DIR, file.slug);
         out.push_str(&format!("import {var} from \"{}\";\n", js_escape(&path)));
     }
 
@@ -527,18 +528,18 @@ created: 2026-01-01",
         let audiences = vec![
             AudienceFile {
                 slug: "device_type".into(),
-                path: root.join("audiences/device_type.ts"),
+                path: root.join("dif/audiences/device_type.ts"),
             },
             AudienceFile {
                 slug: "locale".into(),
-                path: root.join("audiences/locale.ts"),
+                path: root.join("dif/audiences/locale.ts"),
             },
         ];
         let ws = ws_with(vec![exp], audiences, root.clone());
-        let out_dir = root.join(".dif").join("generated");
+        let out_dir = root.join("dif").join("generated");
         let rendered = render_audiences(&ws, &out_dir);
 
-        assert!(rendered.contains("import deviceType from \"../../audiences/device_type\""));
+        assert!(rendered.contains("import deviceType from \"../../dif/audiences/device_type\""));
         assert!(!rendered.contains("locale"));
         assert!(rendered.contains("export function attributes(overrides: AttributeBag = {})"));
         assert!(rendered.contains("\"device_type\": deviceType(),"));
@@ -550,7 +551,7 @@ created: 2026-01-01",
         // No experiments → no referenced attributes → empty bag, still valid module.
         let root = PathBuf::from("/tmp/dif-test-ws");
         let ws = ws_with(vec![], vec![], root.clone());
-        let out_dir = root.join(".dif").join("generated");
+        let out_dir = root.join("dif").join("generated");
         let rendered = render_audiences(&ws, &out_dir);
 
         assert!(rendered.contains("export function attributes(overrides: AttributeBag = {})"));
@@ -584,13 +585,13 @@ created: 2026-01-01",
         let root = PathBuf::from("/tmp/dif-test-ws");
         let audiences = vec![AudienceFile {
             slug: "plan".into(),
-            path: root.join("audiences/plan.ts"),
+            path: root.join("dif/audiences/plan.ts"),
         }];
         let ws = ws_with(vec![exp], audiences, root.clone());
-        let out_dir = root.join(".dif").join("generated");
+        let out_dir = root.join("dif").join("generated");
         let rendered = render_audiences(&ws, &out_dir);
 
-        assert!(rendered.contains("import plan from \"../../audiences/plan\""));
+        assert!(rendered.contains("import plan from \"../../dif/audiences/plan\""));
         assert!(rendered.contains("\"plan\": plan(),"));
     }
 
@@ -620,15 +621,15 @@ created: 2026-01-01",
         let audiences = vec![
             AudienceFile {
                 slug: "locale".into(),
-                path: root.join("audiences/locale.ts"),
+                path: root.join("dif/audiences/locale.ts"),
             },
             AudienceFile {
                 slug: "device_type".into(),
-                path: root.join("audiences/device_type.ts"),
+                path: root.join("dif/audiences/device_type.ts"),
             },
         ];
         let ws = ws_with(vec![exp], audiences, root.clone());
-        let out_dir = root.join(".dif").join("generated");
+        let out_dir = root.join("dif").join("generated");
         let a = render_audiences(&ws, &out_dir);
         let b = render_audiences(&ws, &out_dir);
         assert_eq!(a, b);
@@ -645,7 +646,7 @@ created: 2026-01-01",
     fn relative_import_prefix_depth() {
         let root = PathBuf::from("/tmp/dif-ws");
         assert_eq!(
-            relative_import_prefix(&root.join(".dif").join("generated"), &root),
+            relative_import_prefix(&root.join("dif").join("generated"), &root),
             "../../"
         );
         assert_eq!(

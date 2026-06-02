@@ -9,7 +9,7 @@
 // publishable key.
 
 const DEFAULT_API_URL = "https://api.dif.sh";
-const DEFAULT_SOURCE = "@dif.sh/sdk@0.3.2";
+const DEFAULT_SOURCE = "@dif.sh/sdk@0.4.0";
 
 export interface DifServerConfig {
   /** Secret bearer token: dif_<env>_<prefix>_<secret>. */

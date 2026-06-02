@@ -1,6 +1,6 @@
 # dif experiment frontmatter
 
-Every file in `experiments/active/` and `experiments/concluded/` is a `.md` with YAML frontmatter and three body sections (`## Brief`, `## Rationale`, `## Decision`). `dif new` writes the stub; this reference is what to fill in.
+Every file in `dif/experiments/active/` and `dif/experiments/concluded/` is a `.md` with YAML frontmatter and three body sections (`## Brief`, `## Rationale`, `## Decision`). `dif new` writes the stub; this reference is what to fill in.
 
 ## Schema
 
@@ -8,7 +8,7 @@ Every file in `experiments/active/` and `experiments/concluded/` is a `.md` with
 id: kebab-case-id                # unique across the workspace
 status: draft | active | concluded | archived
 owner: name@example.com          # syntactically valid email (E003 if not)
-surface: home                    # must resolve to surfaces/home.md (E004)
+surface: home                    # must resolve to dif/surfaces/home.md (E004)
 hypothesis: >
   One falsifiable sentence: what change, expected direction,
   on which metric, for which audience.
@@ -34,7 +34,7 @@ created: 2026-06-01              # set by `dif new`
 concluded: null                  # set by `dif conclude`; null while active
 ```
 
-All audience attributes (`locale`, `device_type`, `country` in the example above) must be declared in `.dif/config.yaml` under `audience_attributes` and have a paired `audiences/<name>.ts` resolver. Otherwise E006 / E008.
+All audience attributes (`locale`, `device_type`, `country` in the example above) must be declared in `dif/config.yaml` under `audience_attributes` and have a paired `dif/audiences/<name>.ts` resolver. Otherwise E006 / E008.
 
 ## A complete example
 
@@ -95,10 +95,10 @@ isolate the copy effect.
 
 - `draft` — `dif new` default. Not yet running. The SDK doesn't emit a typed export for drafts.
 - `active` — currently allocating users. Flip from `draft` by hand when you flip it on in your deploy.
-- `concluded` — `dif conclude` set this. The file now lives in `experiments/concluded/<YYYY-MM>-<id>.md`.
+- `concluded` — `dif conclude` set this. The file now lives in `dif/experiments/concluded/<YYYY-MM>-<id>.md`.
 - `archived` — manual; remove from active rotation but preserve history. Equivalent to concluded for build purposes.
 
-`dif build` only emits typed exports for `status: active` experiments. A `draft` won't show up in `.dif/generated/client.ts` until you flip its status.
+`dif build` only emits typed exports for `status: active` experiments. A `draft` won't show up in `dif/generated/client.ts` until you flip its status.
 
 ## What `dif new` fills in for you
 

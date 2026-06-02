@@ -1,11 +1,11 @@
 ---
 name: dif-generate-surfaces
-description: Generating the initial set of dif.sh surfaces by reading the app's structure and product context. Use when the user wants to set up, scaffold, populate, auto-create, or propose surfaces for a dif project — especially right after `dif init`, when `surfaces/` is empty or sparse, or when `dif new` fails with "surface does not exist". Reads the codebase (routes, pages, README, package.json) plus `.dif/context.json`, proposes a candidate set of surfaces with one-line rationales, confirms with the user, then writes the matching `surfaces/<name>.md` files.
+description: Generating the initial set of dif.sh surfaces by reading the app's structure and product context. Use when the user wants to set up, scaffold, populate, auto-create, or propose surfaces for a dif project — especially right after `dif init`, when `dif/surfaces/` is empty or sparse, or when `dif new` fails with "surface does not exist". Reads the codebase (routes, pages, README, package.json) plus `dif/context.json`, proposes a candidate set of surfaces with one-line rationales, confirms with the user, then writes the matching `dif/surfaces/<name>.md` files.
 ---
 
 # Generating dif surfaces
 
-Use this skill to produce the initial set of `surfaces/<name>.md` files for a dif project — either right after `dif init` (which only writes the one default surface), or when `dif new --surface X` fails with "surface does not exist" because nobody's created X yet.
+Use this skill to produce the initial set of `dif/surfaces/<name>.md` files for a dif project — either right after `dif init` (which only writes the one default surface), or when `dif new --surface X` fails with "surface does not exist" because nobody's created X yet.
 
 ## What a surface is
 
@@ -17,9 +17,9 @@ Surfaces are **not** one-per-route or one-per-component. A typical app has 3–8
 
 ### 1. Survey existing state
 
-List `surfaces/*.md`. If many already exist, scope your work to "what's missing" — read each existing surface's H1 + description paragraph to understand what's already represented, then propose only the gaps. If the directory only contains the default `home.md` from `dif init`, propose a fresh set.
+List `dif/surfaces/*.md`. If many already exist, scope your work to "what's missing" — read each existing surface's H1 + description paragraph to understand what's already represented, then propose only the gaps. If the directory only contains the default `home.md` from `dif init`, propose a fresh set.
 
-Also read `.dif/context.json` if it exists — active experiments tell you which surfaces are already in real use.
+Also read `dif/context.json` if it exists — active experiments tell you which surfaces are already in real use.
 
 ### 2. Read product context
 
@@ -28,7 +28,7 @@ The point is to understand what the app does and where experimentation actually 
 - `README.md` — what is this app, who uses it, what's the product
 - `package.json` — framework signals (Next.js, Remix, Vite, etc.) tell you where the routes live
 - Routing files — `app/` (Next.js app router), `pages/` (Next.js pages or Vite), `src/routes/` (Remix / SvelteKit), `src/App.tsx` (React Router config), and equivalents in other stacks
-- `.dif/config.yaml` — declared audience attributes hint at what dimensions the team already cares about
+- `dif/config.yaml` — declared audience attributes hint at what dimensions the team already cares about
 - Any `docs/`, `ARCHITECTURE.md`, or similar that explains the app's surface set
 
 Don't fan out further than needed. The signal is usually obvious from README + routes in 1–2 minutes of reading.
@@ -94,9 +94,9 @@ anything that's bitten a previous test on this surface. One bullet per.)
 
 Fill the description from product context — one to two concrete sentences. Leave `## Known landmines` and `## Learnings` as empty stub text. Both fields accrue from real experience, not speculation; pre-filling them with guesses pollutes future `dif new` drafts (which embed the last 3 Learnings into the experiment Brief).
 
-After writing all of them, run `dif validate` to confirm the files parse cleanly. Then `dif build` to refresh `.dif/context.json` so any agent picking up next sees the new surfaces.
+After writing all of them, run `dif validate` to confirm the files parse cleanly. Then `dif build` to refresh `dif/context.json` so any agent picking up next sees the new surfaces.
 
-### 6. Don't touch `.dif/config.yaml`'s `default_surface`
+### 6. Don't touch `dif/config.yaml`'s `default_surface`
 
 `default_surface` is the surface `dif new` writes to when no `--surface` flag is passed. The user picks it deliberately during `dif init`. Don't auto-flip it. If the user's `default_surface` doesn't appear in your proposed set, flag it as a question ("you've got `default_surface: foo` in config but no `foo` in the new list — keep the default or rename it?") rather than silently changing the config.
 

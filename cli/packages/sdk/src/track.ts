@@ -16,7 +16,7 @@
 import { getState } from "./config.js";
 import type { TrackProps } from "./types.js";
 
-const SOURCE = "@dif.sh/sdk@0.3.2";
+const SOURCE = "@dif.sh/sdk@0.4.0";
 
 export function track(metric: string, opts: TrackProps = {}): void {
   const state = getState();

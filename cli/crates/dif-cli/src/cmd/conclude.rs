@@ -6,7 +6,7 @@
 //!
 //! 1. Write new experiment content (status flipped, `concluded:` set, Decision
 //!    block filled in) to the active path.
-//! 2. Rename active → `experiments/concluded/<YYYY-MM>-<id>.md`.
+//! 2. Rename active → `dif/experiments/concluded/<YYYY-MM>-<id>.md`.
 //! 3. Write the updated surface file (new learning prepended under `## Learnings`).
 //!
 //! Output matches the design's `dif conclude` mockup.
@@ -15,14 +15,14 @@ use super::CmdError;
 use chrono::{NaiveDate, Utc};
 use clap::Args as ClapArgs;
 use console::style;
-use dif_core::{parse, Workspace};
+use dif_core::{parse, paths, Workspace};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// `dif conclude` flags.
 #[derive(ClapArgs, Debug)]
 pub struct Args {
-    /// Experiment id to conclude. Must exist under `experiments/active/`.
+    /// Experiment id to conclude. Must exist under `dif/experiments/active/`.
     pub id: String,
 
     /// Inline decision text. If omitted, `$EDITOR` is opened on a template.
@@ -46,14 +46,14 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .iter()
         .find(|p| p.spec.id == args.id)
         .ok_or(CmdError::Other(
-            "experiment not found under experiments/active/",
+            "experiment not found under dif/experiments/active/",
         ))?;
     let surface = workspace
         .surfaces
         .iter()
         .find(|s| s.surface.id == parsed.spec.surface)
         .ok_or(CmdError::Other(
-            "surface for this experiment not found under surfaces/",
+            "surface for this experiment not found under dif/surfaces/",
         ))?;
 
     // 2. Get decision text. --decision wins; otherwise $EDITOR; non-empty required.
@@ -69,8 +69,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let concluded_filename = format!("{}-{}.md", today.format("%Y-%m"), parsed.spec.id);
     let concluded_path = workspace
         .root
-        .join("experiments")
-        .join("concluded")
+        .join(paths::EXPERIMENTS_CONCLUDED)
         .join(&concluded_filename);
 
     // 4. Compute new contents — all in memory before touching disk.

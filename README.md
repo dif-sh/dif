@@ -25,9 +25,9 @@ Then, in any repo:
 ```sh
 dif init                                 # scaffolds the convention
 dif new checkout-cta-v2 --surface checkout
-# ...edit experiments/active/checkout-cta-v2.md...
+# ...edit dif/experiments/active/checkout-cta-v2.md...
 dif validate
-dif build                                # → .dif/generated/client.ts
+dif build                                # → dif/generated/client.ts
 dif qa --user u_8131                     # trace a user's assignment chain
 dif conclude checkout-cta-v2 --decision "Shipped. +2.1%."
 ```
@@ -61,7 +61,7 @@ Three artifacts, two languages, one source of truth.
   session, returns the variant.
 
 The contract between Rust and TS is one generated file
-(`.dif/generated/client.ts`) plus `.dif/context.json`. No FFI, no NAPI, no
+(`dif/generated/client.ts`) plus `dif/context.json`. No FFI, no NAPI, no
 WASM at the runtime boundary — the customer's install surface stays as
 boring as humanly possible.
 

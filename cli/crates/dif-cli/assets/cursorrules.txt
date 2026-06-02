@@ -1,25 +1,25 @@
 # Working with dif.sh in this repo
 
-This project uses dif.sh (https://dif.sh) — experimentation-as-code. Experiments live as .md files under experiments/, and a Rust CLI compiles them into a typed TypeScript artifact (.dif/generated/client.ts) the app imports at render time.
+This project uses dif.sh (https://dif.sh) — experimentation-as-code. Experiments live as .md files under dif/experiments/, and a Rust CLI compiles them into a typed TypeScript artifact (dif/generated/client.ts) the app imports at render time.
 
 When asked to work on an experiment, read this file plus .claude/skills/dif-author-experiment/SKILL.md (and its references/) for the full workflow detail.
 
 # File layout
 
-experiments/active/<id>.md                  drafts + running experiments
-experiments/concluded/<YYYY-MM>-<id>.md     archived; renamed by `dif conclude`
-surfaces/<surface>.md                       one per surface; owns the Learnings log
-audiences/<attr>.ts                         one resolver per declared audience attribute
-.dif/config.yaml                            project config (audience attrs, bucketing, sinks)
-.dif/generated/                             gitignored; output of `dif build`
-.dif/context.json                           agent-facing summary of active experiments
+dif/experiments/active/<id>.md              drafts + running experiments
+dif/experiments/concluded/<YYYY-MM>-<id>.md archived; renamed by `dif conclude`
+dif/surfaces/<surface>.md                   one per surface; owns the Learnings log
+dif/audiences/<attr>.ts                     one resolver per declared audience attribute
+dif/config.yaml                             project config (audience attrs, bucketing, sinks)
+dif/generated/                              gitignored; output of `dif build`
+dif/context.json                            agent-facing summary of active experiments
 
 # The six verbs
 
 dif init                                  scaffold the convention (once per repo)
-dif new <id> --surface <name>             draft experiments/active/<id>.md
+dif new <id> --surface <name>             draft dif/experiments/active/<id>.md
 dif validate                              schema, weights, audience, exclusion checks
-dif build                                 compile to .dif/generated/client.ts + .dif/context.json
+dif build                                 compile to dif/generated/client.ts + dif/context.json
 dif qa --user <id>                        trace a user's assignment chain
 dif conclude <id> --decision "<text>"     atomic: archive + fill Decision + append surface Learning
 
@@ -31,18 +31,18 @@ dif validate collects all errors before exiting. Errors abort the build; warning
 
 E001  frontmatter YAML invalid or required field missing
 E003  owner is not a valid email
-E004  surface does not exist under surfaces/
+E004  surface does not exist under dif/surfaces/
 E005  variant weights don't sum to 100
-E006  audience attribute not declared in .dif/config.yaml
+E006  audience attribute not declared in dif/config.yaml
 E007  exclusion conflict: same surface, no shared exclusion_group, audiences not disjoint
-E008  declared audience attribute missing its audiences/<name>.ts resolver
+E008  declared audience attribute missing its dif/audiences/<name>.ts resolver
 W001  call site references an experiment that isn't active (warning)
 W002  audience file has no matching entry in audience_attributes (warning)
 
 # Before drafting an experiment
 
-1. Read .dif/context.json to see what's running. If missing, run `dif build` first or read experiments/active/*.md directly.
-2. Read surfaces/<your-surface>.md — the ## Learnings log shows what's been concluded.
+1. Read dif/context.json to see what's running. If missing, run `dif build` first or read dif/experiments/active/*.md directly.
+2. Read dif/surfaces/<your-surface>.md — the ## Learnings log shows what's been concluded.
 
 A good experiment has: a one-sentence falsifiable hypothesis, named variants with weights summing to 100, a primary metric, and (usually) an audience scope.
 

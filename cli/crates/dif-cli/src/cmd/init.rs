@@ -1,22 +1,27 @@
 //! `dif init` — scaffold the convention in the current directory.
 //!
-//! Idempotent under `--force`; refuses to clobber otherwise. The full layout
-//! is the brief's "four directories, no database, no dashboard" tree:
+//! Idempotent under `--force`; refuses to clobber otherwise. Everything dif
+//! owns lives under a single `dif/` namespace at the project root:
 //!
 //! ```text
-//! experiments/active/
-//! experiments/concluded/
-//! surfaces/<default-surface>.md
-//! audiences/locale.ts
-//! audiences/device_type.ts
-//! .dif/config.yaml
-//! .dif/.gitignore
-//! .dif/generated/         (gitignored)
+//! dif/
+//!   config.yaml
+//!   audiences/locale.ts
+//!   audiences/device_type.ts
+//!   surfaces/<default-surface>.md
+//!   experiments/active/
+//!   experiments/concluded/
+//!   generated/           (gitignored)
+//!   .gitignore
 //! ```
+//!
+//! Agent-onboarding files (CLAUDE.md, AGENTS.md, .cursorrules, .claude/skills/)
+//! stay at the repo root — those are editor/agent conventions, not dif content.
 
 use super::CmdError;
 use clap::Args as ClapArgs;
 use console::style;
+use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -56,31 +61,28 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .to_string();
 
     let dirs = [
-        cwd.join("experiments").join("active"),
-        cwd.join("experiments").join("concluded"),
-        cwd.join("surfaces"),
-        cwd.join("audiences"),
-        cwd.join(".dif").join("generated"),
+        cwd.join(paths::EXPERIMENTS_ACTIVE),
+        cwd.join(paths::EXPERIMENTS_CONCLUDED),
+        cwd.join(paths::SURFACES_DIR),
+        cwd.join(paths::AUDIENCES_DIR),
+        cwd.join(paths::GENERATED_DIR),
     ];
     let mut files: Vec<(PathBuf, String)> = vec![
         (
-            cwd.join(".dif").join("config.yaml"),
+            cwd.join(paths::CONFIG_FILE),
             default_config_yaml(&project, &surface),
         ),
+        (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
         (
-            cwd.join(".dif").join(".gitignore"),
-            "generated/\n".to_string(),
-        ),
-        (
-            cwd.join("surfaces").join(format!("{surface}.md")),
+            cwd.join(paths::SURFACES_DIR).join(format!("{surface}.md")),
             default_surface_md(&surface),
         ),
         (
-            cwd.join("audiences").join("locale.ts"),
+            cwd.join(paths::AUDIENCES_DIR).join("locale.ts"),
             DEFAULT_LOCALE_TS.to_string(),
         ),
         (
-            cwd.join("audiences").join("device_type.ts"),
+            cwd.join(paths::AUDIENCES_DIR).join("device_type.ts"),
             DEFAULT_DEVICE_TYPE_TS.to_string(),
         ),
     ];
@@ -138,16 +140,16 @@ fn report_collisions(paths: &[&Path], json: bool) {
 fn report_success(surface: &str, json: bool, include_agent_files: bool) {
     if json {
         let mut created: Vec<String> = vec![
-            "experiments/active".into(),
-            "experiments/concluded".into(),
-            "surfaces".into(),
-            "audiences".into(),
-            ".dif/generated".into(),
-            ".dif/config.yaml".into(),
-            ".dif/.gitignore".into(),
-            format!("surfaces/{surface}.md"),
-            "audiences/locale.ts".into(),
-            "audiences/device_type.ts".into(),
+            paths::EXPERIMENTS_ACTIVE.into(),
+            paths::EXPERIMENTS_CONCLUDED.into(),
+            paths::SURFACES_DIR.into(),
+            paths::AUDIENCES_DIR.into(),
+            paths::GENERATED_DIR.into(),
+            paths::CONFIG_FILE.into(),
+            paths::GITIGNORE_FILE.into(),
+            format!("{}/{surface}.md", paths::SURFACES_DIR),
+            format!("{}/locale.ts", paths::AUDIENCES_DIR),
+            format!("{}/device_type.ts", paths::AUDIENCES_DIR),
         ];
         if include_agent_files {
             created.extend(AGENT_FILE_PATHS.iter().map(|s| (*s).to_string()));
@@ -160,14 +162,14 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool) {
         return;
     }
     let check = style("✓").green().bold();
-    println!("{check} created experiments/{{active,concluded}}");
-    println!("{check} created surfaces/");
-    println!("{check} created audiences/");
-    println!("{check} wrote .dif/config.yaml");
-    println!("{check} wrote .dif/.gitignore");
-    println!("{check} wrote surfaces/{surface}.md");
-    println!("{check} wrote audiences/locale.ts");
-    println!("{check} wrote audiences/device_type.ts");
+    println!("{check} created dif/experiments/{{active,concluded}}");
+    println!("{check} created dif/surfaces/");
+    println!("{check} created dif/audiences/");
+    println!("{check} wrote dif/config.yaml");
+    println!("{check} wrote dif/.gitignore");
+    println!("{check} wrote dif/surfaces/{surface}.md");
+    println!("{check} wrote dif/audiences/locale.ts");
+    println!("{check} wrote dif/audiences/device_type.ts");
     if include_agent_files {
         println!("{check} wrote CLAUDE.md, AGENTS.md, .cursorrules");
         println!(
@@ -190,7 +192,7 @@ default_surface: {surface}
 
 # Audience attribute schema. The audience predicate language is closed over
 # this set — anything not declared here is a validation error. Each entry
-# must have a matching resolver at `audiences/<name>.ts`. Run
+# must have a matching resolver at `dif/audiences/<name>.ts`. Run
 # `dif scaffold-audiences` to pull in starters.
 audience_attributes:
   - name: locale
@@ -210,7 +212,7 @@ exposure:
   fire_at: render   # never at assignment.
 
 build:
-  out: .dif/generated
+  out: dif/generated
   fail_on: [conflict, orphan_ref, missing_owner]
 "
     )
@@ -220,13 +222,13 @@ build:
 /// user-owned the moment it's scaffolded — `dif init --force` will overwrite,
 /// but normal updates leave it alone.
 pub(crate) const DEFAULT_LOCALE_TS: &str =
-    "// audiences/locale.ts — resolve the browser's UI locale (e.g. \"en-US\").
+    "// dif/audiences/locale.ts — resolve the browser's UI locale (e.g. \"en-US\").
 //
 // Returns null on the server (no `navigator`); audience predicates referencing
 // `locale` therefore fail closed during SSR, which is the correct behavior.
 //
 // Edit this file freely — once scaffolded, dif treats it as yours. Update the
-// matching `audience_attributes` entry in .dif/config.yaml if you change the
+// matching `audience_attributes` entry in dif/config.yaml if you change the
 // return type.
 export default function resolve(): string | null {
   if (typeof navigator === \"undefined\") return null;
@@ -237,11 +239,11 @@ export default function resolve(): string | null {
 /// Default audience resolver for the user's device class. Breakpoints (640 /
 /// 1024 px) match the most common CSS defaults; tune for your design system.
 pub(crate) const DEFAULT_DEVICE_TYPE_TS: &str =
-    "// audiences/device_type.ts — bucket users by viewport class.
+    "// dif/audiences/device_type.ts — bucket users by viewport class.
 //
 // Returns null on the server (no `window`). Tweak the breakpoints to match
 // your design system; the return type union must stay in sync with
-// `audience_attributes.values` in .dif/config.yaml.
+// `audience_attributes.values` in dif/config.yaml.
 export default function resolve(): \"mobile\" | \"tablet\" | \"desktop\" | null {
   if (typeof window === \"undefined\") return null;
   if (window.matchMedia(\"(max-width: 640px)\").matches) return \"mobile\";
@@ -458,9 +460,9 @@ mod tests {
             assert!(!p.exists(), "unexpected scaffolded file: {rel}");
         }
         // The non-agent scaffold still wrote.
-        assert!(tmp.path().join(".dif/config.yaml").exists());
-        assert!(tmp.path().join("surfaces/home.md").exists());
-        assert!(tmp.path().join("audiences/locale.ts").exists());
+        assert!(tmp.path().join("dif/config.yaml").exists());
+        assert!(tmp.path().join("dif/surfaces/home.md").exists());
+        assert!(tmp.path().join("dif/audiences/locale.ts").exists());
     }
 
     #[test]

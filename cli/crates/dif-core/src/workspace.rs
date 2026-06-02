@@ -1,9 +1,9 @@
 //! Workspace discovery + loading.
 //!
-//! A "workspace" is a customer repo with a `.dif/config.yaml` at its root and
-//! the canonical four-directory layout: `experiments/{active,concluded}/`,
-//! `surfaces/`, `.dif/`. This module finds it, walks it, and hands back the
-//! decoded set.
+//! A "workspace" is a customer repo with a `dif/config.yaml` at its root and
+//! the canonical layout under `dif/`: `dif/experiments/{active,concluded}/`,
+//! `dif/surfaces/`, `dif/audiences/`. This module finds it, walks it, and
+//! hands back the decoded set.
 //!
 //! Loading is tolerant: per-file parse errors are collected into
 //! [`Workspace::parse_errors`] so [`crate::validate`] can surface them all at
@@ -16,6 +16,7 @@ use crate::{
     config::Config,
     diag::Diagnostic,
     parse::{self, ParseError, ParsedExperiment, ParsedSurface},
+    paths,
 };
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -24,9 +25,9 @@ use thiserror::Error;
 /// Loaded workspace. The bag of inputs every other phase operates on.
 #[derive(Debug)]
 pub struct Workspace {
-    /// Absolute path to the workspace root (the dir containing `.dif/`).
+    /// Absolute path to the workspace root (the dir containing `dif/`).
     pub root: PathBuf,
-    /// Decoded `.dif/config.yaml`.
+    /// Decoded `dif/config.yaml`.
     pub config: Config,
     /// All active experiments.
     pub active: Vec<ParsedExperiment>,
@@ -35,7 +36,7 @@ pub struct Workspace {
     pub concluded: Vec<ParsedExperiment>,
     /// All surfaces.
     pub surfaces: Vec<ParsedSurface>,
-    /// Audience resolver files found under `audiences/`. Treated as opaque
+    /// Audience resolver files found under `dif/audiences/`. Treated as opaque
     /// TypeScript — Rust never opens them; the slug is enough to pair with
     /// `config.audience_attributes` and tree-shake the generated bag.
     pub audiences: Vec<AudienceFile>,
@@ -62,11 +63,11 @@ pub struct CallSite {
 /// outright; everything else is collected as a `Diagnostic`.
 #[derive(Debug, Error)]
 pub enum WorkspaceError {
-    /// No `.dif/config.yaml` found in `start` or any ancestor.
+    /// No `dif/config.yaml` found in `start` or any ancestor.
     #[error("no dif.sh workspace found above {0}")]
     NotFound(PathBuf),
-    /// `.dif/config.yaml` was found but failed to parse.
-    #[error("invalid .dif/config.yaml: {0}")]
+    /// `dif/config.yaml` was found but failed to parse.
+    #[error("invalid dif/config.yaml: {0}")]
     Config(#[from] serde_yaml::Error),
     /// Anything else.
     #[error(transparent)]
@@ -74,30 +75,30 @@ pub enum WorkspaceError {
 }
 
 impl Workspace {
-    /// Walk up from `start` looking for `.dif/config.yaml`, then load
+    /// Walk up from `start` looking for `dif/config.yaml`, then load
     /// everything underneath. Does not scan call sites — call
     /// [`Workspace::scan_call_sites`] for that.
     pub fn load(start: &Path) -> Result<Self, WorkspaceError> {
         let root = find_workspace_root(start)
             .ok_or_else(|| WorkspaceError::NotFound(start.to_path_buf()))?;
-        let config_path = root.join(".dif").join("config.yaml");
+        let config_path = root.join(paths::CONFIG_FILE);
         let config_source = std::fs::read_to_string(&config_path)?;
         let config: Config = serde_yaml::from_str(&config_source)?;
 
         let mut parse_errors = Vec::new();
 
         let active = load_experiments(
-            &root.join("experiments").join("active"),
+            &root.join(paths::EXPERIMENTS_ACTIVE),
             &mut parse_errors,
             &root,
         );
         let concluded = load_experiments(
-            &root.join("experiments").join("concluded"),
+            &root.join(paths::EXPERIMENTS_CONCLUDED),
             &mut parse_errors,
             &root,
         );
-        let surfaces = load_surfaces(&root.join("surfaces"), &mut parse_errors, &root);
-        let audiences = audience_files::load_audience_files(&root.join("audiences"));
+        let surfaces = load_surfaces(&root.join(paths::SURFACES_DIR), &mut parse_errors, &root);
+        let audiences = audience_files::load_audience_files(&root.join(paths::AUDIENCES_DIR));
 
         Ok(Workspace {
             root,
@@ -117,7 +118,7 @@ impl Workspace {
     ///
     /// Scans `.ts`, `.tsx`, `.js`, `.jsx` files anywhere under `root`, skipping
     /// well-known noise directories (`.git`, `node_modules`, `target`, `dist`,
-    /// `build`, and dif's own dirs).
+    /// `build`) and dif's own namespace (`dif/`).
     pub fn scan_call_sites(&mut self) -> Result<(), WorkspaceError> {
         let root = self.root.clone();
         // Word-boundary so `notdif(...)` doesn't match. Permissive on id chars
@@ -136,14 +137,7 @@ impl Workspace {
                 let name = e.file_name().to_str().unwrap_or("");
                 !matches!(
                     name,
-                    ".dif"
-                        | ".git"
-                        | "node_modules"
-                        | "target"
-                        | "dist"
-                        | "build"
-                        | "experiments"
-                        | "surfaces"
+                    paths::DIF_DIR | ".git" | "node_modules" | "target" | "dist" | "build"
                 )
             })
         {
@@ -187,7 +181,7 @@ impl Workspace {
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     let mut cur = start.canonicalize().ok()?;
     loop {
-        if cur.join(".dif").join("config.yaml").is_file() {
+        if cur.join(paths::CONFIG_FILE).is_file() {
             return Some(cur);
         }
         if !cur.pop() {

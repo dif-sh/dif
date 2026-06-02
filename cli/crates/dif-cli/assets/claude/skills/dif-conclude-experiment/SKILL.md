@@ -26,10 +26,10 @@ dif conclude <id> --decision "Shipped variant_a. +2.1% checkout conversion, p<0.
 
 What this does (atomically — all four steps succeed or every change reverts):
 
-1. Renames `experiments/active/<id>.md` to `experiments/concluded/<YYYY-MM>-<id>.md`.
+1. Renames `dif/experiments/active/<id>.md` to `dif/experiments/concluded/<YYYY-MM>-<id>.md`.
 2. Sets `status: concluded` and `concluded: <today>` in the frontmatter.
 3. Fills the `## Decision` block in the file body with the supplied text (replacing the `<!-- drafted by \`dif conclude\` -->` placeholder).
-4. Appends one line under `## Learnings` in `surfaces/<surface>.md`, dated today, summarizing the decision.
+4. Appends one line under `## Learnings` in `dif/surfaces/<surface>.md`, dated today, summarizing the decision.
 
 After this, `dif validate` and `dif build` must still pass. Run them as a sanity check.
 
@@ -55,8 +55,8 @@ Anti-patterns:
 
 ## After concluding
 
-- `git add experiments/ surfaces/ && git commit` — the file moved from `active/` to `concluded/<YYYY-MM>-<id>.md`, and the surface gained a line.
-- Run `dif build` to regenerate `.dif/generated/client.ts` without this experiment's typed export. Commit `.dif/context.json` so the next agent sees the updated active set.
+- `git add dif/ && git commit` — the file moved from `active/` to `concluded/<YYYY-MM>-<id>.md`, and the surface gained a line.
+- Run `dif build` to regenerate `dif/generated/client.ts` without this experiment's typed export. Commit `dif/context.json` so the next agent sees the updated active set.
 - If the Decision was "Shipped variant_a", remove the `dif("<id>", ...)` call site (it'll trip W001 otherwise) and bake the winning variant's behavior into the code directly. dif's job ends at the verdict; shipping is yours.
 
 ## Flags
