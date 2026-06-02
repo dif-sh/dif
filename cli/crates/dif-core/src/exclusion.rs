@@ -334,14 +334,14 @@ mod tests {
                 learnings: vec![],
             },
             source: String::new(),
-            path: PathBuf::from(format!("surfaces/{id}.md")),
+            path: PathBuf::from(format!("dif/surfaces/{id}.md")),
         }
     }
 
     fn parse(yaml_body: &str, id: &str) -> ParsedExperiment {
         let source = format!("---\n{yaml_body}\n---\n");
         let mut p = parse_experiment_str(&source).expect("test fixture parses");
-        p.path = PathBuf::from(format!("experiments/active/{id}.md"));
+        p.path = PathBuf::from(format!("dif/experiments/active/{id}.md"));
         p
     }
 

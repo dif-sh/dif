@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/react",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "React adapter for @dif.sh/sdk — provider + useDif hook.",
   "license": "MIT",
   "type": "module",
@@ -35,7 +35,7 @@
   },
   "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "react", "dif.sh"],
   "peerDependencies": {
-    "@dif.sh/sdk": "^0.3.2",
+    "@dif.sh/sdk": "^0.4.0",
     "react": ">=18"
   },
   "devDependencies": {

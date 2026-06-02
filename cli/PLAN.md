@@ -10,7 +10,7 @@ The discipline mirrors the brief: every piece earns its place either by serving 
 
 ## Architecture in one paragraph
 
-Three artifacts, two languages, one source of truth. **`dif-core`** is a Rust crate that owns correctness — parsing `.md` frontmatter, resolving the exclusion graph, deterministic bucketing, codegen. **`dif-cli`** is a thin Rust binary that wraps `dif-core` with `clap` + `miette` + `indicatif` and dispatches the six verbs. **`@dif.sh/sdk`** is a pure-TypeScript runtime SDK (~5 kB gzipped) that customers install and call from app code. The Rust side never ships into the customer's app — it produces a generated TypeScript file (`.dif/generated/client.ts`) and a `.dif/context.json` blob, and that pair is the entire contract. No FFI, no NAPI, no WASM at the runtime boundary.
+Three artifacts, two languages, one source of truth. **`dif-core`** is a Rust crate that owns correctness — parsing `.md` frontmatter, resolving the exclusion graph, deterministic bucketing, codegen. **`dif-cli`** is a thin Rust binary that wraps `dif-core` with `clap` + `miette` + `indicatif` and dispatches the six verbs. **`@dif.sh/sdk`** is a pure-TypeScript runtime SDK (~5 kB gzipped) that customers install and call from app code. The Rust side never ships into the customer's app — it produces a generated TypeScript file (`dif/generated/client.ts`) and a `dif/context.json` blob, and that pair is the entire contract. No FFI, no NAPI, no WASM at the runtime boundary.
 
 ```
    .md files in repo                customer's app
@@ -42,13 +42,13 @@ cli/
 │   │       ├── lib.rs                   # public re-exports + Workspace::load
 │   │       ├── spec.rs                  # serde types for the .md frontmatter
 │   │       ├── parse.rs                 # frontmatter + body parsing, with spans
-│   │       ├── config.rs                # .dif/config.yaml types
-│   │       ├── workspace.rs             # repo discovery + walk experiments/surfaces
+│   │       ├── config.rs                # dif/config.yaml types
+│   │       ├── workspace.rs             # repo discovery + walk dif/experiments + dif/surfaces
 │   │       ├── validate.rs              # schema, owner, surface-exists, refs
 │   │       ├── exclusion.rs             # exclusion graph + resolver
 │   │       ├── bucket.rs                # deterministic hash → variant
-│   │       ├── codegen.rs               # emit .dif/generated/client.ts
-│   │       ├── context.rs               # emit .dif/context.json
+│   │       ├── codegen.rs               # emit dif/generated/client.ts
+│   │       ├── context.rs               # emit dif/context.json
 │   │       └── diag.rs                  # miette diagnostics with source spans
 │   └── dif-cli/                         # the binary
 │       ├── Cargo.toml
@@ -91,7 +91,7 @@ pub struct Experiment {
     pub id: String,                  // kebab-case, unique in workspace
     pub status: Status,              // draft | active | concluded | archived
     pub owner: Email,
-    pub surface: SurfaceId,          // must resolve to surfaces/<name>.md
+    pub surface: SurfaceId,          // must resolve to dif/surfaces/<name>.md
     pub hypothesis: String,
     pub audience: Audience,
     pub variants: Vec<Variant>,      // ≥ 2, weights sum to 100
@@ -108,7 +108,7 @@ pub struct Audience {
     pub exclude: Vec<AttrPredicate>,
 }
 
-// AttrPredicate references audience_attributes declared in .dif/config.yaml.
+// AttrPredicate references audience_attributes declared in dif/config.yaml.
 // We refuse anything not declared — the survey's "no new DSL" rule.
 
 pub struct Variant {
@@ -138,7 +138,7 @@ USAGE: dif init [--surface <name>] [--force]
 ```
 
 - Reads: nothing.
-- Writes: `experiments/active/`, `experiments/concluded/`, `surfaces/<default-surface>.md` (stub), `.dif/config.yaml`, `.dif/.gitignore` (with `generated/`).
+- Writes: `dif/experiments/active/`, `dif/experiments/concluded/`, `dif/surfaces/<default-surface>.md` (stub), `dif/config.yaml`, `dif/.gitignore` (with `generated/`).
 - Refuses if any of those paths exist unless `--force`.
 - Exit 0 on success, 2 on existing-files-without-force.
 - **Invariant**: a fresh `init` followed immediately by `validate` and `build` succeeds with zero experiments.
@@ -149,8 +149,8 @@ USAGE: dif init [--surface <name>] [--force]
 USAGE: dif new <id> --surface <surface> [--owner <email>] [--from <experiment-id>]
 ```
 
-- Reads: `surfaces/<surface>.md` (for prior learnings, fed to the template).
-- Writes: `experiments/active/<id>.md` with frontmatter pre-stubbed (`status: draft`, today's date, owner inherited from git config or `--owner`).
+- Reads: `dif/surfaces/<surface>.md` (for prior learnings, fed to the template).
+- Writes: `dif/experiments/active/<id>.md` with frontmatter pre-stubbed (`status: draft`, today's date, owner inherited from git config or `--owner`).
 - The body template prefixes the `## Brief` section with a *“Recent learnings on this surface”* comment block summarizing the last 3 lines from the surface's `## Learnings` — this is the bit that makes "yesterday's learning is in tomorrow's draft" load-bearing rather than aspirational.
 - Exit 0 on success, 2 if `<id>` already exists, 3 if surface doesn't exist.
 - **Invariant**: the file it writes parses cleanly with `dif validate`.
@@ -161,13 +161,13 @@ USAGE: dif new <id> --surface <surface> [--owner <email>] [--from <experiment-id
 USAGE: dif validate [--json]
 ```
 
-- Reads: every `.md` under `experiments/` and `surfaces/`, plus `.dif/config.yaml`.
+- Reads: every `.md` under `dif/experiments/` and `dif/surfaces/`, plus `dif/config.yaml`.
 - Writes: nothing.
 - Returns a `Report { errors, warnings }`. `--json` for machine output.
 - Checks (in order, fail-fast disabled — collects all):
   1. Frontmatter parses and required fields are present.
   2. `owner` is a syntactically valid email.
-  3. `surface` resolves to a file under `surfaces/`.
+  3. `surface` resolves to a file under `dif/surfaces/`.
   4. Variant weights sum to exactly 100.
   5. All audience attribute predicates name attrs declared in `config.yaml`.
   6. No two `active` experiments share an `exclusion_group` *and* audience overlap (cheap superset check; full SAT not needed).
@@ -183,7 +183,7 @@ USAGE: dif build [--out <dir>]
 
 - Reads: everything `validate` reads, plus a quick grep of source files (`src/**`) for `dif(` call sites.
 - Runs `validate` first; aborts if errors.
-- Writes: `.dif/generated/client.ts` and `.dif/context.json`.
+- Writes: `dif/generated/client.ts` and `dif/context.json`.
 - The generated TS file:
   - Declares one typed export per active experiment.
   - Embeds an `__EXPERIMENTS` constant with the resolved decision tree (audience predicates, exclusion graph adjacency, variant weights).
@@ -199,7 +199,7 @@ USAGE: dif build [--out <dir>]
 USAGE: dif qa [--user <id>] [--force <exp>=<variant>]... [--preview-url <base>]
 ```
 
-- Reads: `.dif/generated/client.ts` and `.dif/context.json` (no need to re-parse .md files — qa works against the compiled artifact, same as production).
+- Reads: `dif/generated/client.ts` and `dif/context.json` (no need to re-parse .md files — qa works against the compiled artifact, same as production).
 - Writes: nothing.
 - Prints the assignment chain for the given user, with each rule that fired (audience hit/miss, exclusion-group resolution, bucket number, final variant).
 - If `--force` is passed, also emits a preview URL with the `_dif` cookie pre-baked so the user can open a browser at that state.
@@ -283,7 +283,7 @@ export function defineExperiment<V extends string>(spec: {
 Customers never call `defineExperiment` directly — the generated file does it for them. They import the named export and call it at the render site:
 
 ```ts
-import { checkoutCta } from "../.dif/generated/client";
+import { checkoutCta } from "../dif/generated/client";
 
 function CheckoutButton() {
   return <Button>{checkoutCta()}</Button>;
@@ -340,7 +340,7 @@ Strict, sequential. Each step is shippable and unblocks the next.
 4. **`dif validate`.** Schema checks first; surface-exists, owner-format, weights-sum-100. Audience-attr-declared and exclusion-overlap come last because they need the workspace walker. ~3 days.
 5. **`bucket.rs` + fixtures.** Deterministic hash, fixture JSON, Rust tests passing. Defer the TS port to step 8. ~1 day.
 6. **`exclusion.rs`.** Graph build + resolver + compile-time overlap detection. ~2 days.
-7. **`codegen.rs` + `context.rs`.** First version emits a hardcoded TS file shape; iterate on formatting. ~3 days. End state: `dif build` produces a real `.dif/generated/client.ts` that compiles under `tsc`.
+7. **`codegen.rs` + `context.rs`.** First version emits a hardcoded TS file shape; iterate on formatting. ~3 days. End state: `dif build` produces a real `dif/generated/client.ts` that compiles under `tsc`.
 8. **`@dif.sh/sdk` runtime.** Port the bucketing algorithm. Implement `defineExperiment`. Wire the webhook sink first; segment/amplitude/mixpanel after. Match the Rust fixture file. ~4 days.
 9. **`dif qa`.** Reads the compiled artifact and replays it for a given user. ~1 day.
 10. **`dif conclude`.** Atomic rename + Decision block insertion + surface log append. Transactional rollback on any failure. ~2 days.
@@ -354,10 +354,10 @@ Total nominal: ~22 working days for v1. With slop and review, plan for six weeks
 These need decisions before the relevant step begins; flagging here so they don't ambush the build.
 
 1. **The audience predicate language.** YAML structure is committed (`include`/`exclude` lists). The actual operators are not. Lean: support exact equality, `in [list]`, and a single negation. No `<`/`>`/regex in v1 — those creep into a DSL.
-   - **Resolved (v0.2):** each declared `audience_attributes` entry pairs with an `audiences/<slug>.ts` resolver file. `dif init` ships starters (`locale`, `device_type`); `dif build` tree-shakes the folder against active experiments and emits `.dif/generated/audiences.ts`, a one-line `attributes(overrides)` wiring the user passes to `dif.init`. User-supplied keys win on overlap. `validate` enforces the pairing with `E008` (declared, missing file) and `W002` (file, undeclared). Operators stay equality / `in [list]` — async, context-aware, and SSR-split resolvers are v2.
+   - **Resolved (v0.2):** each declared `audience_attributes` entry pairs with a `dif/audiences/<slug>.ts` resolver file. `dif init` ships starters (`locale`, `device_type`); `dif build` tree-shakes the folder against active experiments and emits `dif/generated/audiences.ts`, a one-line `attributes(overrides)` wiring the user passes to `dif.init`. User-supplied keys win on overlap. `validate` enforces the pairing with `E008` (declared, missing file) and `W002` (file, undeclared). Operators stay equality / `in [list]` — async, context-aware, and SSR-split resolvers are v2.
 2. **Owner inheritance.** `dif new` infers owner from `git config user.email`. What about CI? Probably: explicit `--owner` flag required when `$CI` is set and `git config` isn't a person.
 3. **User ID at runtime.** `config.userId()` returns nullable. What does the SDK do on null? Lean: skip the experiment, return the `control` branch, do not fire exposure. The alternative — error — punishes the customer for a state we should handle gracefully.
-4. **Generated file location.** `.dif/generated/client.ts` is gitignored by default. But some teams want the artifact in-repo for review. Add a `build.commit_generated: bool` config option in `.dif/config.yaml`; default false.
+4. **Generated file location.** `dif/generated/client.ts` is gitignored by default. But some teams want the artifact in-repo for review. Add a `build.commit_generated: bool` config option in `dif/config.yaml`; default false.
 5. **Hot-reload story.** Punted above, but if Next.js / Vite users complain, the cheap fix is a `dif watch` command that re-runs `build` on .md changes and writes to the same paths.
 
 ## Verification

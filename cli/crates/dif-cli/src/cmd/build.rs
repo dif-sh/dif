@@ -8,7 +8,7 @@
 use super::CmdError;
 use clap::Args as ClapArgs;
 use console::style;
-use dif_core::{codegen, context, spec::Status, validate, Workspace};
+use dif_core::{codegen, context, paths, spec::Status, validate, Workspace};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -55,7 +55,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .count();
     let client_path = out_dir.join("client.ts");
     let audiences_path = out_dir.join("audiences.ts");
-    let context_path = workspace.root.join(".dif").join("context.json");
+    let context_path = workspace.root.join(paths::CONTEXT_FILE);
 
     if json {
         let payload = serde_json::json!({

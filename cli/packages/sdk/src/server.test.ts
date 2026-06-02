@@ -59,7 +59,7 @@ describe("DifServer.track", () => {
     assert.equal(body.user_id, "u-1");
     assert.equal(body.value, 49);
     assert.equal(body.currency, "USD");
-    assert.equal(body.source, "@dif.sh/sdk@0.3.2");
+    assert.equal(body.source, "@dif.sh/sdk@0.4.0");
   });
 
   it("warns on non-2xx without throwing", async () => {

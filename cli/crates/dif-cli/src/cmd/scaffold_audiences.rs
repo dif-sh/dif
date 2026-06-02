@@ -1,16 +1,17 @@
 //! `dif scaffold-audiences` — pull in the starter audience resolvers for an
 //! existing project.
 //!
-//! Idempotent. Creates `audiences/` if missing, writes the default `locale.ts`
-//! and `device_type.ts` only when they do not already exist. Never touches
-//! `.dif/config.yaml` (that file may contain user-authored content; we print
-//! the YAML snippet the user should paste in instead). This is the safe path
-//! `dif init` cannot take for an existing workspace.
+//! Idempotent. Creates `dif/audiences/` if missing, writes the default
+//! `locale.ts` and `device_type.ts` only when they do not already exist.
+//! Never touches `dif/config.yaml` (that file may contain user-authored
+//! content; we print the YAML snippet the user should paste in instead).
+//! This is the safe path `dif init` cannot take for an existing workspace.
 
 use super::init::{DEFAULT_DEVICE_TYPE_TS, DEFAULT_LOCALE_TS};
 use super::CmdError;
 use clap::Args as ClapArgs;
 use console::style;
+use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -37,7 +38,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
 /// Test-friendly inner that takes an explicit cwd so the run-side
 /// `current_dir()` side effect can be sidestepped.
 fn scaffold(cwd: &Path, force: bool, json: bool) -> Result<ExitCode, CmdError> {
-    let audiences_dir = cwd.join("audiences");
+    let audiences_dir = cwd.join(paths::AUDIENCES_DIR);
     std::fs::create_dir_all(&audiences_dir)?;
 
     let defaults: Vec<(PathBuf, &str)> = vec![
@@ -91,7 +92,7 @@ fn report(cwd: &Path, outcomes: &[Outcome], json: bool) {
     println!();
     println!(
         "{}",
-        style("Next: add these to .dif/config.yaml under audience_attributes (skip any you already declared):").dim()
+        style("Next: add these to dif/config.yaml under audience_attributes (skip any you already declared):").dim()
     );
     println!("{CONFIG_HINT}");
 }
@@ -119,8 +120,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         scaffold(tmp.path(), false, true).expect("scaffold");
 
-        let locale = tmp.path().join("audiences/locale.ts");
-        let device = tmp.path().join("audiences/device_type.ts");
+        let locale = tmp.path().join("dif/audiences/locale.ts");
+        let device = tmp.path().join("dif/audiences/device_type.ts");
         assert!(locale.exists());
         assert!(device.exists());
         assert!(fs::read_to_string(&locale)
@@ -131,7 +132,7 @@ mod tests {
     #[test]
     fn skips_existing_files_without_force() {
         let tmp = TempDir::new().unwrap();
-        let audiences_dir = tmp.path().join("audiences");
+        let audiences_dir = tmp.path().join(paths::AUDIENCES_DIR);
         fs::create_dir_all(&audiences_dir).unwrap();
         let custom = "// user-authored\nexport default () => null;\n";
         fs::write(audiences_dir.join("locale.ts"), custom).unwrap();
@@ -149,7 +150,7 @@ mod tests {
     #[test]
     fn overwrites_with_force() {
         let tmp = TempDir::new().unwrap();
-        let audiences_dir = tmp.path().join("audiences");
+        let audiences_dir = tmp.path().join(paths::AUDIENCES_DIR);
         fs::create_dir_all(&audiences_dir).unwrap();
         fs::write(audiences_dir.join("locale.ts"), "old").unwrap();
 

@@ -10,7 +10,7 @@ use super::CmdError;
 use chrono::{NaiveDate, Utc};
 use clap::Args as ClapArgs;
 use console::style;
-use dif_core::{spec::Variant, ParsedExperiment, ParsedSurface, Workspace};
+use dif_core::{paths, spec::Variant, ParsedExperiment, ParsedSurface, Workspace};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -20,7 +20,7 @@ pub struct Args {
     /// Experiment id (kebab-case). Becomes the filename stem.
     pub id: String,
 
-    /// Surface this experiment will run on. Must already exist under `surfaces/`.
+    /// Surface this experiment will run on. Must already exist under `dif/surfaces/`.
     #[arg(long)]
     pub surface: String,
 
@@ -97,11 +97,10 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let today = Utc::now().date_naive();
     let content = render_experiment(&args.id, &args.surface, &owner, today, source_exp, surface);
 
-    // 6. Write to experiments/active/<id>.md.
+    // 6. Write to dif/experiments/active/<id>.md.
     let path = workspace
         .root
-        .join("experiments")
-        .join("active")
+        .join(paths::EXPERIMENTS_ACTIVE)
         .join(format!("{}.md", args.id));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -113,7 +112,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let read_count = learning_count.min(3);
     let surface_rel = workspace
         .root
-        .join("surfaces")
+        .join(paths::SURFACES_DIR)
         .join(format!("{}.md", args.surface));
     let path_rel = relative(&path, &workspace.root);
     let surface_rel = relative(&surface_rel, &workspace.root);
@@ -414,7 +413,7 @@ mod tests {
                 learnings,
             },
             source: String::new(),
-            path: PathBuf::from(format!("surfaces/{id}.md")),
+            path: PathBuf::from(format!("dif/surfaces/{id}.md")),
         }
     }
 
@@ -520,7 +519,7 @@ created: 2026-01-01
 x
 "#;
         let mut source = parse_experiment_str(source_yaml).expect("parse source");
-        source.path = PathBuf::from("experiments/active/src.md");
+        source.path = PathBuf::from("dif/experiments/active/src.md");
         let surface = make_surface_with_learnings("home", vec![]);
         let today = NaiveDate::from_ymd_opt(2026, 5, 21).unwrap();
         let content = render_experiment(

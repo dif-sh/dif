@@ -1,12 +1,12 @@
 # dif audiences
 
-dif's audience system is intentionally a closed set, not a DSL: every attribute is declared in `.dif/config.yaml`, paired with a TypeScript resolver under `audiences/`, and referenced by name in experiment frontmatter. The closed-set rule is what keeps the audience language sane as the project scales — no operators sneak in.
+dif's audience system is intentionally a closed set, not a DSL: every attribute is declared in `dif/config.yaml`, paired with a TypeScript resolver under `dif/audiences/`, and referenced by name in experiment frontmatter. The closed-set rule is what keeps the audience language sane as the project scales — no operators sneak in.
 
 ## The three-piece contract
 
 For an attribute `<name>` to be usable in any experiment's `audience:` predicate, **all three** of these must exist:
 
-1. **An entry in `.dif/config.yaml`** under `audience_attributes`:
+1. **An entry in `dif/config.yaml`** under `audience_attributes`:
 
    ```yaml
    audience_attributes:
@@ -19,7 +19,7 @@ For an attribute `<name>` to be usable in any experiment's `audience:` predicate
 
    Supported types: `string`, `boolean`, `number`, `enum` (with `values:`).
 
-2. **A resolver file `audiences/<name>.ts`** exporting a default function:
+2. **A resolver file `dif/audiences/<name>.ts`** exporting a default function:
 
    ```ts
    export default function resolve(): string | null {
@@ -38,7 +38,7 @@ Mismatches are caught at validate time:
 - File but not declared → **W002** (warning).
 - Predicate references an undeclared name → **E006** (error; build fails).
 
-`dif scaffold-audiences` will write the starter `locale.ts` / `device_type.ts` files into `audiences/` if they're not already there, idempotently.
+`dif scaffold-audiences` will write the starter `locale.ts` / `device_type.ts` files into `dif/audiences/` if they're not already there, idempotently.
 
 ## Predicate grammar
 
@@ -78,14 +78,14 @@ A common pattern: every experiment touching the checkout CTA copy gets `exclusio
 ## Adding a new attribute
 
 ```sh
-# 1. Declare in .dif/config.yaml under audience_attributes:
+# 1. Declare in dif/config.yaml under audience_attributes:
 #      - name: country
 #        type: string
-# 2. Create audiences/country.ts with a default resolve() function.
+# 2. Create dif/audiences/country.ts with a default resolve() function.
 # 3. (optional) Reference it in some experiment's audience: predicate.
 
 dif validate    # confirms the three pieces are consistent
-dif build       # emits the tree-shaken .dif/generated/audiences.ts
+dif build       # emits the tree-shaken dif/generated/audiences.ts
 ```
 
 The generated `audiences.ts` only imports resolvers actually used by active experiments — adding a declared attribute that no experiment references is free at the runtime boundary.

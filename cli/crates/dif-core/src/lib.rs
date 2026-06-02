@@ -19,6 +19,7 @@ pub mod context;
 pub mod diag;
 pub mod exclusion;
 pub mod parse;
+pub mod paths;
 pub mod spec;
 pub mod validate;
 pub mod workspace;

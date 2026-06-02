@@ -11,7 +11,7 @@
 //! - `E005` variant weights do not sum to 100
 //! - `E006` audience attribute not declared in config
 //! - `E007` exclusion conflict (same surface, no shared `exclusion_group`)
-//! - `E008` declared audience attribute has no `audiences/<name>.ts` file
+//! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 
@@ -19,6 +19,7 @@ use crate::{
     diag::{Diagnostic, Report},
     exclusion,
     parse::ParsedExperiment,
+    paths,
     workspace::{relative_path, Workspace},
 };
 use regex::Regex;
@@ -81,7 +82,7 @@ pub fn surface_exists(workspace: &Workspace, report: &mut Report) {
                 parsed,
                 workspace,
                 Some(&format!(
-                    "Create `surfaces/{}.md` or correct the `surface:` field.",
+                    "Create `dif/surfaces/{}.md` or correct the `surface:` field.",
                     parsed.spec.surface
                 )),
             ));
@@ -111,7 +112,7 @@ pub fn variant_weights(workspace: &Workspace, report: &mut Report) {
     }
 }
 
-/// Every audience attribute must be declared in `.dif/config.yaml`. This is
+/// Every audience attribute must be declared in `dif/config.yaml`. This is
 /// the "no new DSL" rule made concrete.
 pub fn audience_attrs_declared(workspace: &Workspace, report: &mut Report) {
     let declared: HashSet<&str> = workspace
@@ -135,7 +136,7 @@ pub fn audience_attrs_declared(workspace: &Workspace, report: &mut Report) {
                         report.errors.push(simple_error(
                             "E006",
                             format!(
-                                "audience attribute `{name}` is not declared in .dif/config.yaml"
+                                "audience attribute `{name}` is not declared in dif/config.yaml"
                             ),
                             parsed,
                             workspace,
@@ -151,7 +152,7 @@ pub fn audience_attrs_declared(workspace: &Workspace, report: &mut Report) {
 }
 
 /// Pair every declared `audience_attributes` entry with an
-/// `audiences/<name>.ts` resolver file, and vice versa. Mismatches in either
+/// `dif/audiences/<name>.ts` resolver file, and vice versa. Mismatches in either
 /// direction surface here:
 ///
 /// - `E008` (error): declared attribute, no file. The runtime would have no
@@ -176,14 +177,14 @@ pub fn audience_files_paired(workspace: &Workspace, report: &mut Report) {
             report.errors.push(Diagnostic {
                 code: "E008".to_string(),
                 message: format!(
-                    "audience attribute `{}` has no implementation at `audiences/{}.ts`",
+                    "audience attribute `{}` has no implementation at `dif/audiences/{}.ts`",
                     attr.name, attr.name
                 ),
-                file: ".dif/config.yaml".to_string(),
+                file: paths::CONFIG_FILE.to_string(),
                 line: 1,
                 column: 1,
                 help: Some(format!(
-                    "Create `audiences/{}.ts` exporting a default resolver, or remove the entry from `audience_attributes`. Run `dif scaffold-audiences` to pull in the starter set.",
+                    "Create `dif/audiences/{}.ts` exporting a default resolver, or remove the entry from `audience_attributes`. Run `dif scaffold-audiences` to pull in the starter set.",
                     attr.name
                 )),
             });
@@ -195,14 +196,14 @@ pub fn audience_files_paired(workspace: &Workspace, report: &mut Report) {
             report.warnings.push(Diagnostic {
                 code: "W002".to_string(),
                 message: format!(
-                    "audience file `audiences/{}.ts` has no matching entry in `audience_attributes`",
+                    "audience file `dif/audiences/{}.ts` has no matching entry in `audience_attributes`",
                     file.slug
                 ),
                 file: relative_path(&file.path, &workspace.root),
                 line: 1,
                 column: 1,
                 help: Some(format!(
-                    "Add `{{ name: {}, type: ... }}` to `audience_attributes` in `.dif/config.yaml`, or delete the file if unused.",
+                    "Add `{{ name: {}, type: ... }}` to `audience_attributes` in `dif/config.yaml`, or delete the file if unused.",
                     file.slug
                 )),
             });
@@ -333,14 +334,14 @@ mod tests {
                 learnings: vec![],
             },
             source: String::new(),
-            path: PathBuf::from(format!("surfaces/{id}.md")),
+            path: PathBuf::from(format!("dif/surfaces/{id}.md")),
         }
     }
 
     fn parse(yaml_body: &str, id: &str) -> ParsedExperiment {
         let source = format!("---\n{yaml_body}\n---\n");
         let mut p = parse_experiment_str(&source).expect("test fixture parses");
-        p.path = PathBuf::from(format!("experiments/active/{id}.md"));
+        p.path = PathBuf::from(format!("dif/experiments/active/{id}.md"));
         p
     }
 
@@ -574,7 +575,7 @@ created: 2026-01-02";
         // so E008 doesn't fire and muddy the E007 assertion below.
         ws.audiences.push(crate::AudienceFile {
             slug: "country".into(),
-            path: PathBuf::from("/tmp/test/audiences/country.ts"),
+            path: PathBuf::from("/tmp/test/dif/audiences/country.ts"),
         });
         let report = run(&ws);
         assert!(
@@ -649,7 +650,7 @@ created: 2026-01-02";
             .find(|d| d.code == "E008")
             .expect("E008");
         assert!(e.message.contains("device_type"));
-        assert_eq!(e.file, ".dif/config.yaml");
+        assert_eq!(e.file, "dif/config.yaml");
     }
 
     #[test]
@@ -661,7 +662,7 @@ created: 2026-01-02";
         );
         ws.audiences.push(crate::AudienceFile {
             slug: "unused".into(),
-            path: PathBuf::from("/tmp/test/audiences/unused.ts"),
+            path: PathBuf::from("/tmp/test/dif/audiences/unused.ts"),
         });
         let report = run(&ws);
         let w = report
@@ -691,7 +692,7 @@ created: 2026-01-02";
         );
         ws.audiences.push(crate::AudienceFile {
             slug: "device_type".into(),
-            path: PathBuf::from("/tmp/test/audiences/device_type.ts"),
+            path: PathBuf::from("/tmp/test/dif/audiences/device_type.ts"),
         });
         let report = run(&ws);
         assert!(!report.errors.iter().any(|d| d.code == "E008"));

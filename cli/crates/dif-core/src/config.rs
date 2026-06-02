@@ -1,5 +1,6 @@
-//! `.dif/config.yaml` — the project-level configuration file.
+//! `dif/config.yaml` — the project-level configuration file.
 
+use crate::paths;
 use serde::{Deserialize, Serialize};
 
 /// Top-level project config.
@@ -103,7 +104,7 @@ impl Default for BuildConfig {
 }
 
 fn default_out() -> String {
-    ".dif/generated".to_string()
+    paths::GENERATED_DIR.to_string()
 }
 
 fn default_fail_on() -> Vec<String> {

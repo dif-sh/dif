@@ -1,4 +1,4 @@
-//! Codegen for `.dif/context.json` — the agent-facing summary file.
+//! Codegen for `dif/context.json` — the agent-facing summary file.
 //!
 //! Read on session start by the customer's coding agent (Claude Code,
 //! Codex, Cursor). Equivalent in spirit to a project's `CLAUDE.md`, but
@@ -7,10 +7,10 @@
 //!
 //! Unlike `client.ts`, this file carries a `generated_at` timestamp so agents
 //! can tell freshness — it WILL change every build. That's acceptable for a
-//! single-line diff; the file lives at `.dif/context.json` (not under
-//! `.dif/generated/`) so it's checked in and agents see it.
+//! single-line diff; the file lives at `dif/context.json` (not under
+//! `dif/generated/`) so it's checked in and agents see it.
 
-use crate::{spec::Status, workspace::Workspace};
+use crate::{paths, spec::Status, workspace::Workspace};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +106,7 @@ pub fn build_at(workspace: &Workspace, now: DateTime<Utc>, today: NaiveDate) -> 
 ///
 /// For v1 these are derived from the config (e.g., `fire_at: render` → "Fire
 /// exposure at render, never at assignment."). A future change will let the
-/// customer declare arbitrary additional conventions in `.dif/config.yaml`.
+/// customer declare arbitrary additional conventions in `dif/config.yaml`.
 fn workspace_conventions(workspace: &Workspace) -> Vec<String> {
     let mut out = Vec::new();
     match workspace.config.exposure.fire_at {
@@ -125,11 +125,11 @@ fn workspace_conventions(workspace: &Workspace) -> Vec<String> {
     out
 }
 
-/// Serialize and write the file. Lives at `<root>/.dif/context.json`.
+/// Serialize and write the file. Lives at `<root>/dif/context.json`.
 pub fn emit(workspace: &Workspace) -> std::io::Result<()> {
     let ctx = build(workspace);
     let json = serde_json::to_string_pretty(&ctx).map_err(std::io::Error::other)?;
-    let path = workspace.root.join(".dif").join("context.json");
+    let path = workspace.root.join(paths::CONTEXT_FILE);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -167,7 +167,7 @@ mod tests {
     fn parse(yaml_body: &str, id: &str) -> ParsedExperiment {
         let source = format!("---\n{yaml_body}\n---\n");
         let mut p = parse_experiment_str(&source).expect("parse");
-        p.path = PathBuf::from(format!("experiments/active/{id}.md"));
+        p.path = PathBuf::from(format!("dif/experiments/active/{id}.md"));
         p
     }
 
@@ -236,7 +236,7 @@ created: 2026-01-01";
                 ],
             },
             source: String::new(),
-            path: PathBuf::from("surfaces/checkout.md"),
+            path: PathBuf::from("dif/surfaces/checkout.md"),
         };
         let ws = make_workspace(vec![], vec![surface]);
         let ctx = build(&ws);
@@ -258,7 +258,7 @@ created: 2026-01-01";
                 learnings: vec![],
             },
             source: String::new(),
-            path: PathBuf::from("surfaces/pricing.md"),
+            path: PathBuf::from("dif/surfaces/pricing.md"),
         };
         let ws = make_workspace(vec![], vec![surface]);
         let ctx = build(&ws);

@@ -17,7 +17,7 @@ npm install @dif.sh/sdk
 
 ```ts
 import { dif } from "@dif.sh/sdk";
-import { attributes } from "../.dif/generated/audiences";
+import { attributes } from "../dif/generated/audiences";
 
 dif.init({
   project: "acme-shop",
@@ -33,14 +33,14 @@ write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist.
 
 ## Wiring audiences
 
-Every entry in `.dif/config.yaml`'s `audience_attributes` is paired with a
-resolver file at `audiences/<name>.ts`. `dif build` tree-shakes the folder
+Every entry in `dif/config.yaml`'s `audience_attributes` is paired with a
+resolver file at `dif/audiences/<name>.ts`. `dif build` tree-shakes the folder
 against the attributes your active experiments reference, and emits a wired
-`.dif/generated/audiences.ts` that exposes a single `attributes(overrides)`
+`dif/generated/audiences.ts` that exposes a single `attributes(overrides)`
 helper. Pass it straight to `dif.init`:
 
 ```ts
-import { attributes } from "../.dif/generated/audiences";
+import { attributes } from "../dif/generated/audiences";
 
 dif.init({
   userId: () => currentUser?.id ?? null,
@@ -76,7 +76,7 @@ generated module with one typed export per active experiment. Import the
 named export and call it:
 
 ```ts
-import { checkoutCta } from "../.dif/generated/client";
+import { checkoutCta } from "../dif/generated/client";
 <button>{checkoutCta()}</button>;
 ```
 

@@ -1,7 +1,7 @@
-//! Discovery of `audiences/<slug>.ts` resolver files.
+//! Discovery of `dif/audiences/<slug>.ts` resolver files.
 //!
-//! Each file under `audiences/` provides the runtime implementation for a
-//! single audience attribute declared in `.dif/config.yaml`. Rust treats the
+//! Each file under `dif/audiences/` provides the runtime implementation for a
+//! single audience attribute declared in `dif/config.yaml`. Rust treats the
 //! file as opaque — the TS toolchain is responsible for type-checking the
 //! exported resolver. Here we only enumerate filenames so `validate` can pair
 //! every declared attribute with an implementation, and so `codegen` can
@@ -19,7 +19,7 @@ pub struct AudienceFile {
     pub path: PathBuf,
 }
 
-/// Enumerate `audiences/*.ts` under `dir`. Returns an empty vector if `dir`
+/// Enumerate `*.ts` files under `dir` (typically `dif/audiences/`). Returns an empty vector if `dir`
 /// does not exist — a project without any audience files is a valid state
 /// (validation will then flag any declared attribute as missing).
 ///
