@@ -74,6 +74,21 @@ function extract(archivePath, ext, destDir) {
   throw new Error(`unknown archive type: ${ext}`);
 }
 
+// Release archives wrap the binary in a top-level `dif-<target>/` directory so
+// Homebrew (which auto-cds into a single top-level dir) can consume them. Walk
+// the extracted tree and return the first file whose basename matches.
+function findBinary(dir, name) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isFile() && entry.name === name) return full;
+    if (entry.isDirectory()) {
+      const nested = findBinary(full, name);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 async function main() {
   const key = platformKey();
   const target = TARGETS[key];
@@ -94,18 +109,29 @@ async function main() {
   fs.mkdirSync(BIN_DIR, { recursive: true });
 
   const url = `https://github.com/${REPO}/releases/download/v${VERSION}/${target.archive}`;
-  const tmp = path.join(os.tmpdir(), `${PKG.name.replace(/[^a-z0-9]/gi, "_")}-${VERSION}.${target.ext}`);
+  const slug = PKG.name.replace(/[^a-z0-9]/gi, "_");
+  const tmp = path.join(os.tmpdir(), `${slug}-${VERSION}.${target.ext}`);
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), `${slug}-${VERSION}-`));
 
   try {
     console.log(`@dif.sh/cli: downloading ${url}`);
     await download(url, tmp);
-    extract(tmp, target.ext, BIN_DIR);
+    extract(tmp, target.ext, staging);
+    const found = findBinary(staging, target.binary);
+    if (!found) {
+      throw new Error(`binary ${target.binary} not found in ${target.archive}`);
+    }
+    // copy+unlink (not rename) survives EXDEV when tmpdir is on a different
+    // filesystem from the package — common on Linux where /tmp is tmpfs.
+    fs.copyFileSync(found, binaryPath);
+    fs.unlinkSync(found);
     fs.chmodSync(binaryPath, 0o755);
     console.log(`@dif.sh/cli: installed dif v${VERSION} for ${key}`);
   } catch (err) {
     fail(`installation failed: ${err.message}`);
   } finally {
     try { fs.unlinkSync(tmp); } catch (_) { /* best-effort */ }
+    try { fs.rmSync(staging, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
   }
 }
 
