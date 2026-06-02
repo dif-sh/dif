@@ -64,8 +64,10 @@ formula = "dif"
 targets = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
-    "x86_64-unknown-linux-gnu",
-    "aarch64-unknown-linux-gnu",
+    # musl-static on Linux so the binary runs on any glibc baseline (Vercel
+    # AL2023, RHEL 8, etc.). See release.yml comment on the matrix.
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
     "x86_64-pc-windows-msvc",
 ]
 # Only ship the `dif` binary, not the library crate.
@@ -78,4 +80,4 @@ npm-scope = "@dif.sh"
 # Building on Linux runners — nothing exotic, but list explicitly.
 
 [workspace.metadata.dist.github-custom-runners]
-aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"
+aarch64-unknown-linux-musl = "ubuntu-24.04-arm"

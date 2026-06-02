@@ -26,11 +26,11 @@ class Dif < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-unknown-linux-musl.tar.gz"
       sha256 "f10c10d20df14616613f88e6b88414b1741da71082caf36c74bd79832070c932"
     end
     on_arm do
-      url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-unknown-linux-musl.tar.gz"
       sha256 "6e16c6186f198a1b5a0ddd00c4738a014fbe5532669900e785679e1effbd967c"
     end
   end

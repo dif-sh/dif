@@ -22,8 +22,8 @@ const BIN_DIR = path.join(ROOT, "bin");
 const TARGETS = {
   "darwin-arm64": { archive: "dif-aarch64-apple-darwin.tar.gz", binary: "dif", ext: "tar.gz" },
   "darwin-x64":   { archive: "dif-x86_64-apple-darwin.tar.gz",  binary: "dif", ext: "tar.gz" },
-  "linux-x64":    { archive: "dif-x86_64-unknown-linux-gnu.tar.gz", binary: "dif", ext: "tar.gz" },
-  "linux-arm64":  { archive: "dif-aarch64-unknown-linux-gnu.tar.gz", binary: "dif", ext: "tar.gz" },
+  "linux-x64":    { archive: "dif-x86_64-unknown-linux-musl.tar.gz", binary: "dif", ext: "tar.gz" },
+  "linux-arm64":  { archive: "dif-aarch64-unknown-linux-musl.tar.gz", binary: "dif", ext: "tar.gz" },
   "win32-x64":    { archive: "dif-x86_64-pc-windows-msvc.zip", binary: "dif.exe", ext: "zip" },
 };
 
