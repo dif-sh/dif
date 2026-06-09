@@ -558,7 +558,11 @@ mod tests {
     fn merge_preserves_existing_user_content() {
         let tmp = tempfile::TempDir::new().unwrap();
         let claude = tmp.path().join("CLAUDE.md");
-        std::fs::write(&claude, "# My project\n\nHand-written notes the user pasted.\n").unwrap();
+        std::fs::write(
+            &claude,
+            "# My project\n\nHand-written notes the user pasted.\n",
+        )
+        .unwrap();
 
         // A bare pre-existing CLAUDE.md must NOT block init (the bug we're fixing).
         run_in(
@@ -605,7 +609,10 @@ mod tests {
             "managed block duplicated on re-run"
         );
         assert_eq!(merged.matches(MD_BLOCK_END).count(), 1);
-        assert!(merged.contains("User notes."), "user content lost on refresh");
+        assert!(
+            merged.contains("User notes."),
+            "user content lost on refresh"
+        );
     }
 
     #[test]
@@ -633,8 +640,14 @@ mod tests {
         .expect("init --force");
 
         let merged = std::fs::read_to_string(&claude).unwrap();
-        assert!(merged.contains("Top notes."), "content above the block lost");
-        assert!(merged.contains("Bottom notes."), "content below the block lost");
+        assert!(
+            merged.contains("Top notes."),
+            "content above the block lost"
+        );
+        assert!(
+            merged.contains("Bottom notes."),
+            "content below the block lost"
+        );
         assert!(
             !merged.contains("OLD DIF CONTENT"),
             "stale managed block was not refreshed"
