@@ -22,7 +22,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "gen:version": "node scripts/gen-version.mjs",
+    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.json",
     "test": "node --test --import tsx src/*.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm test && npm run build"

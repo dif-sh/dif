@@ -80,6 +80,18 @@ jobs:
         if: contains(matrix.target, 'linux-musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
+      # Belt-and-suspenders: stamp the workspace version from the tag so the
+      # binary's --version matches the release even if the tag was cut without
+      # running scripts/prepare-release.sh. (Root cause of the 0.4.1-wrapper /
+      # 0.4.0-binary mismatch: the binary bakes in CARGO_PKG_VERSION at build.)
+      - name: stamp version from tag
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          v=${REF#v}
+          VERSION="$v" perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/m' Cargo.toml
+          VERSION="$v" perl -0pi -e 's/(path = "crates\/dif-core", version = ")[^"]*"/$1$ENV{VERSION}"/' Cargo.toml
+
       - name: build
         run: cargo build --release -p dif-cli --target ${{ matrix.target }}
 

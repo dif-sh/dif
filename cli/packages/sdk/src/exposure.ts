@@ -1,8 +1,7 @@
 // Exposure event firing — render-time, deduped per session per (experiment, user).
 
 import type { ExperimentSpec, ExposureEvent, Sink } from "./types.js";
-
-const SOURCE = "@dif.sh/sdk@0.4.0";
+import { SOURCE } from "./version.js";
 
 /** Per-session dedupe set. Cleared on page nav (the module is per-page). */
 const fired = new Set<string>();

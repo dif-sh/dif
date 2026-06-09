@@ -14,9 +14,8 @@
 //    This matches the sample app's pre-SDK behavior and keeps dev ergonomic.
 
 import { getState } from "./config.js";
+import { SOURCE } from "./version.js";
 import type { TrackProps } from "./types.js";
-
-const SOURCE = "@dif.sh/sdk@0.4.0";
 
 export function track(metric: string, opts: TrackProps = {}): void {
   const state = getState();
