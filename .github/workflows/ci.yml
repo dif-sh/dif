@@ -88,6 +88,38 @@ jobs:
         working-directory: cli/packages/react
         run: npm run build
 
+  # svelte also depends on the sdk via file:../sdk, so it needs sdk's dist/
+  # to exist before tsc can type-check + the tests can import @dif.sh/sdk.
+  svelte:
+    name: svelte (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: build sdk
+        working-directory: cli/packages/sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: install
+        working-directory: cli/packages/svelte
+        run: npm install --no-audit --no-fund
+      - name: lint
+        working-directory: cli/packages/svelte
+        run: npm run lint
+      - name: test
+        working-directory: cli/packages/svelte
+        run: npm test
+      - name: build
+        working-directory: cli/packages/svelte
+        run: npm run build
+
   # The cross-language anchor: the Rust side regenerates the fixture, the TS
   # side reads it, both must agree. This is the contract.
   cross-language-fixture:
