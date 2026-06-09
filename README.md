@@ -86,10 +86,20 @@ GitHub release on every `v*` tag push and publishes both npm packages.
 
 ## Status
 
-v0.1.0 — pre-release. Every PLAN verb (`init`, `new`, `validate`, `build`,
-`qa`, `conclude`) is implemented and tested. Cross-language contract holds.
-What's NOT in v1: native analysis, hosted control plane, bandits — all on
-the roadmap.
+v0.4.x — active development. Every PLAN verb (`init`, `new`, `validate`,
+`build`, `qa`, `conclude`) is implemented and tested, the cross-language
+bucketing contract holds, and all three npm packages (`@dif.sh/sdk`,
+`@dif.sh/cli`, `@dif.sh/react`) plus the Rust binary publish on every `v*`
+tag.
+
+**dif.sh Cloud** — the hosted control plane (event ingest, metrics catalog,
+statistical analysis, and PR write-back) is available at
+[cloud.dif.sh](https://cloud.dif.sh) and self-hostable from the
+[`dif-sh/dif-cloud`](https://github.com/dif-sh/dif-cloud) repo. Point the SDK
+at it with `dif.init({ publishableKey, apiUrl: "https://cloud.dif.sh" })`.
+
+Still on the roadmap: native in-CLI analysis (SRM, lift, NL query) and
+bandits/sequential testing.
 
 ## License
 

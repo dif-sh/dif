@@ -21,7 +21,10 @@ export interface ResolvedState {
 
 let state: ResolvedState | null = null;
 
-const DEFAULT_API_URL = "https://api.dif.sh";
+// dif.sh Cloud's public ingest host. The SDK posts to `${apiUrl}/v1/*`, which
+// the cloud rewrites to its `/api/v1/*` handlers. (api.dif.sh is not a real
+// host — point at cloud.dif.sh, or your own deployment via `apiUrl`.)
+const DEFAULT_API_URL = "https://cloud.dif.sh";
 
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;

@@ -15,7 +15,7 @@
 import type { ExposureEvent, Sink } from "../types.js";
 
 export interface CloudSinkConfig {
-  /** Cloud base URL (e.g. https://api.dif.sh). Trailing slashes are stripped. */
+  /** Cloud base URL (e.g. https://cloud.dif.sh). Trailing slashes are stripped. */
   apiUrl: string;
   /** Publishable key (dif_pk_…). Sent as the `Authorization: Bearer` header. */
   publishableKey: string;

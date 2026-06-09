@@ -38,7 +38,7 @@ export interface DifInitConfig {
   project?: string;
   /** Browser-side write key (dif_pk_…). Safe to embed in bundles. */
   publishableKey?: string;
-  /** Cloud base URL. Defaults to https://api.dif.sh. */
+  /** Cloud base URL. Defaults to https://cloud.dif.sh. */
   apiUrl?: string;
   /** How to look up the current user id at call time. */
   userId?: UserIdFn;
