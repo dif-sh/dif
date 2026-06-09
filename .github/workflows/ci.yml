@@ -120,6 +120,36 @@ jobs:
         working-directory: cli/packages/svelte
         run: npm run build
 
+  # The npm wrapper (@dif.sh/cli) is where both past production breakages
+  # shipped (the 0.4.0 wrapping-dir crash, the musl glibc failure) — and it had
+  # no CI coverage. Build a real binary, stage it where the postinstall expects
+  # it (so the download is skipped), and assert the wrapper execs `dif --help`.
+  cli-wrapper:
+    name: cli wrapper smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: build dif binary
+        working-directory: cli
+        run: cargo build --release -p dif-cli
+      - name: stage the binary into the wrapper
+        run: |
+          mkdir -p cli/packages/cli/bin
+          cp cli/target/release/dif cli/packages/cli/bin/dif
+      - name: postinstall no-ops when the binary is present
+        working-directory: cli/packages/cli
+        run: node install.js
+      - name: wrapper execs dif --help
+        working-directory: cli/packages/cli
+        run: node bin/dif.js --help | grep -q dif
+
   # The cross-language anchor: the Rust side regenerates the fixture, the TS
   # side reads it, both must agree. This is the contract.
   cross-language-fixture:

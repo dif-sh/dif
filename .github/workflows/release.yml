@@ -25,6 +25,32 @@ env:
 
 jobs:
   # -------------------------------------------------------------------------
+  # Gate: never publish a red commit. Runs the Rust + SDK suites (incl. the
+  # cross-language bucket fixture) once before anything is built or published.
+  # build-binary depends on this, so a failure here aborts the whole release.
+  # -------------------------------------------------------------------------
+  verify:
+    name: verify (tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: rust tests
+        working-directory: cli
+        run: cargo test --workspace
+      - name: sdk tests
+        working-directory: cli/packages/sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+  # -------------------------------------------------------------------------
   # Build the Rust binary for each target. cargo-dist orchestrates this in
   # production; the matrix below is a hand-rolled fallback so the workflow
   # works even before `cargo dist init` has been run.
@@ -32,6 +58,7 @@ jobs:
   build-binary:
     name: build dif (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
