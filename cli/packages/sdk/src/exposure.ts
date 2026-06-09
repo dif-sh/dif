@@ -42,3 +42,8 @@ export function fireExposure(
     }
   }
 }
+
+/** Test-only: clear the per-session dedupe set so SSR/no-leak tests start fresh. */
+export function __resetExposures(): void {
+  fired.clear();
+}

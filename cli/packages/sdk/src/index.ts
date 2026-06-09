@@ -5,6 +5,7 @@
 // (`dif.init`, `dif.track`) coexist with existing call sites (`dif("id", branches)`).
 
 import { difCall, __register, __resetRegistry } from "./core.js";
+import { __resetExposures } from "./exposure.js";
 import { setState, resetState, type DifInitConfig } from "./config.js";
 import { track } from "./track.js";
 import type { DifConfig, TrackProps } from "./types.js";
@@ -45,8 +46,15 @@ export { configure };
 export { __register };
 export function __reset(): void {
   __resetRegistry();
+  __resetExposures();
   resetState();
 }
+
+// SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)
+// to assign on the server without firing exposures or touching the init singleton.
+export { assign, registered, getSpec, recordExposure } from "./core.js";
+export type { AssignContext, Assignment } from "./core.js";
+export { bucket, selectVariant, saltFor, BUCKET_NAMESPACE } from "./bucket.js";
 
 // Re-exports — types and sinks.
 export type {
