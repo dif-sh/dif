@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset } from "./index.js";
+import { SOURCE } from "./version.js";
 
 interface FetchCall {
   url: string;
@@ -92,7 +93,7 @@ describe("dif.track", () => {
     assert.equal(body.user_id, "u-1");
     assert.equal(body.value, 49);
     assert.equal(body.currency, "USD");
-    assert.equal(body.source, "@dif.sh/sdk@0.4.0");
+    assert.equal(body.source, SOURCE);
     assert.ok(typeof body.fired_at === "number");
   });
 
