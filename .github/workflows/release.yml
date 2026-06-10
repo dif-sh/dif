@@ -112,6 +112,10 @@ jobs:
       # running scripts/prepare-release.sh. (Root cause of the 0.4.1-wrapper /
       # 0.4.0-binary mismatch: the binary bakes in CARGO_PKG_VERSION at build.)
       - name: stamp version from tag
+        # Force bash on every OS — windows-latest defaults `run:` to PowerShell,
+        # where this bash syntax (`v=${REF#v}`, perl) would error. Git Bash on
+        # the Windows runner has perl on PATH.
+        shell: bash
         env:
           REF: ${{ github.ref_name }}
         run: |
