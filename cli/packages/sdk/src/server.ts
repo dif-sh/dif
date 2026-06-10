@@ -8,15 +8,17 @@
 // call per event. The bearer is a secret token (dif_<env>_…), never a
 // publishable key.
 
-const DEFAULT_API_URL = "https://api.dif.sh";
-const DEFAULT_SOURCE = "@dif.sh/sdk@0.4.0";
+import { SOURCE } from "./version.js";
+
+const DEFAULT_API_URL = "https://cloud.dif.sh";
+const DEFAULT_SOURCE = SOURCE;
 
 export interface DifServerConfig {
   /** Secret bearer token: dif_<env>_<prefix>_<secret>. */
   apiKey: string;
   /** Optional project slug stamp; not used by the cloud but useful in logs. */
   project?: string;
-  /** Cloud base URL. Defaults to https://api.dif.sh. */
+  /** Cloud base URL. Defaults to https://cloud.dif.sh. */
   apiUrl?: string;
   /** Overrides the SDK's "source" stamp on emitted events. */
   source?: string;

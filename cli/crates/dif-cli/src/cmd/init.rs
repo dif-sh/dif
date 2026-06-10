@@ -67,7 +67,10 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
         cwd.join(paths::AUDIENCES_DIR),
         cwd.join(paths::GENERATED_DIR),
     ];
-    let mut files: Vec<(PathBuf, String)> = vec![
+    // Plain dif-owned files: the structural scaffold plus the dif-namespaced
+    // skill files. Written verbatim and guarded by the refuse-unless-`--force`
+    // collision check.
+    let mut plain_files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(paths::CONFIG_FILE),
             default_config_yaml(&project, &surface),
@@ -87,11 +90,21 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
         ),
     ];
     if !args.no_agent_files {
-        files.extend(agent_files(cwd));
+        plain_files.extend(agent_skill_files(cwd));
     }
 
+    // Shared agent files (CLAUDE.md, AGENTS.md, .cursorrules) are co-owned with
+    // the user, so we never clobber them: dif's guidance lives inside a delimited
+    // managed block that we append once and refresh in place. They never trip the
+    // collision guard — appending a block can't destroy anything.
+    let merge_files: Vec<ManagedFile> = if args.no_agent_files {
+        Vec::new()
+    } else {
+        agent_merge_files(cwd)
+    };
+
     if !args.force {
-        let collisions: Vec<&Path> = files
+        let collisions: Vec<&Path> = plain_files
             .iter()
             .filter(|(p, _)| p.exists())
             .map(|(p, _)| p.as_path())
@@ -105,11 +118,22 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
     for dir in &dirs {
         std::fs::create_dir_all(dir)?;
     }
-    for (path, content) in &files {
+    for (path, content) in &plain_files {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(path, content)?;
+    }
+    // Managed-block merge — preserve any user content already in the file, even
+    // under `--force`. Force re-scaffolds the structural files, but must never
+    // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
+    for mf in &merge_files {
+        if let Some(parent) = mf.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
+        let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
+        std::fs::write(&mf.path, merged)?;
     }
 
     report_success(&surface, json, !args.no_agent_files);
@@ -171,7 +195,7 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool) {
     println!("{check} wrote dif/audiences/locale.ts");
     println!("{check} wrote dif/audiences/device_type.ts");
     if include_agent_files {
-        println!("{check} wrote CLAUDE.md, AGENTS.md, .cursorrules");
+        println!("{check} merged dif guidance into CLAUDE.md, AGENTS.md, .cursorrules");
         println!(
             "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
         );
@@ -317,16 +341,87 @@ pub(crate) const AGENT_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-generate-surfaces/SKILL.md",
 ];
 
-/// Build the (path, content) tuples for the agent onboarding files, stamped
-/// with the current crate version so a user can detect drift between their
-/// scaffolded files and the binary that wrote them.
-fn agent_files(cwd: &Path) -> Vec<(PathBuf, String)> {
+/// Markers that delimit dif's managed block inside a co-owned file. Everything
+/// between them is dif's to rewrite on each `init`; everything outside is the
+/// user's and is never touched.
+const MD_BLOCK_START: &str = "<!-- dif:start -->";
+const MD_BLOCK_END: &str = "<!-- dif:end -->";
+const HASH_BLOCK_START: &str = "# dif:start";
+const HASH_BLOCK_END: &str = "# dif:end";
+
+/// A file whose dif content is written as a managed block and merged into
+/// whatever the user already has, rather than overwriting the whole file.
+struct ManagedFile {
+    path: PathBuf,
+    block: String,
+    start: &'static str,
+    end: &'static str,
+}
+
+/// Insert or refresh dif's managed block without disturbing the user's own
+/// content. Three cases:
+///   - file empty/absent → the block becomes the whole file.
+///   - markers present    → replace just the delimited region (idempotent refresh).
+///   - markers absent      → append the block, preserving everything above it.
+fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> String {
+    let region = format!("{start}\n{block}{end}\n");
+    if existing.trim().is_empty() {
+        return region;
+    }
+    if let Some(s) = existing.find(start) {
+        if let Some(rel) = existing[s..].find(end) {
+            let e = s + rel + end.len();
+            let mut out = String::with_capacity(existing.len() + region.len());
+            out.push_str(&existing[..s]);
+            out.push_str(region.trim_end_matches('\n'));
+            out.push_str(&existing[e..]);
+            return out;
+        }
+    }
+    // No managed block yet — append one, separated by a blank line.
+    let mut out = existing.to_string();
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push('\n');
+    out.push_str(&region);
+    out
+}
+
+/// The co-owned agent files (CLAUDE.md, AGENTS.md, .cursorrules), each carrying
+/// dif's guidance inside a managed block stamped with the crate version so a
+/// user can detect drift between their scaffolded files and the binary.
+fn agent_merge_files(cwd: &Path) -> Vec<ManagedFile> {
     let v = env!("CARGO_PKG_VERSION");
     let md_stamp =
-        format!("<!-- generated by dif v{v}; safe to re-run `dif init --force` to refresh -->\n\n");
-    let hash_stamp =
-        format!("# generated by dif v{v}; safe to re-run `dif init --force` to refresh\n\n");
+        format!("<!-- generated by dif v{v}; safe to re-run `dif init` to refresh -->\n\n");
+    let hash_stamp = format!("# generated by dif v{v}; safe to re-run `dif init` to refresh\n\n");
+    vec![
+        ManagedFile {
+            path: cwd.join("CLAUDE.md"),
+            block: format!("{md_stamp}{CLAUDE_MD}"),
+            start: MD_BLOCK_START,
+            end: MD_BLOCK_END,
+        },
+        ManagedFile {
+            path: cwd.join("AGENTS.md"),
+            block: format!("{md_stamp}{AGENTS_MD}"),
+            start: MD_BLOCK_START,
+            end: MD_BLOCK_END,
+        },
+        ManagedFile {
+            path: cwd.join(".cursorrules"),
+            block: format!("{hash_stamp}{CURSORRULES}"),
+            start: HASH_BLOCK_START,
+            end: HASH_BLOCK_END,
+        },
+    ]
+}
 
+/// The dif-namespaced Claude Code skill files. These live entirely under
+/// `.claude/skills/dif-*/`, so they're written verbatim (and collision-guarded)
+/// rather than merged.
+fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
     let author = cwd
         .join(".claude")
         .join("skills")
@@ -341,12 +436,6 @@ fn agent_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .join("dif-generate-surfaces");
 
     vec![
-        (cwd.join("CLAUDE.md"), format!("{md_stamp}{CLAUDE_MD}")),
-        (cwd.join("AGENTS.md"), format!("{md_stamp}{AGENTS_MD}")),
-        (
-            cwd.join(".cursorrules"),
-            format!("{hash_stamp}{CURSORRULES}"),
-        ),
         (author.join("SKILL.md"), SKILL_AUTHOR.to_string()),
         (
             author.join("references").join("frontmatter.md"),
@@ -463,6 +552,134 @@ mod tests {
         assert!(tmp.path().join("dif/config.yaml").exists());
         assert!(tmp.path().join("dif/surfaces/home.md").exists());
         assert!(tmp.path().join("dif/audiences/locale.ts").exists());
+    }
+
+    #[test]
+    fn merge_preserves_existing_user_content() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude = tmp.path().join("CLAUDE.md");
+        std::fs::write(
+            &claude,
+            "# My project\n\nHand-written notes the user pasted.\n",
+        )
+        .unwrap();
+
+        // A bare pre-existing CLAUDE.md must NOT block init (the bug we're fixing).
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                force: false,
+                no_agent_files: false,
+            },
+            true,
+        )
+        .expect("init should succeed despite a pre-existing CLAUDE.md");
+
+        let merged = std::fs::read_to_string(&claude).unwrap();
+        assert!(
+            merged.contains("Hand-written notes the user pasted."),
+            "user content was clobbered"
+        );
+        assert!(merged.contains(MD_BLOCK_START) && merged.contains(MD_BLOCK_END));
+        assert!(merged.contains("generated by dif v"));
+        // The structural scaffold still landed (no collision on a bare CLAUDE.md).
+        assert!(tmp.path().join("dif/config.yaml").exists());
+    }
+
+    #[test]
+    fn merge_is_idempotent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude = tmp.path().join("CLAUDE.md");
+        std::fs::write(&claude, "User notes.\n").unwrap();
+
+        // --force on the re-run bypasses the structural collision so the merge path runs twice.
+        let args = || Args {
+            surface: None,
+            force: true,
+            no_agent_files: false,
+        };
+        run_in(tmp.path(), args(), true).expect("first");
+        run_in(tmp.path(), args(), true).expect("second");
+
+        let merged = std::fs::read_to_string(&claude).unwrap();
+        assert_eq!(
+            merged.matches(MD_BLOCK_START).count(),
+            1,
+            "managed block duplicated on re-run"
+        );
+        assert_eq!(merged.matches(MD_BLOCK_END).count(), 1);
+        assert!(
+            merged.contains("User notes."),
+            "user content lost on refresh"
+        );
+    }
+
+    #[test]
+    fn force_refreshes_block_without_destroying_user_content() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude = tmp.path().join("CLAUDE.md");
+        // A stale managed block sandwiched between user content on both sides.
+        std::fs::write(
+            &claude,
+            format!(
+                "Top notes.\n\n{MD_BLOCK_START}\nOLD DIF CONTENT\n{MD_BLOCK_END}\n\nBottom notes.\n"
+            ),
+        )
+        .unwrap();
+
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                force: true,
+                no_agent_files: false,
+            },
+            true,
+        )
+        .expect("init --force");
+
+        let merged = std::fs::read_to_string(&claude).unwrap();
+        assert!(
+            merged.contains("Top notes."),
+            "content above the block lost"
+        );
+        assert!(
+            merged.contains("Bottom notes."),
+            "content below the block lost"
+        );
+        assert!(
+            !merged.contains("OLD DIF CONTENT"),
+            "stale managed block was not refreshed"
+        );
+        assert!(merged.contains("generated by dif v"));
+        assert_eq!(merged.matches(MD_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn structural_collision_still_refuses_without_force() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // A pre-existing structural file must still cause a refusal.
+        std::fs::create_dir_all(tmp.path().join("dif")).unwrap();
+        std::fs::write(tmp.path().join("dif/config.yaml"), "project: x\n").unwrap();
+
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                force: false,
+                no_agent_files: false,
+            },
+            true,
+        )
+        .expect("init returns Ok with a non-zero exit code");
+
+        // It bailed before writing anything new.
+        assert!(
+            !tmp.path().join("dif/audiences/locale.ts").exists(),
+            "init should have refused on the structural collision"
+        );
+        assert!(!tmp.path().join("CLAUDE.md").exists());
     }
 
     #[test]

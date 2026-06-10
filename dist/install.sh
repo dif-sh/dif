@@ -83,6 +83,40 @@ download() {
     fi
 }
 
+sha256_of() {
+    # Print the lowercase hex sha256 of a file, or empty if no tool is available.
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        echo ""
+    fi
+}
+
+verify_checksum() {
+    # Verify $1 against its published .sha256 sidecar at $2. Fatal on mismatch;
+    # warns (but proceeds) if no sidecar or no local sha256 tool is available —
+    # this catches corrupted/partial downloads and tampered assets.
+    archive_path="$1"
+    sum_url="$2"
+    sum_file="${archive_path}.sha256"
+    if ! download "$sum_url" "$sum_file" >/dev/null 2>&1; then
+        echo "→ warning: no checksum published for this asset; skipping verification" >&2
+        return 0
+    fi
+    expected="$(awk '{print $1}' "$sum_file" | tr 'A-Z' 'a-z' | tr -d '\r\n')"
+    actual="$(sha256_of "$archive_path" | tr 'A-Z' 'a-z')"
+    if [ -z "$actual" ]; then
+        echo "→ warning: no sha256 tool (sha256sum/shasum) found; skipping verification" >&2
+        return 0
+    fi
+    if [ "$expected" != "$actual" ]; then
+        err "checksum mismatch for $(basename "$archive_path"): expected ${expected}, got ${actual}"
+    fi
+    echo "→ checksum verified"
+}
+
 main() {
     target="$(detect_target)"
     version="$(resolve_latest)"
@@ -96,6 +130,7 @@ main() {
 
     echo "→ downloading dif ${version} for ${target}"
     download "$url" "${tmp}/${archive}"
+    verify_checksum "${tmp}/${archive}" "${url}.sha256"
 
     echo "→ extracting"
     tar -xzf "${tmp}/${archive}" -C "$tmp"

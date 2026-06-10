@@ -1,7 +1,7 @@
 {
-  "name": "@dif.sh/sdk",
+  "name": "@dif.sh/svelte",
   "version": "0.4.0",
-  "description": "Client SDK for dif.sh — experiment assignment + metric tracking.",
+  "description": "Svelte 5 adapter for @dif.sh/sdk — SSR-safe assignment, a server load helper, and exposure stores.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,8 +22,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "gen:version": "node scripts/gen-version.mjs",
-    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "test": "node --test --import tsx src/*.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm test && npm run build"
@@ -37,11 +36,17 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dif-sh/dif.git",
-    "directory": "cli/packages/sdk"
+    "directory": "cli/packages/svelte"
   },
-  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "metrics", "dif.sh"],
+  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "svelte", "sveltekit", "dif.sh"],
+  "peerDependencies": {
+    "@dif.sh/sdk": "^0.4.0",
+    "svelte": "^5.0.0"
+  },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "tsx": "^4.7.0"
+    "@dif.sh/sdk": "file:../sdk",
+    "svelte": "^5.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
   }
 }

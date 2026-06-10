@@ -25,6 +25,32 @@ env:
 
 jobs:
   # -------------------------------------------------------------------------
+  # Gate: never publish a red commit. Runs the Rust + SDK suites (incl. the
+  # cross-language bucket fixture) once before anything is built or published.
+  # build-binary depends on this, so a failure here aborts the whole release.
+  # -------------------------------------------------------------------------
+  verify:
+    name: verify (tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: rust tests
+        working-directory: cli
+        run: cargo test --workspace
+      - name: sdk tests
+        working-directory: cli/packages/sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+  # -------------------------------------------------------------------------
   # Build the Rust binary for each target. cargo-dist orchestrates this in
   # production; the matrix below is a hand-rolled fallback so the workflow
   # works even before `cargo dist init` has been run.
@@ -32,6 +58,7 @@ jobs:
   build-binary:
     name: build dif (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +106,18 @@ jobs:
       - name: install musl tools
         if: contains(matrix.target, 'linux-musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # Belt-and-suspenders: stamp the workspace version from the tag so the
+      # binary's --version matches the release even if the tag was cut without
+      # running scripts/prepare-release.sh. (Root cause of the 0.4.1-wrapper /
+      # 0.4.0-binary mismatch: the binary bakes in CARGO_PKG_VERSION at build.)
+      - name: stamp version from tag
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          v=${REF#v}
+          VERSION="$v" perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/m' Cargo.toml
+          VERSION="$v" perl -0pi -e 's/(path = "crates\/dif-core", version = ")[^"]*"/$1$ENV{VERSION}"/' Cargo.toml
 
       - name: build
         run: cargo build --release -p dif-cli --target ${{ matrix.target }}
@@ -134,10 +173,11 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   # -------------------------------------------------------------------------
-  # Publish @dif.sh/cli (the wrapper), @dif.sh/sdk, and @dif.sh/react to npm.
-  # The wrapper's postinstall will download the matching binary from the
-  # release we just cut. react is published last so that the just-published
-  # sdk version exists in the registry for downstream consumers.
+  # Publish @dif.sh/cli (the wrapper), @dif.sh/sdk, @dif.sh/react, and
+  # @dif.sh/svelte to npm. The wrapper's postinstall will download the matching
+  # binary from the release we just cut. The adapters (react, svelte) are
+  # published after the sdk so the just-published sdk version exists in the
+  # registry for their peerDependency.
   # -------------------------------------------------------------------------
   npm-publish:
     name: npm publish
@@ -189,6 +229,22 @@ jobs:
           npm run build
       - name: publish react
         working-directory: cli/packages/react
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: sync version (svelte)
+        working-directory: cli/packages/svelte
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: build svelte
+        working-directory: cli/packages/svelte
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: publish svelte
+        working-directory: cli/packages/svelte
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

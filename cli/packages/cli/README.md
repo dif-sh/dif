@@ -16,7 +16,7 @@ If you'd rather skip the wrapper entirely, install the binary directly:
 
 ```sh
 # macOS / Linux
-curl https://dif.sh/install.sh | sh
+curl -fsSL https://dif.sh/install.sh | sh
 
 # macOS via Homebrew
 brew install dif-sh/tap/dif
