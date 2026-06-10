@@ -10,8 +10,13 @@
 # Usage:
 #   scripts/prepare-release.sh 0.4.2
 #   git diff                              # review
-#   git commit -am "release: v0.4.2"
-#   git tag v0.4.2 && git push --follow-tags
+#   git commit -am "release: v0.4.2" && git push
+#   git tag -a v0.4.2 -m "v0.4.2" && git push origin v0.4.2
+#
+# Note: the tag must be ANNOTATED (-a) and pushed EXPLICITLY. A lightweight
+# `git tag v0.4.2` combined with `git push --follow-tags` does NOT push the tag
+# (--follow-tags only pushes annotated tags), so the release workflow — which
+# triggers on the tag push — never fires.
 set -euo pipefail
 
 version="${1:?usage: prepare-release.sh <version>  (e.g. 0.4.2)}"
@@ -46,4 +51,8 @@ node "$root/cli/packages/sdk/scripts/gen-version.mjs"
 echo
 echo "Done. Review with 'git diff', then:"
 echo "  git commit -am 'release: v$version'"
-echo "  git tag v$version && git push --follow-tags"
+echo "  git push"
+echo "  git tag -a v$version -m 'v$version' && git push origin v$version"
+echo
+echo "Use an ANNOTATED tag (-a) and push it EXPLICITLY: 'git push --follow-tags'"
+echo "silently skips lightweight tags, so the release workflow never fires."
