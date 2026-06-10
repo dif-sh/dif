@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { DifServer } from "./server.js";
+import { SOURCE } from "./version.js";
 
 interface FetchCall {
   url: string;
@@ -59,7 +60,7 @@ describe("DifServer.track", () => {
     assert.equal(body.user_id, "u-1");
     assert.equal(body.value, 49);
     assert.equal(body.currency, "USD");
-    assert.equal(body.source, "@dif.sh/sdk@0.4.0");
+    assert.equal(body.source, SOURCE);
   });
 
   it("warns on non-2xx without throwing", async () => {
