@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/svelte",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Svelte 5 adapter for @dif.sh/sdk — SSR-safe assignment, a server load helper, and exposure stores.",
   "license": "MIT",
   "type": "module",
@@ -38,7 +38,15 @@
     "url": "git+https://github.com/dif-sh/dif.git",
     "directory": "cli/packages/svelte"
   },
-  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "svelte", "sveltekit", "dif.sh"],
+  "keywords": [
+    "experimentation",
+    "ab-testing",
+    "feature-flags",
+    "analytics",
+    "svelte",
+    "sveltekit",
+    "dif.sh"
+  ],
   "peerDependencies": {
     "@dif.sh/sdk": "^0.4.0",
     "svelte": "^5.0.0"

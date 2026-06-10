@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/sdk",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Client SDK for dif.sh — experiment assignment + metric tracking.",
   "license": "MIT",
   "type": "module",
@@ -39,7 +39,14 @@
     "url": "git+https://github.com/dif-sh/dif.git",
     "directory": "cli/packages/sdk"
   },
-  "keywords": ["experimentation", "ab-testing", "feature-flags", "analytics", "metrics", "dif.sh"],
+  "keywords": [
+    "experimentation",
+    "ab-testing",
+    "feature-flags",
+    "analytics",
+    "metrics",
+    "dif.sh"
+  ],
   "devDependencies": {
     "typescript": "^5.4.0",
     "tsx": "^4.7.0"
