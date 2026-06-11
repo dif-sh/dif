@@ -17,6 +17,8 @@ export interface ResolvedState {
   attributes: () => AttributeBag;
   sinks: Sink[];
   enabled: boolean;
+  /** Active QA/preview forces (experiment id → variant). */
+  overrides: Record<string, string>;
 }
 
 let state: ResolvedState | null = null;
@@ -52,11 +54,26 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     attributes: merged.attributes ?? (() => ({})),
     sinks,
     enabled: merged.enabled !== false,
+    overrides: merged.overrides ?? {},
   };
 }
 
 export function getState(): ResolvedState | null {
   return state;
+}
+
+/**
+ * Replace the active QA/preview overrides (experiment id → forced variant).
+ * Pass `{}` to clear. No-op before `dif.init` runs — adapters init first, then
+ * reconcile overrides from the URL/cookie.
+ */
+export function setOverrides(overrides: Record<string, string>): void {
+  if (state) state.overrides = overrides;
+}
+
+/** The active QA/preview overrides, or an empty map. */
+export function getOverrides(): Record<string, string> {
+  return state?.overrides ?? {};
 }
 
 /** Test-only. */

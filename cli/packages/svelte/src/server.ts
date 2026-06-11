@@ -5,10 +5,17 @@
 // server with the SDK's pure `assign()` (no exposure firing, no shared init
 // singleton) and returns a serializable blob for the client.
 
-import { assign, registered, type AttributeBag } from "@dif.sh/sdk";
+import {
+  assign,
+  registered,
+  parseOverrides,
+  serializeOverrides,
+  type AttributeBag,
+} from "@dif.sh/sdk";
 import type { DifData, SerializedAssignment } from "./context.js";
 
 const COOKIE = "dif_uid";
+const OVERRIDE_COOKIE = "_dif";
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
 /** Structural subset of SvelteKit's `RequestEvent.cookies` we use. Declared
@@ -32,10 +39,13 @@ export interface DifHeaders {
   get(name: string): string | null;
 }
 
-/** The bits of SvelteKit's `RequestEvent` that {@link difLoad} needs. */
+/** The bits of SvelteKit's `RequestEvent` that {@link difLoad} needs. `url` is
+ *  optional only so older callers/tests keep compiling — SvelteKit always
+ *  provides it, and it's required to honor `?_dif=` preview links server-side. */
 export interface DifRequestEventLike {
   cookies: DifCookies;
   request: { headers: DifHeaders };
+  url?: { searchParams: { get(name: string): string | null } };
 }
 
 export interface DifLoadOptions {
@@ -51,6 +61,8 @@ export interface DifLoadOptions {
   sameSite?: "lax" | "strict" | "none";
   /** Cookie `Secure` flag (default `true`). */
   secure?: boolean;
+  /** Honor `?_dif=` / `_dif`-cookie QA forces. Default `true`; set `false` to gate by env. */
+  allowOverrides?: boolean;
 }
 
 /**
@@ -91,17 +103,43 @@ export function difLoad(event: DifRequestEventLike, opts: DifLoadOptions = {}): 
     ...(opts.attributes ?? {}),
   };
 
+  const overrides = opts.allowOverrides === false ? {} : resolveOverrides(event);
+
   const assignments: Record<string, SerializedAssignment> = {};
   if (opts.enabled !== false) {
     for (const spec of registered()) {
-      const a = assign(spec.id, { userId: difUid, attributes });
+      const a = assign(spec.id, { userId: difUid, attributes, overrides });
       if (a) {
         assignments[spec.id] = { variant: a.variant, bucket: a.bucket, exposed: a.exposed };
       }
     }
   }
 
-  return { difUid, assignments, attributes };
+  return { difUid, assignments, attributes, overrides };
+}
+
+/**
+ * Reconcile QA/preview forces from the `?_dif=` URL param (which wins) or the
+ * persisted `_dif` cookie, persisting the active set to a **session** cookie
+ * (no maxAge) so it survives navigation but clears on tab close. `?_dif=off`
+ * clears it.
+ */
+function resolveOverrides(event: DifRequestEventLike): Record<string, string> {
+  const param = event.url?.searchParams.get(OVERRIDE_COOKIE) ?? null;
+  if (param !== null) {
+    const parsed = parseOverrides(param);
+    if (parsed === null) {
+      event.cookies.set(OVERRIDE_COOKIE, "", { path: "/", maxAge: 0, sameSite: "lax", httpOnly: false });
+      return {};
+    }
+    event.cookies.set(OVERRIDE_COOKIE, serializeOverrides(parsed), {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: false,
+    });
+    return parsed;
+  }
+  return parseOverrides(event.cookies.get(OVERRIDE_COOKIE)) ?? {};
 }
 
 /**

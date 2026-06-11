@@ -135,3 +135,62 @@ describe("resolve refactor — backward compatible dif()", () => {
     assert.equal(value, "c");
   });
 });
+
+describe("overrides / forced assignment", () => {
+  it("assign() forces a valid variant with exposed:false/forced:true and no fetch", () => {
+    register("a");
+    const r = assign("a", { userId: "u1", attributes: {}, overrides: { a: "variant_a" } });
+    assert.deepEqual(r, { variant: "variant_a", bucket: null, exposed: false, forced: true });
+    assert.equal(fetchCalls, 0);
+  });
+
+  it("a force outranks an audience miss", () => {
+    register("a", (attr) => attr.locale === "en-US");
+    const r = assign("a", {
+      userId: "u1",
+      attributes: { locale: "fr-FR" },
+      overrides: { a: "variant_a" },
+    });
+    assert.equal(r!.variant, "variant_a");
+    assert.equal(r!.forced, true);
+  });
+
+  it("ignores a force for a variant that isn't declared", () => {
+    register("a");
+    const r = assign("a", { userId: "u1", attributes: {}, overrides: { a: "ghost" } });
+    assert.ok(r);
+    assert.notEqual(r.forced, true);
+    assert.equal(r.exposed, true); // fell through to normal bucketing
+  });
+
+  it("dif() honors state overrides, fires NO exposure, and leaves dedupe clean", async () => {
+    register("a");
+    register("b");
+    let count = 0;
+    const sink: Sink = { kind: "spy", emit: () => { count++; } };
+    dif.init({ userId: () => "u-1", sink, overrides: { a: "variant_a" } });
+
+    // Forced experiment → forced value, no exposure.
+    const forced = dif("a", { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+    assert.equal(forced, "v");
+    assert.equal(count, 0, "forced assignment must not fire an exposure");
+
+    // A non-forced experiment still buckets + fires normally (dedupe untouched).
+    dif("b", { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+    assert.equal(count, 1, "non-forced experiment still fires");
+  });
+
+  it("dif.setOverrides / getOverrides update state at runtime", () => {
+    register("a");
+    dif.init({ userId: () => "u-1", sink: [] });
+    assert.deepEqual(dif.getOverrides(), {});
+    dif.setOverrides({ a: "variant_a" });
+    assert.deepEqual(dif.getOverrides(), { a: "variant_a" });
+    const v = dif("a", { control: () => "c", variant_a: () => "v" })();
+    assert.equal(v, "v");
+    dif.setOverrides({});
+    assert.deepEqual(dif.getOverrides(), {});
+  });
+});

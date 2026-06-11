@@ -15,16 +15,28 @@ interface SetCall {
   opts: Record<string, unknown>;
 }
 
-function fakeEvent(opts: { cookie?: string; headers?: Record<string, string> } = {}): {
+function fakeEvent(
+  opts: {
+    cookie?: string;
+    headers?: Record<string, string>;
+    /** Value of the `?_dif=` URL param. */
+    dif?: string;
+    /** Pre-existing `_dif` cookie value. */
+    difCookie?: string;
+  } = {},
+): {
   event: DifRequestEventLike;
   setCalls: SetCall[];
 } {
   const jar = new Map<string, string>();
   if (opts.cookie) jar.set("dif_uid", opts.cookie);
+  if (opts.difCookie) jar.set("_dif", opts.difCookie);
   const setCalls: SetCall[] = [];
   const headers = new Map(
     Object.entries(opts.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
   );
+  const params = new Map<string, string>();
+  if (opts.dif !== undefined) params.set("_dif", opts.dif);
   const event: DifRequestEventLike = {
     cookies: {
       get: (n) => jar.get(n),
@@ -34,6 +46,7 @@ function fakeEvent(opts: { cookie?: string; headers?: Record<string, string> } =
       },
     },
     request: { headers: { get: (n) => headers.get(n.toLowerCase()) ?? null } },
+    url: { searchParams: { get: (n) => params.get(n) ?? null } },
   };
   return { event, setCalls };
 }
@@ -135,5 +148,51 @@ describe("difLoad", () => {
     const data = difLoad(fakeEvent({ cookie: "u-1" }).event, { enabled: false });
     assert.deepEqual(data.assignments, {});
     assert.ok(data.difUid);
+  });
+});
+
+describe("difLoad overrides", () => {
+  it("honors ?_dif: forces the variant (exposed:false), persists a session cookie", () => {
+    register("a");
+    register("b");
+    const { event, setCalls } = fakeEvent({ cookie: "u-1", dif: "a=variant_a" });
+    const data = difLoad(event);
+
+    assert.deepEqual(data.overrides, { a: "variant_a" });
+    assert.deepEqual(data.assignments.a, { variant: "variant_a", bucket: null, exposed: false });
+    // A non-forced experiment still buckets normally (exposed:true).
+    assert.equal(data.assignments.b!.exposed, true);
+
+    const cookie = setCalls.find((s) => s.name === "_dif");
+    assert.ok(cookie, "expected a _dif cookie to be set");
+    assert.equal(cookie!.value, "a=variant_a");
+    assert.equal(cookie!.opts.maxAge, undefined, "should be a session cookie");
+  });
+
+  it("?_dif=off clears the cookie and forces nothing", () => {
+    register("a");
+    const { event, setCalls } = fakeEvent({ cookie: "u-1", difCookie: "a=variant_a", dif: "off" });
+    const data = difLoad(event);
+    assert.deepEqual(data.overrides, {});
+    assert.notEqual(data.assignments.a!.exposed, false); // back to normal bucketing
+    const cleared = setCalls.find((s) => s.name === "_dif");
+    assert.equal(cleared!.opts.maxAge, 0, "off should expire the cookie");
+  });
+
+  it("with no ?_dif, resolves forces from the persisted _dif cookie", () => {
+    register("a");
+    const { event } = fakeEvent({ cookie: "u-1", difCookie: "a=variant_a" });
+    const data = difLoad(event);
+    assert.deepEqual(data.overrides, { a: "variant_a" });
+    assert.equal(data.assignments.a!.variant, "variant_a");
+    assert.equal(data.assignments.a!.exposed, false);
+  });
+
+  it("allowOverrides:false ignores ?_dif entirely", () => {
+    register("a");
+    const { event } = fakeEvent({ cookie: "u-1", dif: "a=variant_a" });
+    const data = difLoad(event, { allowOverrides: false });
+    assert.deepEqual(data.overrides, {});
+    assert.equal(data.assignments.a!.exposed, true);
   });
 });

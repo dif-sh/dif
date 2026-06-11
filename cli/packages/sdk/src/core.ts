@@ -47,6 +47,9 @@ export interface AssignContext {
   userId: string | null;
   /** Resolved audience attribute bag for this request. */
   attributes: AttributeBag;
+  /** QA/preview forces (experiment id → variant). A match returns that variant
+   *  with `forced:true` and `exposed:false` — it never fires an exposure. */
+  overrides?: Record<string, string>;
 }
 
 /** Outcome of a pure assignment. */
@@ -54,10 +57,12 @@ export interface Assignment {
   /** Chosen variant id — always a member of the spec's declared variants. */
   variant: string;
   /** Bucket `0..9999`, or `null` when the assignment fell through (no user /
-   *  audience miss). */
+   *  audience miss) or was forced. */
   bucket: number | null;
   /** True when the user was bucketed into a real variant and an exposure is owed. */
   exposed: boolean;
+  /** True when this variant came from a QA/preview override. */
+  forced?: boolean;
 }
 
 /**
@@ -72,6 +77,14 @@ export interface Assignment {
 export function assign(id: string, ctx: AssignContext): Assignment | null {
   const spec = registry.get(id);
   if (!spec) return null;
+
+  // QA/preview force takes precedence over user/audience/exclusion/kill-switch —
+  // but only for a real declared variant. A forced assignment never fires an
+  // exposure (bucket null, exposed false), so it can't pollute results.
+  const forced = ctx.overrides?.[id];
+  if (forced !== undefined && spec.variants.includes(forced)) {
+    return { variant: forced, bucket: null, exposed: false, forced: true };
+  }
 
   const control = spec.variants[0]!;
   if (ctx.userId === null) {
@@ -150,7 +163,11 @@ function resolve<V extends string, R>(id: string, branches: Record<V, () => R>):
   // Delegate the decision to the pure assigner, then own the side effect.
   // `assign` is non-null here because `spec` exists.
   const userId = state.userId();
-  const result = assign(id, { userId, attributes: state.attributes() })!;
+  const result = assign(id, {
+    userId,
+    attributes: state.attributes(),
+    overrides: state.overrides,
+  })!;
   if (result.exposed && result.bucket !== null && userId !== null) {
     fireExposure(spec, result.variant, userId, result.bucket, state.sinks);
   }

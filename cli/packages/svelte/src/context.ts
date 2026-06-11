@@ -20,6 +20,8 @@ export interface DifData {
   assignments: Record<string, SerializedAssignment>;
   /** Attributes the server resolved from request headers, reused by the client. */
   attributes: AttributeBag;
+  /** Active QA/preview forces (id → variant), from `?_dif=` / the `_dif` cookie. */
+  overrides: Record<string, string>;
 }
 
 /** Svelte context key under which the root layout stashes {@link DifData}. */

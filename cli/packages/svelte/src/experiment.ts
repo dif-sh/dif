@@ -7,7 +7,7 @@
 
 import { readable, type Readable } from "svelte/store";
 import { getContext } from "svelte";
-import { assign, recordExposure } from "@dif.sh/sdk";
+import { assign, recordExposure, getOverrides } from "@dif.sh/sdk";
 import { DIF_CONTEXT_KEY, type DifData } from "./context.js";
 
 export interface ExperimentValue<R> {
@@ -71,10 +71,15 @@ function decide(id: string, data: DifData | undefined, fallback: string): Decisi
     return { variant: server.variant, bucket: server.bucket, exposed: server.exposed };
   }
   // No server assignment (ISR-cached page, or id not registered server-side):
-  // assign on the client using the cookie-stable user id.
+  // assign on the client using the cookie-stable user id. Pass the active QA
+  // forces so a `?_dif=` preview wins here too (and fires no exposure).
   const userId =
     typeof document !== "undefined" ? (data?.difUid ?? readCookie("dif_uid")) : null;
-  const a = assign(id, { userId, attributes: data?.attributes ?? {} });
+  const a = assign(id, {
+    userId,
+    attributes: data?.attributes ?? {},
+    overrides: getOverrides(),
+  });
   if (!a) return { variant: fallback, bucket: null, exposed: false };
   return { variant: a.variant, bucket: a.bucket, exposed: a.exposed };
 }

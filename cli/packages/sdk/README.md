@@ -163,4 +163,22 @@ useEffect(() => track("completed_checkout"), []);
 - Buffer offline. If the request fails, the event is gone.
 - Compute lift, p-values, or any analytics. That's the cloud's job.
 
+## Preview & QA forcing
+
+The SDK honors a `?_dif=` URL param / `_dif` cookie so QA, designers, and PMs can
+force a variant by clicking a link — a forced assignment **never fires an
+exposure**. The framework adapters (`@dif.sh/svelte`, `@dif.sh/react`) wire this
+up automatically; in a vanilla app, call `syncOverrides()` once after `dif.init`:
+
+```ts
+import { dif, syncOverrides, mountDifPreview } from "@dif.sh/sdk";
+dif.init({ /* … */ });
+syncOverrides();   // reads ?_dif / the _dif cookie → session-scoped forces
+mountDifPreview(); // optional badge: active forces + a one-click clear
+```
+
+Link form (matches `dif qa --preview-url`): `?_dif=exp=variant,exp2=variant2`;
+`?_dif=off` clears. Also `dif.setOverrides({ exp: "variant" })` /
+`dif.getOverrides()`. Pass `syncOverrides({ allow: false })` to gate by env.
+
 See [../../PLAN.md](../../PLAN.md) for the architectural rationale.

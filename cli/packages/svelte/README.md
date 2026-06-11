@@ -69,11 +69,35 @@ client from the `dif_uid` cookie — the server renders the control branch and t
 client swaps once after hydration. Don't server-assign on an ISR route unless you
 also vary the cache key on the headers `difLoad` reads.
 
+## Preview & QA forcing
+
+Anyone can force a variant by opening a `?_dif=` link — no code, no devtools.
+`initDif` reads it automatically (both `difLoad` server-side and the client):
+
+```
+# force one experiment (persists for the tab session, then auto-clears)
+https://staging.niftic.com/insights/foo?_dif=insights-cta-copy=variant_a
+# multiple at once
+…?_dif=insights-cta-copy=variant_a,home-hero=control
+# clear
+…?_dif=off
+# generate the exact link from the CLI
+npx dif qa --force insights-cta-copy=variant_a --preview-url https://staging.niftic.com/insights/foo
+```
+
+A small **preview badge** appears whenever a force is active (showing the
+experiment → variant and a one-click *clear*). **A forced assignment never fires
+an exposure**, so QA can't pollute results. The force is stored in a session
+`_dif` cookie (survives navigation, clears on tab close) and the param is
+stripped from the address bar. Works in production too — pass
+`allowOverrides: false` to `initDif`/`difLoad` to disable per-env, or
+`preview: false` to hide the badge.
+
 ## API
 
 - `difLoad(event, opts?)` → `DifData` — server load helper (`@dif.sh/svelte/server`).
 - `attributesFromHeaders(headers)` → `AttributeBag` — default header mapping; override via `opts.deriveAttributes`.
-- `initDif(opts)` — client init; call once in the root layout.
+- `initDif(opts)` — client init; call once in the root layout. `opts.allowOverrides` / `opts.preview` (default true).
 - `experiment(id, branches)` → `Readable<{ value, variant }>`.
 - `track(metric, opts?)` — fire a metric event.
 - `DIF_CONTEXT_KEY` — the context key for `DifData`.
