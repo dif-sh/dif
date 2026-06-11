@@ -6,7 +6,7 @@
 
 import { difCall, __register, __resetRegistry } from "./core.js";
 import { __resetExposures } from "./exposure.js";
-import { setState, resetState, type DifInitConfig } from "./config.js";
+import { setState, resetState, setOverrides, getOverrides, type DifInitConfig } from "./config.js";
 import { track } from "./track.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
@@ -17,6 +17,10 @@ export interface DifFn {
   init(config: DifInitConfig): void;
   /** Fire a metric event. */
   track(metric: string, opts?: TrackProps): void;
+  /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
+  setOverrides(overrides: Record<string, string>): void;
+  /** The active QA/preview forces. */
+  getOverrides(): Record<string, string>;
   /**
    * Legacy alias for {@link DifFn.init}. Accepts the older config shape.
    * @deprecated Use `dif.init(...)`.
@@ -35,6 +39,8 @@ function configure(config: DifConfig | DifInitConfig): void {
 export const dif: DifFn = Object.assign(difCall, {
   init,
   track,
+  setOverrides,
+  getOverrides,
   configure,
 });
 
@@ -55,6 +61,17 @@ export function __reset(): void {
 export { assign, registered, getSpec, recordExposure } from "./core.js";
 export type { AssignContext, Assignment } from "./core.js";
 export { bucket, selectVariant, saltFor, BUCKET_NAMESPACE } from "./bucket.js";
+
+// QA / preview overrides — `?_dif=` URL param + `_dif` cookie support.
+export { setOverrides, getOverrides } from "./config.js";
+export {
+  parseOverrides,
+  serializeOverrides,
+  syncOverrides,
+  clearOverrides,
+  mountDifPreview,
+} from "./overrides.js";
+export type { SyncOverridesOptions, MountPreviewOptions } from "./overrides.js";
 
 // Re-exports — types and sinks.
 export type {

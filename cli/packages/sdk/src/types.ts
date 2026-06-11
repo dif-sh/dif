@@ -48,6 +48,9 @@ export interface DifInitConfig {
   sink?: Sink | Sink[];
   /** Global kill switch. Defaults to true. */
   enabled?: boolean;
+  /** QA/preview forces (experiment id → variant). Usually populated from the
+   *  `?_dif=` URL param / `_dif` cookie rather than set by hand. */
+  overrides?: Record<string, string>;
 }
 
 /** Anything that can receive an exposure event. */
