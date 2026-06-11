@@ -198,6 +198,11 @@ fn print_trace(user_id: &str, resolution: &exclusion::Resolution, preview_url: O
     }
     if let Some(url) = preview_url {
         println!("{}: {}", style("preview").dim(), url);
+        println!(
+            "          {}",
+            style("open in the app to force these variants — fires no exposure; ?_dif=off clears")
+                .dim(),
+        );
     }
 }
 

@@ -71,6 +71,15 @@ export function CheckoutCTA() {
 You can also keep using the bare import directly in non-component code —
 both paths read the same module-level state set by `<DifProvider>`.
 
+## Preview & QA forcing
+
+`<DifProvider>` reads the `?_dif=` URL param / `_dif` cookie on mount, so anyone
+can force a variant by opening a link — `?_dif=checkout-cta-v2=variant_a`
+(`?_dif=off` clears). A forced assignment **never fires an exposure**, and a
+small preview badge shows the active forces. Disable per-env with
+`allowOverrides={false}`, or hide the badge with `preview={false}`. Generate the
+link with `npx dif qa --force <exp>=<variant> --preview-url <url>`.
+
 ## What this package does, what it doesn't
 
 **Does:**
