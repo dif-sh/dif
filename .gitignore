@@ -15,3 +15,5 @@ cli/packages/cli/bin/dif.exe
 
 # Build outputs
 dist/build/
+
+.DS_Store

@@ -1,11 +1,11 @@
 # dif.sh
 
-**Experimentation-as-code for teams whose primary developer is now an AI agent.**
+**Experiments belong in the repo.**
 
-Experiments live in your repo as plain `.md` files. Claude Code, Codex, and
-Cursor read and write them natively. A build step compiles guardrails —
-exclusion groups, decision logic, type-safe variant refs — so the runtime
-stays small and the source of truth stays in git.
+One `.md` file per experiment, in the repo with the code. Every flag, A/B
+test, holdout, and rollout is versioned in git and reviewable in a PR. Your
+coding agent reads `dif/context.json` on session start, so prior learning
+travels with the work.
 
 ## Install
 
@@ -20,29 +20,90 @@ brew install dif-sh/tap/dif
 npm install -g @dif.sh/cli
 ```
 
-Then, in any repo:
+## Quickstart
+
+From an empty repo to a tested experiment rendering in your app.
+
+**1. `dif init`** — scaffold the workspace. One `dif/` directory holds everything.
 
 ```sh
-dif init                                 # scaffolds the convention
-dif new checkout-cta-v2 --surface checkout
-# ...edit dif/experiments/active/checkout-cta-v2.md...
-dif validate
-dif build                                # → dif/generated/client.ts
-dif qa --user u_8131                     # trace a user's assignment chain
-dif conclude checkout-cta-v2 --decision "Shipped. +2.1%."
+$ dif init
+✓ wrote dif/config.yaml
+✓ created dif/experiments/{active,concluded}/
+✓ created dif/surfaces/home.md
+✓ created dif/audiences/{locale,device_type}.ts
+✓ added dif guidance to CLAUDE.md, AGENTS.md
+```
+
+**2. `dif new`** — draft an experiment. Owner comes from `git config user.email`.
+
+```sh
+$ dif new checkout-cta-v2 --surface home
+→ reading dif/surfaces/home.md
+  found 0 prior learnings
+→ drafted dif/experiments/active/checkout-cta-v2.md
+  status: draft, owner: ada@acme.dev
+```
+
+Open the file, fill in the hypothesis, set `status: active`.
+
+**3. `dif validate`** — every check in one pass. Errors include the source location.
+
+```sh
+$ dif validate
+✓ all checks passed
+```
+
+**4. `dif build`** — compile the runtime artifacts your app imports and the
+context file your agent reads.
+
+```sh
+$ dif build
+✓ validated 1 active experiment
+✓ client    → dif/generated/client.ts
+✓ audiences → dif/generated/audiences.ts
+✓ context   → dif/context.json
+```
+
+**5. Render it** — install the SDK, import the generated client once at boot,
+and call `dif()` at the render site. Full reference on the
+[SDK page](https://dif.sh/docs/sdk/).
+
+```sh
+$ npm install @dif.sh/sdk
+```
+
+```ts
+import "./dif/generated/client";
+import { attributes } from "./dif/generated/audiences";
+import { dif } from "@dif.sh/sdk";
+
+dif.init({
+  userId: () => currentUser?.id ?? null,
+  attributes: () => attributes(),
+});
+
+const cta = dif("checkout-cta-v2", {
+  control:   () => "Place order",
+  variant_a: () => "Get it today",
+});
+
+button.textContent = cta();
 ```
 
 ## Repo layout
 
 ```
 README.md                # this file
-RELEASE.md               # release runbook (initial setup + per-version steps)
+PUBLIC_DOCS.md           # full reference docs (mirrors dif.sh/docs)
 LICENSE                  # MIT
 cli/                     # the CLI — Cargo workspace + npm packages
   crates/dif-core/       # parser, validator, resolver, codegen (Rust library)
   crates/dif-cli/        # the `dif` binary
   packages/cli/          # @dif.sh/cli — Node wrapper for `npm install -g`
-  packages/sdk/       # @dif.sh/sdk — runtime SDK (TypeScript)
+  packages/sdk/          # @dif.sh/sdk — runtime SDK (TypeScript)
+  packages/react/        # @dif.sh/react — provider + useDif hook
+  packages/svelte/       # @dif.sh/svelte — Svelte 5 / SvelteKit adapter
 dist/                    # install.sh + Homebrew tap template
 .github/workflows/       # CI + release
 ```
@@ -75,31 +136,22 @@ both sides.
 cd cli
 cargo test --workspace            # Rust tests (parser, validator, codegen, etc.)
 
-cd packages/client
+cd packages/sdk
 npm install
 npm test                          # SHA-256 vectors + the bucket fixture
 ```
 
 CI runs both on every PR. The release workflow at
 [`.github/workflows/release.yml`](.github/workflows/release.yml) cuts a
-GitHub release on every `v*` tag push and publishes both npm packages.
+GitHub release on every `v*` tag push and publishes the npm packages.
 
-## Status
+## dif.sh Cloud
 
-v0.4.x — active development. Every PLAN verb (`init`, `new`, `validate`,
-`build`, `qa`, `conclude`) is implemented and tested, the cross-language
-bucketing contract holds, and all three npm packages (`@dif.sh/sdk`,
-`@dif.sh/cli`, `@dif.sh/react`) plus the Rust binary publish on every `v*`
-tag.
-
-**dif.sh Cloud** — the hosted control plane (event ingest, metrics catalog,
-statistical analysis, and PR write-back) is available at
-[cloud.dif.sh](https://cloud.dif.sh) and self-hostable from the
-[`dif-sh/dif-cloud`](https://github.com/dif-sh/dif-cloud) repo. Point the SDK
-at it with `dif.init({ publishableKey, apiUrl: "https://cloud.dif.sh" })`.
-
-Still on the roadmap: native in-CLI analysis (SRM, lift, NL query) and
-bandits/sequential testing.
+The hosted control plane — event ingest, metrics catalog, statistical
+analysis, and PR write-back — runs at [cloud.dif.sh](https://cloud.dif.sh) and
+is self-hostable from
+[`dif-sh/dif-cloud`](https://github.com/dif-sh/dif-cloud). Point the SDK at it
+with `dif.init({ publishableKey, apiUrl: "https://cloud.dif.sh" })`.
 
 ## License
 
