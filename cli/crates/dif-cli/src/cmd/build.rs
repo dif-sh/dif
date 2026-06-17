@@ -46,6 +46,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
 
     codegen::emit_client(&workspace, &out_dir)?;
     codegen::emit_audiences(&workspace, &out_dir)?;
+    codegen::emit_events(&workspace, &out_dir)?;
     context::emit(&workspace)?;
 
     let active_count = workspace
@@ -55,6 +56,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .count();
     let client_path = out_dir.join("client.ts");
     let audiences_path = out_dir.join("audiences.ts");
+    let events_path = out_dir.join("events.ts");
     let context_path = workspace.root.join(paths::CONTEXT_FILE);
 
     if json {
@@ -63,7 +65,9 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             "active": active_count,
             "client": client_path.display().to_string(),
             "audiences": audiences_path.display().to_string(),
+            "events": events_path.display().to_string(),
             "context": context_path.display().to_string(),
+            "warnings": report.warnings,
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
     } else {
@@ -78,9 +82,25 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             relative_to_cwd(&audiences_path).display()
         );
         println!(
+            "{check} events      → {}",
+            relative_to_cwd(&events_path).display()
+        );
+        println!(
             "{check} context     → {}",
             relative_to_cwd(&context_path).display()
         );
+        for warn in &report.warnings {
+            let mark = style("⚠").yellow().bold();
+            eprintln!(
+                "{mark} {} {}: {}",
+                style(&warn.code).dim(),
+                warn.file,
+                warn.message,
+            );
+            if let Some(help) = &warn.help {
+                eprintln!("  {} {}", style("help:").bold(), help);
+            }
+        }
     }
     Ok(ExitCode::from(0))
 }

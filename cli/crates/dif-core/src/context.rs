@@ -104,25 +104,10 @@ pub fn build_at(workspace: &Workspace, now: DateTime<Utc>, today: NaiveDate) -> 
 
 /// Project-wide conventions surfaced to the agent.
 ///
-/// For v1 these are derived from the config (e.g., `fire_at: render` → "Fire
-/// exposure at render, never at assignment."). A future change will let the
-/// customer declare arbitrary additional conventions in `dif/config.yaml`.
-fn workspace_conventions(workspace: &Workspace) -> Vec<String> {
-    let mut out = Vec::new();
-    match workspace.config.exposure.fire_at {
-        crate::config::FireAt::Render => {
-            out.push("Fire exposure at render, never at assignment.".to_string());
-        }
-        crate::config::FireAt::Assignment => {
-            // validate.rs should refuse this configuration; if we got here
-            // anyway, don't lie about the convention.
-            out.push(
-                "Exposure currently fires at assignment — this is a known correctness bug."
-                    .to_string(),
-            );
-        }
-    }
-    out
+/// For v1 this is a fixed convention; a future change will let the customer
+/// declare arbitrary additional conventions in `dif/config.yaml`.
+fn workspace_conventions(_workspace: &Workspace) -> Vec<String> {
+    vec!["Fire exposure at render, never at assignment.".to_string()]
 }
 
 /// Serialize and write the file. Lives at `<root>/dif/context.json`.
@@ -141,7 +126,7 @@ pub fn emit(workspace: &Workspace) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::{
-        config::{BucketingConfig, BuildConfig, Config, ExposureConfig, FireAt},
+        config::{BucketingConfig, BuildConfig, Config},
         parse::{parse_experiment_str, ParsedExperiment, ParsedSurface},
         spec::{Learning, Surface},
     };
@@ -156,10 +141,8 @@ mod tests {
                 id: "user_id".into(),
                 fallback: "anon_cookie".into(),
             },
-            exposure: ExposureConfig {
-                sink: "webhook".into(),
-                fire_at: FireAt::Render,
-            },
+            events: None,
+            exposure: None,
             build: BuildConfig::default(),
         }
     }

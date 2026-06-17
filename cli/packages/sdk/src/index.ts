@@ -73,13 +73,14 @@ export {
 } from "./overrides.js";
 export type { SyncOverridesOptions, MountPreviewOptions } from "./overrides.js";
 
-// Re-exports — types and sinks.
+// Re-exports — types and the built-in cloud delivery.
 export type {
   AttrValue,
   AttributeBag,
   AudienceFn,
   DifConfig,
   DifInitConfig,
+  EventsConfig,
   ExperimentSpec,
   ExposureEvent,
   MetricEvent,
@@ -87,8 +88,4 @@ export type {
   TrackProps,
   UserIdFn,
 } from "./types.js";
-export { cloudSink } from "./sinks/cloud.js";
-export { webhookSink } from "./sinks/webhook.js";
-export { segmentSink } from "./sinks/segment.js";
-export { amplitudeSink } from "./sinks/amplitude.js";
-export { mixpanelSink } from "./sinks/mixpanel.js";
+export { cloudSink, cloudTrack } from "./sinks/cloud.js";

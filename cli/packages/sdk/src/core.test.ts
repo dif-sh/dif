@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset, __register, assign, registered, getSpec } from "./index.js";
-import type { Sink, ExposureEvent, AudienceFn } from "./index.js";
+import type { ExposureEvent, AudienceFn } from "./index.js";
 
 let fetchCalls = 0;
 let originalFetch: typeof fetch;
@@ -92,8 +92,10 @@ describe("resolve refactor — backward compatible dif()", () => {
   it("fires exactly one exposure whose payload matches the returned branch", async () => {
     register("exp");
     const seen: ExposureEvent[] = [];
-    const sink: Sink = { kind: "spy", emit: (e) => seen.push(e) };
-    dif.init({ userId: () => "u-1", sink });
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: (e) => seen.push(e), track: () => {} },
+    });
 
     const value = dif("exp", { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
@@ -110,8 +112,10 @@ describe("resolve refactor — backward compatible dif()", () => {
   it("dedupes — same (id,user) fires only once across calls", async () => {
     register("exp");
     let count = 0;
-    const sink: Sink = { kind: "spy", emit: () => { count++; } };
-    dif.init({ userId: () => "u-1", sink });
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+    });
     dif("exp", { control: () => "c", variant_a: () => "v" })();
     dif("exp", { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
@@ -121,8 +125,10 @@ describe("resolve refactor — backward compatible dif()", () => {
   it("returns control and fires nothing when userId is null", async () => {
     register("exp");
     let count = 0;
-    const sink: Sink = { kind: "spy", emit: () => { count++; } };
-    dif.init({ userId: () => null, sink });
+    dif.init({
+      userId: () => null,
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+    });
     const value = dif("exp", { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
     assert.equal(value, "c", "control is the first declared branch");
@@ -130,7 +136,7 @@ describe("resolve refactor — backward compatible dif()", () => {
   });
 
   it("falls back to the first branch for an unknown id", () => {
-    dif.init({ userId: () => "u-1", sink: [] });
+    dif.init({ userId: () => "u-1" });
     const value = dif("never-registered", { control: () => "c", variant_a: () => "v" })();
     assert.equal(value, "c");
   });
@@ -167,8 +173,11 @@ describe("overrides / forced assignment", () => {
     register("a");
     register("b");
     let count = 0;
-    const sink: Sink = { kind: "spy", emit: () => { count++; } };
-    dif.init({ userId: () => "u-1", sink, overrides: { a: "variant_a" } });
+    dif.init({
+      userId: () => "u-1",
+      overrides: { a: "variant_a" },
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+    });
 
     // Forced experiment → forced value, no exposure.
     const forced = dif("a", { control: () => "c", variant_a: () => "v" })();
@@ -184,7 +193,7 @@ describe("overrides / forced assignment", () => {
 
   it("dif.setOverrides / getOverrides update state at runtime", () => {
     register("a");
-    dif.init({ userId: () => "u-1", sink: [] });
+    dif.init({ userId: () => "u-1" });
     assert.deepEqual(dif.getOverrides(), {});
     dif.setOverrides({ a: "variant_a" });
     assert.deepEqual(dif.getOverrides(), { a: "variant_a" });

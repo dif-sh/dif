@@ -14,6 +14,7 @@
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
+//! - `W003` legacy `exposure:` block (superseded by `events:`)
 
 use crate::{
     diag::{Diagnostic, Report},
@@ -37,6 +38,7 @@ pub fn run(workspace: &Workspace) -> Report {
     audience_files_paired(workspace, &mut report);
     exclusion_overlap(workspace, &mut report);
     orphan_refs(workspace, &mut report);
+    legacy_exposure_block(workspace, &mut report);
     sort_report(&mut report);
     report
 }
@@ -265,6 +267,25 @@ pub fn orphan_refs(workspace: &Workspace, report: &mut Report) {
     }
 }
 
+/// A legacy `exposure:` block in `dif/config.yaml` is no longer read — event
+/// delivery is configured by `events:` now. The old key is ignored (and the
+/// workspace defaults to cloud), but we surface a warning so the customer knows
+/// to migrate rather than wondering why their sink setting does nothing.
+pub fn legacy_exposure_block(workspace: &Workspace, report: &mut Report) {
+    if workspace.config.exposure.is_some() {
+        report.warnings.push(Diagnostic {
+            code: "W003".to_string(),
+            message: "legacy `exposure:` block is ignored; event delivery is configured by `events:` now".to_string(),
+            file: paths::CONFIG_FILE.to_string(),
+            line: 1,
+            column: 1,
+            help: Some(
+                "Replace the `exposure:` block with `events:` (`mode: cloud` or `mode: custom`). See https://dif.sh/docs/events/. Defaulting to cloud for now.".to_string(),
+            ),
+        });
+    }
+}
+
 fn simple_error(
     code: &str,
     message: String,
@@ -302,7 +323,7 @@ fn sort_report(report: &mut Report) {
 mod tests {
     use super::*;
     use crate::{
-        config::{BucketingConfig, BuildConfig, Config, ExposureConfig, FireAt},
+        config::{BucketingConfig, BuildConfig, Config},
         parse::{parse_experiment_str, ParsedSurface},
         spec::Surface,
     };
@@ -317,10 +338,8 @@ mod tests {
                 id: "user_id".into(),
                 fallback: "anon_cookie".into(),
             },
-            exposure: ExposureConfig {
-                sink: "webhook".into(),
-                fire_at: FireAt::Render,
-            },
+            events: None,
+            exposure: None,
             build: BuildConfig::default(),
         }
     }
@@ -697,5 +716,35 @@ created: 2026-01-02";
         let report = run(&ws);
         assert!(!report.errors.iter().any(|d| d.code == "E008"));
         assert!(!report.warnings.iter().any(|d| d.code == "W002"));
+    }
+
+    #[test]
+    fn legacy_exposure_block_warns() {
+        let mut config = empty_config();
+        config.exposure = Some(serde_yaml::Value::Null);
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        let report = run(&ws);
+        let w = report
+            .warnings
+            .iter()
+            .find(|d| d.code == "W003")
+            .expect("W003");
+        assert!(w.message.contains("exposure"));
+        assert!(w.help.as_deref().unwrap_or("").contains("events"));
+    }
+
+    #[test]
+    fn no_legacy_exposure_no_warning() {
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        let report = run(&ws);
+        assert!(!report.warnings.iter().any(|d| d.code == "W003"));
     }
 }

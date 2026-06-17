@@ -1,8 +1,4 @@
-// Public re-exports of bundled sinks. Customers can also implement their own
-// — anything matching the `Sink` interface.
+// Built-in cloud delivery. Custom delivery doesn't go through a sink module —
+// the user writes `dif/events/{exposure,track}.ts` directly.
 
-export { cloudSink } from "./cloud.js";
-export { webhookSink } from "./webhook.js";
-export { segmentSink } from "./segment.js";
-export { amplitudeSink } from "./amplitude.js";
-export { mixpanelSink } from "./mixpanel.js";
+export { cloudSink, cloudTrack } from "./cloud.js";

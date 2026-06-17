@@ -132,4 +132,33 @@ describe("dif.track", () => {
     const body = JSON.parse(fetchCalls[0]!.init.body as string);
     assert.equal(body.user_id, "override");
   });
+
+  it("custom mode calls the user's track handler instead of the cloud", () => {
+    const seen: { metric: string; value?: number; user_id: string }[] = [];
+    dif.init({
+      userId: () => "u-1",
+      events: {
+        mode: "custom",
+        exposure: () => {},
+        track: (event) => seen.push(event),
+      },
+    });
+    dif.track("revenue", { value: 49, currency: "USD" });
+    assert.equal(fetchCalls.length, 0, "custom mode must not POST to the cloud");
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.metric, "revenue");
+    assert.equal(seen[0]!.value, 49);
+    assert.equal(seen[0]!.user_id, "u-1");
+  });
+
+  it("custom mode needs no publishableKey", () => {
+    let called = 0;
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => {}, track: () => { called++; } },
+    });
+    dif.track("metric");
+    assert.equal(called, 1);
+    assert.equal(consoleDebugs.length, 0, "no 'missing key' debug in custom mode");
+  });
 });

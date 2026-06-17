@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset, __register, cloudSink } from "./index.js";
-import type { ExposureEvent, Sink } from "./index.js";
+import type { ExposureEvent } from "./index.js";
 
 interface FetchCall {
   url: string;
@@ -91,7 +91,7 @@ describe("cloudSink", () => {
   });
 });
 
-describe("dif.init auto-attaches cloudSink", () => {
+describe("dif.init exposure delivery", () => {
   function registerActive(id: string): void {
     __register({
       id,
@@ -104,7 +104,7 @@ describe("dif.init auto-attaches cloudSink", () => {
     });
   }
 
-  it("posts to /v1/exposure when publishableKey is set and no sink provided", async () => {
+  it("cloud mode (default) posts to /v1/exposure with the publishable key", async () => {
     const id = nextExpId();
     registerActive(id);
     dif.init({
@@ -127,51 +127,47 @@ describe("dif.init auto-attaches cloudSink", () => {
     assert.ok(typeof body.fired_at === "number");
   });
 
-  it("does NOT auto-attach when sink: [] is explicit (opt-out)", async () => {
+  it("cloud mode reads apiUrl from events config", async () => {
     const id = nextExpId();
     registerActive(id);
     dif.init({
       publishableKey: "dif_pk_live_aaaaaaaa",
-      apiUrl: "https://api.example.test",
       userId: () => "u-1",
-      sink: [],
+      events: { mode: "cloud", apiUrl: "https://cloud.example.test" },
     });
     dif(id, { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
-    assert.equal(
-      fetchCalls.filter((c) => c.url.endsWith("/v1/exposure")).length,
-      0,
-      "explicit sink: [] should opt out of cloud delivery",
-    );
+    const posts = fetchCalls.filter((c) => c.url.endsWith("/v1/exposure"));
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0]!.url, "https://cloud.example.test/v1/exposure");
   });
 
-  it("does NOT auto-attach when a custom sink is provided", async () => {
+  it("custom mode routes exposures to the user's handler, not the cloud", async () => {
     const id = nextExpId();
     registerActive(id);
     const spied: ExposureEvent[] = [];
-    const customSink: Sink = {
-      kind: "spy",
-      emit(event) {
-        spied.push(event);
-      },
-    };
     dif.init({
       publishableKey: "dif_pk_live_aaaaaaaa",
       apiUrl: "https://api.example.test",
       userId: () => "u-1",
-      sink: customSink,
+      events: {
+        mode: "custom",
+        exposure: (event) => spied.push(event),
+        track: () => {},
+      },
     });
     dif(id, { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
-    assert.equal(spied.length, 1, "custom sink should receive the exposure");
+    assert.equal(spied.length, 1, "custom exposure handler should receive the event");
+    assert.equal(spied[0]!.experiment, id);
     assert.equal(
       fetchCalls.filter((c) => c.url.endsWith("/v1/exposure")).length,
       0,
-      "cloud sink should not be auto-attached when a sink is supplied",
+      "cloud sink must not fire in custom mode",
     );
   });
 
-  it("does NOT auto-attach when there is no publishable key", async () => {
+  it("cloud mode without a publishable key does not post", async () => {
     const id = nextExpId();
     registerActive(id);
     dif.init({

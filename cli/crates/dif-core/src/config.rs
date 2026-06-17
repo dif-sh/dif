@@ -15,11 +15,24 @@ pub struct Config {
     pub audience_attributes: Vec<AudienceAttribute>,
     /// How users are bucketed.
     pub bucketing: BucketingConfig,
-    /// How exposure events are emitted.
-    pub exposure: ExposureConfig,
+    /// How exposure + metric events are delivered. `None` resolves to cloud.
+    #[serde(default)]
+    pub events: Option<EventsConfig>,
+    /// Legacy `exposure:` block. Retained only so `dif validate` can warn (W003)
+    /// that it's been superseded by `events:`. Deserialized but otherwise ignored.
+    #[serde(default, skip_serializing)]
+    pub exposure: Option<serde_yaml::Value>,
     /// Compile-time settings.
     #[serde(default)]
     pub build: BuildConfig,
+}
+
+impl Config {
+    /// The resolved events config. A workspace that predates the `events:` block
+    /// (or omits it) defaults to cloud delivery.
+    pub fn events(&self) -> EventsConfig {
+        self.events.clone().unwrap_or_default()
+    }
 }
 
 /// One declared audience attribute. The predicate language is closed over this set.
@@ -58,25 +71,36 @@ pub struct BucketingConfig {
     pub fallback: String,
 }
 
-/// Exposure event sink config.
+/// How events (exposures + `dif.track()` metrics) are delivered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExposureConfig {
-    /// One of: segment, amplitude, mixpanel, webhook.
-    pub sink: String,
-    /// When the event fires. `render` is the only correct value; the field exists
-    /// so we refuse to silently accept `assignment` and quietly produce bad data.
-    pub fire_at: FireAt,
+pub struct EventsConfig {
+    /// `cloud` (built-in dif.sh Cloud delivery) or `custom` (the user exports
+    /// handlers in `dif/events/{exposure,track}.ts`).
+    #[serde(default)]
+    pub mode: EventsMode,
+    /// Cloud base URL. Set by `dif init` for cloud mode; ignored for custom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
-/// Where in the lifecycle the exposure event is sent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl Default for EventsConfig {
+    fn default() -> Self {
+        Self {
+            mode: EventsMode::Cloud,
+            url: None,
+        }
+    }
+}
+
+/// The two ways events can be delivered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum FireAt {
-    /// Fire on first render of the call site. Correct.
-    Render,
-    /// Fire on assignment. Documented as broken — kept here only so
-    /// validate can refuse it with a clear message.
-    Assignment,
+pub enum EventsMode {
+    /// Built-in delivery to dif.sh Cloud. The default.
+    #[default]
+    Cloud,
+    /// The user's own handlers in `dif/events/{exposure,track}.ts`.
+    Custom,
 }
 
 /// Build-time switches.

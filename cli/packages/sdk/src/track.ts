@@ -3,19 +3,17 @@
 //   dif.track("completed_checkout");
 //   dif.track("revenue", { value: 49, currency: "USD" });
 //
-// Implementation notes:
-//  - `navigator.sendBeacon` cannot set custom headers, and we need to send
-//    `Authorization: Bearer <publishableKey>`. So we always use
-//    `fetch` with `keepalive: true`. First call per page may trigger a CORS
-//    preflight; subsequent calls reuse the cached preflight up to 24h.
-//  - The call is fire-and-forget. We never throw at the customer's call site —
-//    analytics must not crash a render.
-//  - Without a configured publishableKey, we log to console.debug and drop.
-//    This matches the sample app's pre-SDK behavior and keeps dev ergonomic.
+// This builds a normalized `MetricEvent` and hands it to the configured
+// delivery handler (`state.trackHandler`): the cloud POST in cloud mode, or the
+// user's `dif/events/track.ts` in custom mode. The handler — not this function —
+// owns the transport, so a custom handler doesn't need a publishableKey.
+//
+// The call is fire-and-forget; handlers must not throw at the customer's call
+// site — analytics must not crash a render.
 
 import { getState } from "./config.js";
 import { SOURCE } from "./version.js";
-import type { TrackProps } from "./types.js";
+import type { MetricEvent, TrackProps } from "./types.js";
 
 export function track(metric: string, opts: TrackProps = {}): void {
   const state = getState();
@@ -23,43 +21,29 @@ export function track(metric: string, opts: TrackProps = {}): void {
 
   const userId = opts.userId ?? state.userId();
   if (!userId) {
-    // Can't attribute; drop. The cloud expects a user_id on every event.
+    // Can't attribute; drop. Every event needs a user_id.
     return;
   }
 
-  if (!state.publishableKey) {
-    if (typeof console !== "undefined") {
-      console.debug("[dif] track (no publishableKey, dropped)", metric, opts);
-    }
-    return;
-  }
-
-  const url = `${state.apiUrl}/v1/track`;
-  const body = JSON.stringify({
+  // Only include optional fields when present — `exactOptionalPropertyTypes`
+  // forbids assigning `undefined` to an optional, and the wire shape (a JSON
+  // POST or a custom handler) is cleanest without undefined keys anyway.
+  const event: MetricEvent = {
     metric,
     user_id: userId,
-    value: opts.value,
-    currency: opts.currency,
-    unit: opts.unit,
     fired_at: opts.firedAt ?? Date.now(),
-    idempotency_key: opts.idempotencyKey,
     source: opts.source ?? SOURCE,
-    props: opts.props,
-  });
+    ...(opts.value !== undefined && { value: opts.value }),
+    ...(opts.currency !== undefined && { currency: opts.currency }),
+    ...(opts.unit !== undefined && { unit: opts.unit }),
+    ...(opts.idempotencyKey !== undefined && { idempotency_key: opts.idempotencyKey }),
+    ...(opts.props !== undefined && { props: opts.props }),
+  };
 
   try {
-    void fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${state.publishableKey}`,
-      },
-      body,
-      keepalive: true,
-    }).catch(() => {
-      // Swallow — analytics must never throw at the call site.
-    });
+    state.trackHandler(event);
   } catch {
-    // Synchronous throws (e.g. fetch undefined in unusual envs) are also swallowed.
+    // Handlers should swallow internally; defend here too so a misbehaving
+    // custom handler can never throw at the call site.
   }
 }
