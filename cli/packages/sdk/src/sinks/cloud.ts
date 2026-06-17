@@ -1,18 +1,13 @@
-// Sends exposure events to dif.sh Cloud's /v1/exposure endpoint. Auto-attached
-// by `setState` when a publishableKey is configured and the caller didn't pass
-// a `sink`. Re-exported so customers who want to combine it with other sinks
-// can configure it explicitly:
+// dif.sh Cloud delivery. `cloudSink` posts exposures to `/v1/exposure`;
+// `cloudTrack` posts `dif.track()` metrics to `/v1/track`. Both are wired by
+// `setState` when events mode is cloud (the default). This is the built-in
+// alternative to custom mode, where the user writes their own handlers.
 //
-//   dif.init({
-//     publishableKey: "dif_pk_…",
-//     sink: [cloudSink({ apiUrl, publishableKey }), webhookSink("…")],
-//   });
-//
-// Like `dif.track`, we use `fetch` (not `sendBeacon`) because we need to set
+// We use `fetch` (not `sendBeacon`) because we need to set
 // `Authorization: Bearer <publishableKey>` on every request. `keepalive: true`
 // keeps the request alive across page nav.
 
-import type { ExposureEvent, Sink } from "../types.js";
+import type { ExposureEvent, MetricEvent, Sink } from "../types.js";
 
 export interface CloudSinkConfig {
   /** Cloud base URL (e.g. https://cloud.dif.sh). Trailing slashes are stripped. */
@@ -44,5 +39,46 @@ export function cloudSink(cfg: CloudSinkConfig): Sink {
         // Synchronous throws (fetch undefined, etc.) are also swallowed.
       }
     },
+  };
+}
+
+export interface CloudTrackConfig {
+  /** Cloud base URL (e.g. https://cloud.dif.sh). Trailing slashes are stripped. */
+  apiUrl: string;
+  /** Publishable key (dif_pk_…), or null. Without one, track events are dropped. */
+  publishableKey: string | null;
+}
+
+/**
+ * Build the cloud track handler: posts one `MetricEvent` to `<apiUrl>/v1/track`.
+ * Without a publishableKey it logs to console.debug and drops — analytics must
+ * never block, and the cloud requires authenticated writes.
+ */
+export function cloudTrack(cfg: CloudTrackConfig): (event: MetricEvent) => void {
+  const url = `${cfg.apiUrl.replace(/\/+$/, "")}/v1/track`;
+  const { publishableKey } = cfg;
+  return (event: MetricEvent) => {
+    if (!publishableKey) {
+      if (typeof console !== "undefined") {
+        console.debug("[dif] track (no publishableKey, dropped)", event.metric, event);
+      }
+      return;
+    }
+    const body = JSON.stringify(event);
+    try {
+      void fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${publishableKey}`,
+        },
+        body,
+        keepalive: true,
+      }).catch(() => {
+        // Swallow — analytics must never throw at the call site.
+      });
+    } catch {
+      // Synchronous throws (fetch undefined, etc.) are also swallowed.
+    }
   };
 }

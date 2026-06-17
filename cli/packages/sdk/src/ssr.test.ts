@@ -7,7 +7,6 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { __reset, __register, assign, registered, dif } from "./index.js";
-import type { Sink } from "./index.js";
 
 let fetchCalls = 0;
 let originalFetch: typeof fetch;
@@ -57,8 +56,10 @@ describe("SSR safety", () => {
     // The module-global `fired` set was never touched by assign() — so a real
     // client exposure for a user we already "assigned" still fires exactly once.
     let clientCount = 0;
-    const sink: Sink = { kind: "spy", emit: () => { clientCount++; } };
-    dif.init({ userId: () => "u-0", sink });
+    dif.init({
+      userId: () => "u-0",
+      events: { mode: "custom", exposure: () => { clientCount++; }, track: () => {} },
+    });
     dif("a", { control: () => "c", variant_a: () => "v" })();
     await Promise.resolve();
     assert.equal(clientCount, 1, "server path must leave the client dedupe set clean");

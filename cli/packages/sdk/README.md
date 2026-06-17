@@ -152,10 +152,11 @@ useEffect(() => track("completed_checkout"), []);
 - Deterministic SHA-256 bucketing — byte-compatible with `dif-core` (Rust).
 - Audience predicate evaluation. (Exclusion-group conflicts are resolved at
   build time by `dif build`, not in this runtime.)
-- One exposure event per `(experiment, user)` per session. Posts to dif.sh
-  Cloud by default when `publishableKey` is set; pass `sink: [...]` to route
-  elsewhere, or `sink: []` to opt out.
-- Metric tracking (`dif.track`) to dif.sh Cloud, browser + server.
+- One exposure event per `(experiment, user)` per session. Delivered per the
+  `events` config from `dif build`: cloud mode posts to dif.sh Cloud, custom
+  mode calls your `dif/events/exposure.ts` handler.
+- Metric tracking (`dif.track`) — to dif.sh Cloud in cloud mode, or your
+  `dif/events/track.ts` handler in custom mode. Server tracking is cloud-only.
 
 **Does not (in v0):**
 - Batch events. Each call is one HTTP POST.

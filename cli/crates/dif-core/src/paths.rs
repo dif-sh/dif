@@ -21,6 +21,10 @@ pub const GITIGNORE_FILE: &str = "dif/.gitignore";
 /// `audience_attributes` entry pairs with a `<name>.ts` file here.
 pub const AUDIENCES_DIR: &str = "dif/audiences";
 
+/// Custom event-handler directory (`dif/events`). In custom events mode it
+/// holds `exposure.ts` + `track.ts`, each a default-export handler.
+pub const EVENTS_DIR: &str = "dif/events";
+
 /// Surface spec directory (`dif/surfaces`). One `<surface>.md` per surface.
 pub const SURFACES_DIR: &str = "dif/surfaces";
 
