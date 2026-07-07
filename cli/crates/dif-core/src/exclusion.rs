@@ -251,7 +251,11 @@ pub fn resolve(workspace: &Workspace, inputs: ResolutionInputs<'_>) -> Resolutio
                 } else {
                     let salt = bucket::salt_for(&exp.spec.id);
                     let b = bucket::bucket(&salt, inputs.user_id);
+                    // `None` means weights don't sum to 100 — validate catches
+                    // that, but if it was bypassed, fall back to the first
+                    // declared variant (the SDK's rule) rather than emit "".
                     let variant = bucket::select_variant(&exp.spec.variants, b)
+                        .or_else(|| exp.spec.variants.first().map(|v| v.id.as_str()))
                         .unwrap_or("")
                         .to_string();
                     Outcome::Assigned { variant, bucket: b }

@@ -22,6 +22,7 @@ export function __register(spec: ExperimentSpec): void {
 /** Test-only: clear the registry + state. Not exported from the package index. */
 export function __resetRegistry(): void {
   registry.clear();
+  driftWarned.clear();
 }
 
 /**
@@ -78,15 +79,25 @@ export function assign(id: string, ctx: AssignContext): Assignment | null {
   const spec = registry.get(id);
   if (!spec) return null;
 
-  // QA/preview force takes precedence over user/audience/exclusion/kill-switch —
-  // but only for a real declared variant. A forced assignment never fires an
+  const control = spec.variants[0]!;
+
+  // Exclusion-group arbitration mirrors `dif qa` (dif-core exclusion.rs):
+  // within a group, sorted by (created, id), the first member with a valid
+  // force wins; otherwise the first member whose audience matches. A losing
+  // member falls back to control with no exposure — even if it is itself
+  // forced or audience-eligible.
+  if (spec.exclusionGroup !== null && exclusionGroupWinner(spec, ctx) !== id) {
+    return { variant: control, bucket: null, exposed: false };
+  }
+
+  // QA/preview force takes precedence over user/audience/kill-switch — but
+  // only for a real declared variant. A forced assignment never fires an
   // exposure (bucket null, exposed false), so it can't pollute results.
   const forced = ctx.overrides?.[id];
   if (forced !== undefined && spec.variants.includes(forced)) {
     return { variant: forced, bucket: null, exposed: false, forced: true };
   }
 
-  const control = spec.variants[0]!;
   if (ctx.userId === null) {
     return { variant: control, bucket: null, exposed: false };
   }
@@ -97,6 +108,34 @@ export function assign(id: string, ctx: AssignContext): Assignment | null {
   const b = bucket(spec.salt, ctx.userId);
   const picked = selectVariant(spec.variants, spec.weights, b) ?? control;
   return { variant: picked, bucket: b, exposed: true };
+}
+
+/**
+ * The id of the experiment that wins `spec`'s exclusion group for this
+ * context, mirroring `pick_winner` in dif-core: members sorted by
+ * (created, id); the first validly-forced member wins, else the first whose
+ * audience matches. Returns `null` when no member is eligible.
+ */
+function exclusionGroupWinner(spec: ExperimentSpec, ctx: AssignContext): string | null {
+  const members = Array.from(registry.values())
+    .filter((s) => s.exclusionGroup === spec.exclusionGroup)
+    .sort((a, b) => {
+      // `?? ""` tolerates a stale generated client.ts from before `created`
+      // was emitted — those specs sort first, deterministically by id.
+      const ac = a.created ?? "";
+      const bc = b.created ?? "";
+      if (ac !== bc) return ac < bc ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+
+  for (const m of members) {
+    const f = ctx.overrides?.[m.id];
+    if (f !== undefined && m.variants.includes(f)) return m.id;
+  }
+  for (const m of members) {
+    if (m.audience(ctx.attributes)) return m.id;
+  }
+  return null;
 }
 
 /**
@@ -136,28 +175,81 @@ export function difCall<V extends string, R>(
   };
 }
 
+/** Experiments already warned about branch/spec drift — one warning each. */
+const driftWarned = new Set<string>();
+
+/** The chosen variant if the branches map can render it, else the first branch
+ *  key — warning once per experiment on drift so the mismatch is visible in
+ *  dev without spamming production consoles. */
+function branchOrFallback<V extends string, R>(
+  id: string,
+  variant: string,
+  branches: Record<V, () => R>,
+  fallback: V,
+): V {
+  if (variant in branches) return variant as V;
+  if (!driftWarned.has(id)) {
+    driftWarned.add(id);
+    if (typeof console !== "undefined") {
+      console.warn(
+        `[dif] dif("${id}"): assigned variant "${variant}" has no matching branch — ` +
+          `rendering "${fallback}". Re-run \`dif build\` and sync the call site.`,
+      );
+    }
+  }
+  return fallback;
+}
+
 /**
  * Pick the variant for one call. The full resolution flow:
  *
  *   1. Unknown id → fall back to the first declared branch.
- *   2. Disabled / no user / config missing → control variant, no exposure.
- *   3. Audience predicate misses → control variant, no exposure.
- *   4. Otherwise: bucket, pick by cumulative weight, fire one exposure event.
+ *   2. A valid QA force wins — including over a disabled/uninitialized SDK —
+ *      and emits no exposure.
+ *   3. Disabled / no user / config missing → control variant, no exposure.
+ *   4. Audience predicate misses → control variant, no exposure.
+ *   5. Otherwise: bucket, pick by cumulative weight, fire one exposure event.
+ *
+ * A variant the branches map can't render falls back to the first branch key
+ * and never fires an exposure — a missed cleanup must not crash production or
+ * pollute results with an unrendered variant.
  */
 function resolve<V extends string, R>(id: string, branches: Record<V, () => R>): V {
   const variantKeys = Object.keys(branches) as V[];
   if (variantKeys.length === 0) {
     throw new Error(`dif("${id}"): branches map is empty`);
   }
+  const fallback = variantKeys[0] as V;
 
   const spec = registry.get(id);
   if (!spec) {
-    return variantKeys[0] as V;
+    return fallback;
   }
 
   const state = getState();
+
+  // A QA force beats the kill switch (docs: "a valid QA force wins"), so
+  // previews keep working in environments that disable the SDK. It does NOT
+  // beat group arbitration: when two members of one exclusion group are both
+  // forced, the earliest (created, id) one wins — same rule as `dif qa`.
+  // (With this spec forced, the winner comes from the forced pass alone, so
+  // empty attributes are safe here.)
+  const forced = state?.overrides?.[id];
+  if (forced !== undefined && spec.variants.includes(forced)) {
+    const winsGroup =
+      spec.exclusionGroup === null ||
+      exclusionGroupWinner(spec, {
+        userId: null,
+        attributes: {},
+        overrides: state?.overrides ?? {},
+      }) === id;
+    if (winsGroup) {
+      return branchOrFallback(id, forced, branches, fallback);
+    }
+  }
+
   if (!state || state.enabled === false) {
-    return spec.variants[0] as V;
+    return branchOrFallback(id, spec.variants[0]!, branches, fallback);
   }
 
   // Delegate the decision to the pure assigner, then own the side effect.
@@ -168,8 +260,14 @@ function resolve<V extends string, R>(id: string, branches: Record<V, () => R>):
     attributes: state.attributes(),
     overrides: state.overrides,
   })!;
-  if (result.exposed && result.bucket !== null && userId !== null) {
+  const variant = branchOrFallback(id, result.variant, branches, fallback);
+  if (
+    variant === result.variant &&
+    result.exposed &&
+    result.bucket !== null &&
+    userId !== null
+  ) {
     fireExposure(spec, result.variant, userId, result.bucket, state.sinks);
   }
-  return result.variant as V;
+  return variant;
 }

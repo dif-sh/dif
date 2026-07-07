@@ -4,8 +4,12 @@
 //
 // Algorithm:
 //   1. SHA-256 of (salt || user_id)         — salt is 16 raw bytes, user_id UTF-8
-//   2. Take the first 2 bytes as a big-endian u16
+//   2. Take the first 4 bytes as a big-endian u32
 //   3. Modulo 10_000 → bucket in [0, 10_000)
+//
+// Four bytes, not two: 2^16 % 10_000 = 5_536, so a u16 source would give
+// buckets 0..=5535 seven preimages and the rest six — a 53.4/46.6 split on a
+// nominal 50/50 experiment. With a u32 source the residual bias is ~1.7e-6.
 //
 // Variant selection walks variants in declared order, accumulating
 // `weight * 100`; first variant whose cumulative crosses the bucket wins.
@@ -52,8 +56,9 @@ export function bucket(saltHex: string, userId: string): number {
   buf.set(salt);
   buf.set(user, salt.length);
   const digest = sha256(buf);
-  const pair = ((digest[0]! << 8) | digest[1]!) >>> 0;
-  return pair % 10_000;
+  const quad =
+    ((digest[0]! << 24) | (digest[1]! << 16) | (digest[2]! << 8) | digest[3]!) >>> 0;
+  return quad % 10_000;
 }
 
 /**

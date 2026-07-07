@@ -11,16 +11,22 @@ export function webhookSink(url: string): Sink {
     kind: "webhook",
     emit(event: ExposureEvent) {
       const body = JSON.stringify(event);
-      if (typeof navigator !== "undefined" && "sendBeacon" in navigator) {
-        navigator.sendBeacon(url, body);
-        return;
+      try {
+        if (typeof navigator !== "undefined" && "sendBeacon" in navigator) {
+          navigator.sendBeacon(url, body);
+          return;
+        }
+        // Swallow the rejection: an offline user or a CORS failure must not
+        // surface as an unhandled rejection (sinks never throw).
+        void fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+          keepalive: true,
+        }).catch(() => {});
+      } catch {
+        // fetch/sendBeacon unavailable or threw synchronously — drop the event.
       }
-      void fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        keepalive: true,
-      });
     },
   };
 }

@@ -1,6 +1,6 @@
 # dif validate error codes
 
-`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E008 are errors; W001 / W002 are warnings.
+`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E009 are errors; W001 / W002 are warnings.
 
 (There is intentionally no E002 — it was reserved during design and never used. The gap is preserved so existing codes don't renumber.)
 
@@ -52,6 +52,12 @@ The disjointness check is conservative (scalar equality + list membership only),
 You declared `name: <attr>` in `audience_attributes` but `dif/audiences/<attr>.ts` doesn't exist.
 
 **Fix:** create `dif/audiences/<attr>.ts` exporting a default `resolve()` function returning the user's value (or `null` for fail-closed during SSR). Run `dif scaffold-audiences` to pull in the starter `locale.ts` / `device_type.ts` if those are the ones missing.
+
+### E009 — exposure.fire_at is set to assignment
+
+`dif/config.yaml` sets `exposure.fire_at: assignment`. Firing exposures at assignment time counts users who never saw the experiment, polluting the denominator of every metric.
+
+**Fix:** set `exposure.fire_at: render` in `dif/config.yaml`.
 
 ## Warnings (non-fatal)
 

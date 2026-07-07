@@ -40,6 +40,7 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E006** — Audience attribute not declared in `dif/config.yaml`.
 - **E007** — Exclusion conflict: two active experiments on the same surface, no shared `exclusion_group`, audiences not provably disjoint.
 - **E008** — Declared audience attribute missing its `dif/audiences/<name>.ts` resolver.
+- **E009** — `exposure.fire_at: assignment` is not supported; use `render`.
 - **W001** — Call site references an experiment that isn't active (warning).
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 

@@ -12,6 +12,7 @@
 //! - `E006` audience attribute not declared in config
 //! - `E007` exclusion conflict (same surface, no shared `exclusion_group`)
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
+//! - `E009` exposure.fire_at is `assignment` (unsupported; must be `render`)
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 
@@ -37,8 +38,28 @@ pub fn run(workspace: &Workspace) -> Report {
     audience_files_paired(workspace, &mut report);
     exclusion_overlap(workspace, &mut report);
     orphan_refs(workspace, &mut report);
+    exposure_config(workspace, &mut report);
     sort_report(&mut report);
     report
+}
+
+/// `exposure.fire_at: assignment` is documented-broken (exposures must fire at
+/// render, not assignment, or unexposed users pollute the denominator). The
+/// config type keeps the variant only so we can refuse it here with a clear
+/// message instead of quietly producing bad data.
+pub fn exposure_config(workspace: &Workspace, report: &mut Report) {
+    if workspace.config.exposure.fire_at == crate::config::FireAt::Assignment {
+        report.errors.push(Diagnostic {
+            code: "E009".to_string(),
+            message:
+                "exposure.fire_at: assignment is not supported — exposures must fire at render"
+                    .to_string(),
+            file: paths::CONFIG_FILE.to_string(),
+            line: 1,
+            column: 1,
+            help: Some("Set `exposure.fire_at: render` in dif/config.yaml.".to_string()),
+        });
+    }
 }
 
 /// Frontmatter schema check — these were collected at load time. We just
@@ -222,11 +243,16 @@ pub fn exclusion_overlap(workspace: &Workspace, report: &mut Report) {
     let conflicts = exclusion::detect_conflicts(workspace);
     for conflict in conflicts {
         // Point the diagnostic at the lexically-first experiment's file.
-        let anchor = workspace
-            .active
-            .iter()
-            .find(|p| p.spec.id == conflict.a)
-            .expect("conflict references unknown experiment");
+        // A conflict always references loaded active experiments, but a
+        // missing anchor must degrade to a skipped diagnostic, not a panic.
+        let Some(anchor) = workspace.active.iter().find(|p| p.spec.id == conflict.a) else {
+            debug_assert!(
+                false,
+                "conflict references unknown experiment {}",
+                conflict.a
+            );
+            continue;
+        };
         report.errors.push(simple_error(
             "E007",
             format!(
@@ -386,6 +412,26 @@ created: 2026-01-01";
         let report = run(&ws);
         assert!(report.is_clean(), "expected clean: {:?}", report.errors);
         assert!(report.warnings.is_empty());
+    }
+
+    #[test]
+    fn rejects_fire_at_assignment() {
+        let mut config = empty_config();
+        config.exposure.fire_at = FireAt::Assignment;
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        let report = run(&ws);
+        let e009: Vec<_> = report.errors.iter().filter(|d| d.code == "E009").collect();
+        assert_eq!(
+            e009.len(),
+            1,
+            "expected exactly one E009: {:?}",
+            report.errors
+        );
+        assert_eq!(e009[0].file, paths::CONFIG_FILE);
     }
 
     #[test]

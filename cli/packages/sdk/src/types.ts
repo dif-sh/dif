@@ -132,6 +132,10 @@ export interface ExperimentSpec {
   weights: Record<string, number>;
   /** Exclusion-group key, or null. */
   exclusionGroup: string | null;
+  /** Creation date, `YYYY-MM-DD`. Orders exclusion-group priority: within a
+   *  group the earliest (created, id) eligible experiment wins — the same
+   *  rule `dif qa` applies. */
+  created: string;
   /** Compiled audience predicate. */
   audience: AudienceFn;
 }

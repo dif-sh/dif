@@ -1,306 +1,306 @@
 {
-  "version": 1,
+  "version": 2,
   "namespace": "dif.sh/v1",
   "cases": [
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "u_1",
-      "bucket": 2511
+      "bucket": 7390
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "u_2",
-      "bucket": 3120
+      "bucket": 3919
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "u_8131",
-      "bucket": 7993
+      "bucket": 9709
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "ada@acme.dev",
-      "bucket": 5948
+      "bucket": 6288
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 7664
+      "bucket": 144
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "",
-      "bucket": 2063
+      "bucket": 4608
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "user with spaces",
-      "bucket": 865
+      "bucket": 3451
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "用户名",
-      "bucket": 3449
+      "bucket": 3006
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "0",
-      "bucket": 8330
+      "bucket": 5592
     },
     {
       "experiment_id": "checkout-cta-v2",
       "user_id": "9999",
-      "bucket": 2834
+      "bucket": 3174
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "u_1",
-      "bucket": 7816
+      "bucket": 4005
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "u_2",
-      "bucket": 3299
+      "bucket": 3992
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "u_8131",
-      "bucket": 4594
+      "bucket": 2990
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "ada@acme.dev",
-      "bucket": 4191
+      "bucket": 2582
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 8065
+      "bucket": 428
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "",
-      "bucket": 3947
+      "bucket": 316
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "user with spaces",
-      "bucket": 3241
+      "bucket": 3056
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "用户名",
-      "bucket": 9016
+      "bucket": 2038
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "0",
-      "bucket": 6471
+      "bucket": 3909
     },
     {
       "experiment_id": "pricing-headline",
       "user_id": "9999",
-      "bucket": 4513
+      "bucket": 9439
     },
     {
       "experiment_id": "a",
       "user_id": "u_1",
-      "bucket": 9027
+      "bucket": 4632
     },
     {
       "experiment_id": "a",
       "user_id": "u_2",
-      "bucket": 8418
+      "bucket": 2763
     },
     {
       "experiment_id": "a",
       "user_id": "u_8131",
-      "bucket": 6778
+      "bucket": 4281
     },
     {
       "experiment_id": "a",
       "user_id": "ada@acme.dev",
-      "bucket": 4914
+      "bucket": 8984
     },
     {
       "experiment_id": "a",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 1028
+      "bucket": 3256
     },
     {
       "experiment_id": "a",
       "user_id": "",
-      "bucket": 6531
+      "bucket": 3541
     },
     {
       "experiment_id": "a",
       "user_id": "user with spaces",
-      "bucket": 2073
+      "bucket": 5293
     },
     {
       "experiment_id": "a",
       "user_id": "用户名",
-      "bucket": 5108
+      "bucket": 5407
     },
     {
       "experiment_id": "a",
       "user_id": "0",
-      "bucket": 7778
+      "bucket": 4603
     },
     {
       "experiment_id": "a",
       "user_id": "9999",
-      "bucket": 8257
+      "bucket": 1958
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "u_1",
-      "bucket": 1837
+      "bucket": 5764
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "u_2",
-      "bucket": 1118
+      "bucket": 8263
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "u_8131",
-      "bucket": 574
+      "bucket": 4360
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "ada@acme.dev",
-      "bucket": 2063
+      "bucket": 4754
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 3720
+      "bucket": 9890
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "",
-      "bucket": 9291
+      "bucket": 3791
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "user with spaces",
-      "bucket": 3165
+      "bucket": 9500
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "用户名",
-      "bucket": 2202
+      "bucket": 951
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "0",
-      "bucket": 411
+      "bucket": 3408
     },
     {
       "experiment_id": "abcdefghij",
       "user_id": "9999",
-      "bucket": 4836
+      "bucket": 4015
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "u_1",
-      "bucket": 838
+      "bucket": 2676
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "u_2",
-      "bucket": 9629
+      "bucket": 4103
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "u_8131",
-      "bucket": 8357
+      "bucket": 5032
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "ada@acme.dev",
-      "bucket": 3728
+      "bucket": 293
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 8238
+      "bucket": 3043
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "",
-      "bucket": 5148
+      "bucket": 3648
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "user with spaces",
-      "bucket": 2488
+      "bucket": 8337
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "用户名",
-      "bucket": 1534
+      "bucket": 5892
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "0",
-      "bucket": 2463
+      "bucket": 4115
     },
     {
       "experiment_id": "long-experiment-id-with-many-segments-1234567890",
       "user_id": "9999",
-      "bucket": 4087
+      "bucket": 6261
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "u_1",
-      "bucket": 8112
+      "bucket": 6140
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "u_2",
-      "bucket": 566
+      "bucket": 2666
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "u_8131",
-      "bucket": 2979
+      "bucket": 6407
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "ada@acme.dev",
-      "bucket": 9726
+      "bucket": 2338
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "long-user-id-1234567890abcdef",
-      "bucket": 3473
+      "bucket": 2614
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "",
-      "bucket": 6830
+      "bucket": 4187
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "user with spaces",
-      "bucket": 5559
+      "bucket": 6672
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "用户名",
-      "bucket": 9636
+      "bucket": 1381
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "0",
-      "bucket": 3226
+      "bucket": 821
     },
     {
       "experiment_id": "exp-名前",
       "user_id": "9999",
-      "bucket": 3673
+      "bucket": 1320
     }
   ]
 }

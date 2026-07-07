@@ -52,14 +52,17 @@ export function experiment<V extends string, R>(
   const decided = decide(id, data, fallback);
   // Guard against drift: if the decided variant isn't one of the branches we
   // were handed, fall back to the first declared branch.
-  const variant: V = (decided.variant in branches ? decided.variant : fallback) as V;
+  const drifted = !(decided.variant in branches);
+  const variant: V = (drifted ? fallback : decided.variant) as V;
   const result: ExperimentValue<R> = { value: branches[variant](), variant };
 
   return readable(result, () => {
     // The start fn runs on every (re)subscribe, including SSR — only fire on the
     // client. recordExposure dedupes per (id, user), so repeats are harmless.
+    // A drifted assignment renders the fallback branch, so recording the
+    // decided variant would pollute results — skip it.
     if (typeof window === "undefined") return;
-    if (decided.exposed && decided.bucket !== null) {
+    if (!drifted && decided.exposed && decided.bucket !== null) {
       recordExposure(id, decided.variant, decided.bucket);
     }
   });
@@ -73,8 +76,11 @@ function decide(id: string, data: DifData | undefined, fallback: string): Decisi
   // No server assignment (ISR-cached page, or id not registered server-side):
   // assign on the client using the cookie-stable user id. Pass the active QA
   // forces so a `?_dif=` preview wins here too (and fires no exposure).
+  // `data.cookieName` keeps a custom `difLoad({ cookieName })` working here.
   const userId =
-    typeof document !== "undefined" ? (data?.difUid ?? readCookie("dif_uid")) : null;
+    typeof document !== "undefined"
+      ? (data?.difUid ?? readCookie(data?.cookieName ?? "dif_uid"))
+      : null;
   const a = assign(id, {
     userId,
     attributes: data?.attributes ?? {},

@@ -36,6 +36,7 @@ E005  variant weights don't sum to 100
 E006  audience attribute not declared in dif/config.yaml
 E007  exclusion conflict: same surface, no shared exclusion_group, audiences not disjoint
 E008  declared audience attribute missing its dif/audiences/<name>.ts resolver
+E009  exposure.fire_at: assignment is not supported; use render
 W001  call site references an experiment that isn't active (warning)
 W002  audience file has no matching entry in audience_attributes (warning)
 

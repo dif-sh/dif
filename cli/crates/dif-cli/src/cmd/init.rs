@@ -751,7 +751,7 @@ mod tests {
     #[test]
     fn validation_errors_doc_lists_every_real_code() {
         let codes = [
-            "E001", "E003", "E004", "E005", "E006", "E007", "E008", "W001", "W002",
+            "E001", "E003", "E004", "E005", "E006", "E007", "E008", "E009", "W001", "W002",
         ];
         for code in codes {
             assert!(

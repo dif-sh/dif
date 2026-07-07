@@ -100,6 +100,7 @@ describe("dif.init auto-attaches cloudSink", () => {
       salt: "00000000000000000000000000000000",
       weights: { control: 50, variant_a: 50 },
       exclusionGroup: null,
+      created: "2026-01-01",
       audience: () => true,
     });
   }
