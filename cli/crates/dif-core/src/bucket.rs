@@ -5,8 +5,12 @@
 //!
 //! Algorithm:
 //!   1. SHA-256 of (salt || user_id)
-//!   2. Take the first 2 bytes as a big-endian u16
+//!   2. Take the first 4 bytes as a big-endian u32
 //!   3. Modulo 10_000 → bucket in [0, 10_000)
+//!
+//! Four bytes, not two: 2^16 % 10_000 = 5_536, so a u16 source would give
+//! buckets 0..=5535 seven preimages and the rest six — a 53.4/46.6 split on a
+//! nominal 50/50 experiment. With a u32 source the residual bias is ~1.7e-6.
 //!
 //! Variant selection walks variants in declared order, accumulating
 //! `weight * 100`; the first variant whose cumulative crosses the bucket wins.
@@ -35,8 +39,8 @@ pub fn bucket(salt: &[u8; 16], user_id: &str) -> u16 {
     hasher.update(salt);
     hasher.update(user_id.as_bytes());
     let digest = hasher.finalize();
-    let pair = u16::from_be_bytes([digest[0], digest[1]]);
-    pair % 10_000
+    let quad = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
+    (quad % 10_000) as u16
 }
 
 /// Pick the variant id corresponding to a bucket given the experiment's
@@ -74,5 +78,21 @@ mod tests {
             let b = bucket(&salt, &format!("u_{i}"));
             assert!(b < 10_000);
         }
+    }
+
+    /// Pins the modulo-bias fix: with a u16 source a 50/50 split allocated
+    /// ~53.4/46.6. 100k synthetic users must land within ±1% of even.
+    #[test]
+    fn bucket_distribution_is_unbiased() {
+        let salt = salt_for("distribution-check");
+        let n = 100_000u32;
+        let below_split = (0..n)
+            .filter(|i| bucket(&salt, &format!("user_{i}")) < 5_000)
+            .count();
+        let share = below_split as f64 / n as f64;
+        assert!(
+            (share - 0.5).abs() < 0.01,
+            "50/50 split allocated {share:.4} to the first half"
+        );
     }
 }

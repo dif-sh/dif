@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run lint && npm run build"
+    "test": "node --test --import tsx src/*.test.tsx",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "engines": {
     "node": ">=20.6"
@@ -48,7 +49,10 @@
   "devDependencies": {
     "@dif.sh/sdk": "file:../sdk",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }

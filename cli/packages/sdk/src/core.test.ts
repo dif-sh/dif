@@ -30,6 +30,7 @@ function register(id: string, audience: AudienceFn = () => true): void {
     salt: "00000000000000000000000000000000",
     weights: { control: 50, variant_a: 50 },
     exclusionGroup: null,
+    created: "2026-01-01",
     audience,
   });
 }
@@ -201,5 +202,202 @@ describe("overrides / forced assignment", () => {
     assert.equal(v, "v");
     dif.setOverrides({});
     assert.deepEqual(dif.getOverrides(), {});
+  });
+
+  it("a force wins over enabled:false and fires no exposure", async () => {
+    register("a");
+    let count = 0;
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+      enabled: false,
+      overrides: { a: "variant_a" },
+    });
+
+    const forced = dif("a", { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+    assert.equal(forced, "v", "docs: a valid QA force wins, including over the kill switch");
+    assert.equal(count, 0);
+
+    // Without a force the kill switch still returns control.
+    register("b");
+    const off = dif("b", { control: () => "c", variant_a: () => "v" })();
+    assert.equal(off, "c");
+    assert.equal(count, 0);
+  });
+});
+
+function registerGrouped(
+  id: string,
+  opts: {
+    group: string;
+    created: string;
+    audience?: AudienceFn;
+  },
+): void {
+  __register({
+    id,
+    surface: "home",
+    variants: ["control", "variant_a"],
+    salt: "00000000000000000000000000000000",
+    weights: { control: 50, variant_a: 50 },
+    exclusionGroup: opts.group,
+    created: opts.created,
+    audience: opts.audience ?? (() => true),
+  });
+}
+
+describe("exclusion groups (runtime arbitration)", () => {
+  it("the earliest-created eligible member wins; the loser gets control, no exposure", () => {
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+    registerGrouped("older", { group: "g", created: "2026-01-01" });
+
+    const winner = assign("older", { userId: "u1", attributes: {} });
+    assert.equal(winner!.exposed, true, "group winner buckets normally");
+
+    const loser = assign("younger", { userId: "u1", attributes: {} });
+    assert.deepEqual(loser, { variant: "control", bucket: null, exposed: false });
+  });
+
+  it("ties on created break by experiment id", () => {
+    registerGrouped("bbb", { group: "g", created: "2026-01-01" });
+    registerGrouped("aaa", { group: "g", created: "2026-01-01" });
+
+    assert.equal(assign("aaa", { userId: "u1", attributes: {} })!.exposed, true);
+    assert.equal(assign("bbb", { userId: "u1", attributes: {} })!.exposed, false);
+  });
+
+  it("an audience-missing member cedes the group to the next eligible member", () => {
+    registerGrouped("older", {
+      group: "g",
+      created: "2026-01-01",
+      audience: (a) => a.locale === "en-US",
+    });
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+
+    const ctx = { userId: "u1", attributes: { locale: "fr-FR" } };
+    assert.equal(assign("older", ctx)!.exposed, false, "audience miss");
+    assert.equal(assign("younger", ctx)!.exposed, true, "next member wins the group");
+  });
+
+  it("a forced member beats an earlier audience-matching member", () => {
+    registerGrouped("older", { group: "g", created: "2026-01-01" });
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+
+    const ctx = { userId: "u1", attributes: {}, overrides: { younger: "variant_a" } };
+    const forced = assign("younger", ctx);
+    assert.deepEqual(forced, { variant: "variant_a", bucket: null, exposed: false, forced: true });
+
+    const loser = assign("older", ctx);
+    assert.deepEqual(loser, { variant: "control", bucket: null, exposed: false });
+  });
+
+  it("with two forced members, the earlier one wins and the later force is ignored", () => {
+    registerGrouped("older", { group: "g", created: "2026-01-01" });
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+
+    const ctx = {
+      userId: "u1",
+      attributes: {},
+      overrides: { older: "variant_a", younger: "variant_a" },
+    };
+    assert.equal(assign("older", ctx)!.forced, true);
+    const loser = assign("younger", ctx);
+    assert.deepEqual(loser, { variant: "control", bucket: null, exposed: false });
+  });
+
+  it("different groups and ungrouped experiments don't interact", () => {
+    registerGrouped("g1-member", { group: "g1", created: "2026-01-01" });
+    registerGrouped("g2-member", { group: "g2", created: "2026-02-01" });
+    register("solo");
+
+    const ctx = { userId: "u1", attributes: {} };
+    assert.equal(assign("g1-member", ctx)!.exposed, true);
+    assert.equal(assign("g2-member", ctx)!.exposed, true);
+    assert.equal(assign("solo", ctx)!.exposed, true);
+  });
+
+  it("dif() agrees with assign(): later forced member of a group loses", async () => {
+    registerGrouped("older", { group: "g", created: "2026-01-01" });
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+    dif.init({
+      userId: () => "u-1",
+      overrides: { older: "variant_a", younger: "variant_a" },
+    });
+
+    const winner = dif("older", { control: () => "c", variant_a: () => "v" })();
+    const loser = dif("younger", { control: () => "c", variant_a: () => "v" })();
+    assert.equal(winner, "v", "earliest forced member wins its force");
+    assert.equal(loser, "c", "later forced member loses the group");
+  });
+
+  it("dif() renders control for the losing member of a group", async () => {
+    registerGrouped("older", { group: "g", created: "2026-01-01" });
+    registerGrouped("younger", { group: "g", created: "2026-02-01" });
+    let count = 0;
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+    });
+
+    dif("older", { control: () => "c", variant_a: () => "v" })();
+    const loser = dif("younger", { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+
+    assert.equal(loser, "c");
+    assert.equal(count, 1, "only the group winner fires an exposure");
+  });
+});
+
+describe("branch drift (spec variants ≠ branch keys)", () => {
+  function registerAllVariantA(id: string): void {
+    __register({
+      id,
+      surface: "home",
+      variants: ["control", "variant_a"],
+      salt: "00000000000000000000000000000000",
+      weights: { control: 0, variant_a: 100 }, // deterministic: always variant_a
+      exclusionGroup: null,
+      created: "2026-01-01",
+      audience: () => true,
+    });
+  }
+
+  it("falls back to the first branch and fires no exposure when the assigned variant has no branch", async () => {
+    registerAllVariantA("drifted");
+    let count = 0;
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+    });
+
+    // The call site only knows `control` — e.g. the .md renamed a variant.
+    const value = dif("drifted", { control: () => "c" })();
+    await Promise.resolve();
+
+    assert.equal(value, "c", "must render the fallback branch, not crash");
+    assert.equal(count, 0, "an unrendered variant must not fire an exposure");
+  });
+
+  it("a forced variant without a matching branch renders the fallback, no exposure", async () => {
+    register("a");
+    let count = 0;
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => { count++; }, track: () => {} },
+      overrides: { a: "variant_a" },
+    });
+
+    const value = dif("a", { control: () => "c" })();
+    await Promise.resolve();
+    assert.equal(value, "c");
+    assert.equal(count, 0);
+  });
+
+  it("uninitialized SDK with drifted branches still renders the first branch", () => {
+    registerAllVariantA("drifted");
+    // No dif.init at all.
+    const value = dif("drifted", { something_else: () => "x" })();
+    assert.equal(value, "x");
   });
 });

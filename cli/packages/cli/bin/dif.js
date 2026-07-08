@@ -32,4 +32,12 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 0);
+if (result.signal) {
+  // The binary was killed by a signal. Re-raise it so our own exit status
+  // reflects that (128+n convention) instead of reporting success — CI
+  // scripts checking `$?` must not treat an interrupted build as passing.
+  process.kill(process.pid, result.signal);
+  // If the signal was caught/ignored (e.g. exotic handlers), still fail.
+  process.exit(1);
+}
+process.exit(result.status ?? 1);

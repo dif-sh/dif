@@ -115,7 +115,7 @@ export function difLoad(event: DifRequestEventLike, opts: DifLoadOptions = {}): 
     }
   }
 
-  return { difUid, assignments, attributes, overrides };
+  return { difUid, cookieName: name, assignments, attributes, overrides };
 }
 
 /**

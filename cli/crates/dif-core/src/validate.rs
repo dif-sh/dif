@@ -224,11 +224,16 @@ pub fn exclusion_overlap(workspace: &Workspace, report: &mut Report) {
     let conflicts = exclusion::detect_conflicts(workspace);
     for conflict in conflicts {
         // Point the diagnostic at the lexically-first experiment's file.
-        let anchor = workspace
-            .active
-            .iter()
-            .find(|p| p.spec.id == conflict.a)
-            .expect("conflict references unknown experiment");
+        // A conflict always references loaded active experiments, but a
+        // missing anchor must degrade to a skipped diagnostic, not a panic.
+        let Some(anchor) = workspace.active.iter().find(|p| p.spec.id == conflict.a) else {
+            debug_assert!(
+                false,
+                "conflict references unknown experiment {}",
+                conflict.a
+            );
+            continue;
+        };
         report.errors.push(simple_error(
             "E007",
             format!(

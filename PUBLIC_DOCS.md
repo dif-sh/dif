@@ -67,6 +67,11 @@ the matching Rust binary for:
 - Linux on x86_64 or arm64
 - Windows on x86_64
 
+The download is verified against the release's published SHA-256 checksum.
+Installation fails if the checksum is missing or does not match. When
+installing from a mirror that does not serve checksum files, set
+`DIF_SKIP_CHECKSUM=1` to skip verification.
+
 The SDK and framework packages require Node.js 20.6 or newer.
 
 ## Quick Start
@@ -695,7 +700,7 @@ experiment, sorted by experiment ID. Each registration includes:
 - Ordered variant IDs
 - Deterministic bucketing salt
 - Variant weights
-- Exclusion group metadata
+- Exclusion group metadata and creation date (group priority)
 - Compiled audience predicate
 
 Import it once before using `dif()`:
@@ -856,7 +861,7 @@ dif qa --json --user u_8131 --attr locale=en-US
       "surface": "checkout",
       "outcome": "assigned",
       "variant": "variant_a",
-      "bucket": 7162
+      "bucket": 9709
     }
   ],
   "preview_url": null
@@ -1011,15 +1016,26 @@ runtime registration rather than by a generated function signature.
 
 Assignment behavior:
 
-1. A valid QA force wins and emits no exposure.
-2. An uninitialized or disabled SDK returns the experiment's first variant.
-3. A missing user ID returns the first variant and emits no exposure.
-4. An audience miss returns the first variant and emits no exposure.
-5. An eligible user is deterministically bucketed from experiment salt and
+1. An experiment that loses its exclusion group returns the first variant and
+   emits no exposure. Within a group, members are ordered by earliest
+   `created` date, then experiment ID; the first validly forced member wins,
+   otherwise the first member whose audience matches — the same rule `dif qa`
+   traces.
+2. A valid QA force on the group winner (or an ungrouped experiment) wins —
+   including over a disabled SDK — and emits no exposure.
+3. An uninitialized or disabled SDK returns the experiment's first variant.
+4. A missing user ID returns the first variant and emits no exposure.
+5. An audience miss returns the first variant and emits no exposure.
+6. An eligible user is deterministically bucketed from experiment salt and
    user ID.
-6. The chosen variant is selected from cumulative weights.
-7. One exposure is emitted per `(experiment, user)` for the lifetime of the
+7. The chosen variant is selected from cumulative weights.
+8. One exposure is emitted per `(experiment, user)` for the lifetime of the
    loaded SDK module.
+
+If the assigned variant has no matching key in the branches map (for example
+after a variant rename that has not reached the call site), the SDK renders
+the first branch, emits no exposure, and logs one console warning per
+experiment.
 
 Calling `dif()` with an empty branches object throws an error.
 
@@ -1263,6 +1279,8 @@ interface Assignment {
 `assign`:
 
 - Returns `null` for an unknown experiment ID.
+- Enforces exclusion groups: a member that loses its group for this context
+  returns the first variant with `exposed: false`.
 - Does not read the browser SDK singleton.
 - Does not fire an exposure.
 - Does not touch client exposure deduplication.
@@ -1799,20 +1817,24 @@ commits that timestamp on every build.
 
 ## Runtime Guarantees and Current Constraints
 
-- Bucketing is deterministic for a given experiment salt and user ID.
+- Bucketing is deterministic for a given experiment salt and user ID. The
+  bucket is the first four bytes of `SHA-256(salt || user_id)` as a big-endian
+  integer, modulo 10,000.
 - Rust and TypeScript bucketing share a cross-language fixture in the
   repository test suite.
 - Audience includes use equality or list membership only.
 - Browser exposures are deduplicated per experiment and user for the lifetime
   of the loaded module.
 - Forced QA assignments do not emit exposures.
+- Exclusion groups are enforced at runtime: `assign` (and therefore `dif()`
+  and the framework adapters) resolves the group winner by earliest `created`
+  date, then experiment ID, matching the CLI `qa` trace. Losing members
+  return the first variant and emit no exposure.
 - Browser event delivery is fire-and-forget.
 - Server event delivery sends one request per call and does not retry.
 - There is no offline queue or event batching.
 - The generated client currently registers experiments by side effect and does
   not export named experiment functions.
-- The browser `assign` API resolves one experiment at a time. The CLI `qa`
-  command provides the full exclusion-group trace.
 - JavaScript call-site validation recognizes literal, double-quoted `dif()`
   IDs. Dynamic IDs and other quote forms are not included in orphan-ref
   scanning.

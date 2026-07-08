@@ -228,6 +228,12 @@ pub fn render_experiment_export(exp: &Experiment) -> String {
     out.push_str(&format!("  salt: \"{salt}\",\n"));
     out.push_str(&format!("  weights: {weights},\n"));
     out.push_str(&format!("  exclusionGroup: {exclusion},\n"));
+    // ISO date, lexicographically sortable — the SDK uses (created, id) to
+    // arbitrate exclusion groups the same way `dif qa` does.
+    out.push_str(&format!(
+        "  created: \"{}\",\n",
+        exp.created.format("%Y-%m-%d")
+    ));
     out.push_str(&format!("  audience: {audience},\n"));
     out.push_str("});");
     out
@@ -549,6 +555,7 @@ created: 2026-01-01";
         assert!(s.contains("salt: \""));
         assert!(s.contains("weights: { \"control\": 50, \"variant_a\": 50 }"));
         assert!(s.contains("exclusionGroup: \"checkout-copy\""));
+        assert!(s.contains("created: \"2026-01-01\""));
         assert!(s.contains("audience:"));
         assert!(s.ends_with("});"));
     }

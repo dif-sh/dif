@@ -16,6 +16,10 @@ export interface SerializedAssignment {
 export interface DifData {
   /** First-party anonymous id read/minted from the `dif_uid` cookie. */
   difUid: string;
+  /** The cookie name `difLoad` used (default `"dif_uid"`) — the client reads
+   *  the same cookie when it needs to assign locally (e.g. ISR fallback).
+   *  Optional so `DifData` serialized by older versions keeps working. */
+  cookieName?: string;
   /** id → server assignment. An absent id means the client assigns locally. */
   assignments: Record<string, SerializedAssignment>;
   /** Attributes the server resolved from request headers, reused by the client. */

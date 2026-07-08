@@ -34,6 +34,7 @@ function register(id: string): void {
     salt: "00000000000000000000000000000000",
     weights: { control: 50, variant_a: 50 },
     exclusionGroup: null,
+    created: "2026-01-01",
     audience: () => true,
   });
 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useRef, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { dif, syncOverrides, mountDifPreview } from "@dif.sh/sdk";
 import type { DifInitConfig, TrackProps } from "@dif.sh/sdk";
 
@@ -35,7 +42,12 @@ export interface DifProviderProps {
  */
 export function DifProvider({ config, children, allowOverrides, preview }: DifProviderProps) {
   const initialized = useRef(false);
-  if (!initialized.current) {
+  // Client-only: the SDK's state is a module-level singleton, so initializing
+  // during an SSR render would share one request's userId/attributes closures
+  // across every concurrent request on that server. Server renders fall
+  // through to the SDK's uninitialized first-branch behavior; use the pure
+  // `assign` API for server rendering that needs real assignments.
+  if (!initialized.current && typeof window !== "undefined") {
     dif.init(config);
     initialized.current = true;
   }
@@ -47,10 +59,15 @@ export function DifProvider({ config, children, allowOverrides, preview }: DifPr
     if (preview !== false) mountDifPreview();
   }, [allowOverrides, preview]);
 
-  const value: DifContextValue = {
-    track: (metric, opts) => dif.track(metric, opts),
-    exposure: ((id, branches) => dif(id, branches)) as ExperimentFn,
-  };
+  // Stable identity: both functions close over module-level state, so consumers
+  // of useDif() must not re-render just because the provider did.
+  const value = useMemo<DifContextValue>(
+    () => ({
+      track: (metric, opts) => dif.track(metric, opts),
+      exposure: ((id, branches) => dif(id, branches)) as ExperimentFn,
+    }),
+    [],
+  );
 
   return <DifContext.Provider value={value}>{children}</DifContext.Provider>;
 }

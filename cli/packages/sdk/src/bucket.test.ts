@@ -30,7 +30,7 @@ const FIXTURE_PATH = resolve(
   "../../..",
   "crates/dif-core/tests/fixtures/bucket_tests.json",
 );
-const EXPECTED_VERSION = 1;
+const EXPECTED_VERSION = 2;
 
 function loadFixture(): Fixture {
   const raw = readFileSync(FIXTURE_PATH, "utf-8");
@@ -62,6 +62,24 @@ describe("bucket cross-language fixture", () => {
         `mismatch on (experiment=${c.experiment_id}, user=${c.user_id}): expected ${c.bucket}, got ${actual}`,
       );
     }
+  });
+});
+
+describe("bucket distribution", () => {
+  // Pins the modulo-bias fix: with a u16 source a 50/50 split allocated
+  // ~53.4/46.6. 100k synthetic users must land within ±1% of even.
+  it("splits 50/50 within ±1% over 100k users", () => {
+    const salt = saltFor("distribution-check");
+    const n = 100_000;
+    let below = 0;
+    for (let i = 0; i < n; i++) {
+      if (bucket(salt, `user_${i}`) < 5_000) below++;
+    }
+    const share = below / n;
+    assert.ok(
+      Math.abs(share - 0.5) < 0.01,
+      `50/50 split allocated ${share.toFixed(4)} to the first half`,
+    );
   });
 });
 

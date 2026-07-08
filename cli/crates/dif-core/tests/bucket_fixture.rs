@@ -39,7 +39,7 @@ struct Fixture {
     cases: Vec<Case>,
 }
 
-const FIXTURE_VERSION: u32 = 1;
+const FIXTURE_VERSION: u32 = 2;
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(concat!(

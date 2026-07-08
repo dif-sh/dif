@@ -32,7 +32,9 @@ export interface InitDifOptions extends Omit<DifInitConfig, "userId" | "attribut
  * ```
  */
 export function initDif(opts: InitDifOptions): void {
-  const { data, cookieName = "dif_uid", allowOverrides, preview, ...rest } = opts;
+  // Cookie-name precedence: explicit option, then the name the server's
+  // difLoad actually used (carried in DifData), then the default.
+  const { data, cookieName = opts.data?.cookieName ?? "dif_uid", allowOverrides, preview, ...rest } = opts;
   const seeded = data?.difUid ?? null;
   const attrs = data?.attributes ?? {};
   dif.init({

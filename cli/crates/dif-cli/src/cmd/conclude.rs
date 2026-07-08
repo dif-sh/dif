@@ -82,7 +82,6 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     };
 
     // 5. Commit, with best-effort rollback.
-    let original_active = parsed.source.clone();
     let original_surface = surface.source.clone();
     commit(
         &active_path,
@@ -90,7 +89,6 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         &new_experiment,
         surface.path.as_path(),
         new_surface.as_deref(),
-        &original_active,
         &original_surface,
     )?;
 
@@ -124,14 +122,12 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
 
 // -- commit + rollback --------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
 fn commit(
     active_path: &Path,
     concluded_path: &Path,
     new_experiment: &str,
     surface_path: &Path,
     new_surface: Option<&str>,
-    original_active: &str,
     original_surface: &str,
 ) -> Result<(), CmdError> {
     // Make sure the concluded/ dir exists.
@@ -139,24 +135,29 @@ fn commit(
         std::fs::create_dir_all(parent)?;
     }
 
-    // Step A: write new experiment content to the active path. If this fails,
-    // nothing has changed.
-    std::fs::write(active_path, new_experiment).map_err(CmdError::Io)?;
+    // Ordered so the original active file is never mutated until the very
+    // last step — a crash or kill at any point leaves it intact. The worst
+    // interrupted state is a duplicate id (active + concluded copies), which
+    // `dif validate` flags and a `rm` fixes; a half-concluded active file
+    // would be silently wrong.
 
-    // Step B: rename active → concluded. If this fails, restore active.
-    if let Err(e) = std::fs::rename(active_path, concluded_path) {
-        let _ = std::fs::write(active_path, original_active);
-        return Err(CmdError::Io(e));
-    }
+    // Step A: write the concluded copy. If this fails, nothing has changed.
+    std::fs::write(concluded_path, new_experiment).map_err(CmdError::Io)?;
 
-    // Step C: surface update. If this fails, revert both prior steps.
+    // Step B: surface update. If this fails, remove the concluded copy.
     if let Some(content) = new_surface {
         if let Err(e) = std::fs::write(surface_path, content) {
-            let _ = std::fs::rename(concluded_path, active_path);
-            let _ = std::fs::write(active_path, original_active);
-            let _ = std::fs::write(surface_path, original_surface);
+            let _ = std::fs::remove_file(concluded_path);
             return Err(CmdError::Io(e));
         }
+    }
+
+    // Step C: remove the original from active/. If this fails, revert both
+    // prior steps.
+    if let Err(e) = std::fs::remove_file(active_path) {
+        let _ = std::fs::remove_file(concluded_path);
+        let _ = std::fs::write(surface_path, original_surface);
+        return Err(CmdError::Io(e));
     }
 
     Ok(())
@@ -351,7 +352,17 @@ fn prompt_editor(experiment_id: &str) -> Result<String, CmdError> {
     let editor = std::env::var("EDITOR")
         .or_else(|_| std::env::var("VISUAL"))
         .unwrap_or_else(|_| "vi".to_string());
-    let tmp = std::env::temp_dir().join(format!("dif-conclude-{experiment_id}.md"));
+    // PID + monotonic nanos make the name unique so two concurrent
+    // `dif conclude` runs (same experiment or same machine) can't share a
+    // draft file.
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = std::env::temp_dir().join(format!(
+        "dif-conclude-{experiment_id}-{}-{nonce}.md",
+        std::process::id()
+    ));
     let template = format!(
         "# Decision for {experiment_id}\n\
          #\n\
