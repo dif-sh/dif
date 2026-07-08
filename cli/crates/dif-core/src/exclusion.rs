@@ -305,7 +305,7 @@ fn pick_winner(exps: &[&ParsedExperiment], inputs: ResolutionInputs<'_>) -> Opti
 mod tests {
     use super::*;
     use crate::{
-        config::{BucketingConfig, BuildConfig, Config, ExposureConfig, FireAt},
+        config::{BucketingConfig, BuildConfig, Config},
         parse::{parse_experiment_str, ParsedSurface},
         spec::Surface,
     };
@@ -321,10 +321,8 @@ mod tests {
                 id: "user_id".into(),
                 fallback: "anon_cookie".into(),
             },
-            exposure: ExposureConfig {
-                sink: "webhook".into(),
-                fire_at: FireAt::Render,
-            },
+            events: None,
+            exposure: None,
             build: BuildConfig::default(),
         }
     }

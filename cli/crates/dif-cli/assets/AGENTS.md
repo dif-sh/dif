@@ -11,7 +11,7 @@ dif/experiments/active/<id>.md              drafts + running experiments
 dif/experiments/concluded/<YYYY-MM>-<id>.md archived; renamed by `dif conclude`
 dif/surfaces/<surface>.md                   one per surface; owns the Learnings log
 dif/audiences/<attr>.ts                     one resolver per declared audience attribute
-dif/config.yaml                             project config (audience attrs, bucketing, sinks)
+dif/config.yaml                             project config (audience attrs, bucketing, events)
 dif/generated/                              gitignored; output of `dif build`
 dif/context.json                            agent-facing summary of active experiments
 ```
@@ -40,9 +40,9 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E006** — Audience attribute not declared in `dif/config.yaml`.
 - **E007** — Exclusion conflict: two active experiments on the same surface, no shared `exclusion_group`, audiences not provably disjoint.
 - **E008** — Declared audience attribute missing its `dif/audiences/<name>.ts` resolver.
-- **E009** — `exposure.fire_at: assignment` is not supported; use `render`.
 - **W001** — Call site references an experiment that isn't active (warning).
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
+- **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 
 ## Before drafting an experiment
 

@@ -615,7 +615,6 @@ The following checks run:
 | `E006` | Error | An audience predicate uses an undeclared attribute. |
 | `E007` | Error | Active experiments on the same surface may overlap without a shared exclusion group. |
 | `E008` | Error | A declared audience attribute has no matching resolver file. |
-| `E009` | Error | `exposure.fire_at` is set to `assignment`, which is not supported. |
 | `W001` | Warning | A scanned `dif("id", ...)` call references no active experiment. |
 | `W002` | Warning | An audience resolver file has no matching config declaration. |
 

@@ -48,7 +48,7 @@ describe("DifProvider", () => {
   it("does NOT initialize the SDK during a server render", () => {
     registerAllVariantA("exp");
     const html = renderToString(
-      <DifProvider config={{ userId: () => "u-1", sink: [] }}>
+      <DifProvider config={{ userId: () => "u-1" }}>
         <Probe id="exp" />
       </DifProvider>,
     );
@@ -61,7 +61,7 @@ describe("DifProvider", () => {
     registerAllVariantA("exp");
     (globalThis as { window?: unknown }).window = {};
     const html = renderToString(
-      <DifProvider config={{ userId: () => "u-1", sink: [] }}>
+      <DifProvider config={{ userId: () => "u-1" }}>
         <Probe id="exp" />
       </DifProvider>,
     );
@@ -77,7 +77,7 @@ describe("DifProvider", () => {
       return null;
     }
     renderToString(
-      <DifProvider config={{ userId: () => "u-1", sink: [] }}>
+      <DifProvider config={{ userId: () => "u-1" }}>
         <TrackProbe />
       </DifProvider>,
     );
@@ -88,7 +88,7 @@ describe("DifProvider", () => {
     registerAllVariantA("exp");
     (globalThis as { window?: unknown }).window = {};
     renderToString(
-      <DifProvider config={{ userId: () => "u-1", sink: [] }}>
+      <DifProvider config={{ userId: () => "u-1" }}>
         <span />
       </DifProvider>,
     );

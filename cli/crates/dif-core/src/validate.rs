@@ -12,9 +12,9 @@
 //! - `E006` audience attribute not declared in config
 //! - `E007` exclusion conflict (same surface, no shared `exclusion_group`)
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
-//! - `E009` exposure.fire_at is `assignment` (unsupported; must be `render`)
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
+//! - `W003` legacy `exposure:` block (superseded by `events:`)
 
 use crate::{
     diag::{Diagnostic, Report},
@@ -38,28 +38,9 @@ pub fn run(workspace: &Workspace) -> Report {
     audience_files_paired(workspace, &mut report);
     exclusion_overlap(workspace, &mut report);
     orphan_refs(workspace, &mut report);
-    exposure_config(workspace, &mut report);
+    legacy_exposure_block(workspace, &mut report);
     sort_report(&mut report);
     report
-}
-
-/// `exposure.fire_at: assignment` is documented-broken (exposures must fire at
-/// render, not assignment, or unexposed users pollute the denominator). The
-/// config type keeps the variant only so we can refuse it here with a clear
-/// message instead of quietly producing bad data.
-pub fn exposure_config(workspace: &Workspace, report: &mut Report) {
-    if workspace.config.exposure.fire_at == crate::config::FireAt::Assignment {
-        report.errors.push(Diagnostic {
-            code: "E009".to_string(),
-            message:
-                "exposure.fire_at: assignment is not supported — exposures must fire at render"
-                    .to_string(),
-            file: paths::CONFIG_FILE.to_string(),
-            line: 1,
-            column: 1,
-            help: Some("Set `exposure.fire_at: render` in dif/config.yaml.".to_string()),
-        });
-    }
 }
 
 /// Frontmatter schema check — these were collected at load time. We just
@@ -291,6 +272,25 @@ pub fn orphan_refs(workspace: &Workspace, report: &mut Report) {
     }
 }
 
+/// A legacy `exposure:` block in `dif/config.yaml` is no longer read — event
+/// delivery is configured by `events:` now. The old key is ignored (and the
+/// workspace defaults to cloud), but we surface a warning so the customer knows
+/// to migrate rather than wondering why their sink setting does nothing.
+pub fn legacy_exposure_block(workspace: &Workspace, report: &mut Report) {
+    if workspace.config.exposure.is_some() {
+        report.warnings.push(Diagnostic {
+            code: "W003".to_string(),
+            message: "legacy `exposure:` block is ignored; event delivery is configured by `events:` now".to_string(),
+            file: paths::CONFIG_FILE.to_string(),
+            line: 1,
+            column: 1,
+            help: Some(
+                "Replace the `exposure:` block with `events:` (`mode: cloud` or `mode: custom`). See https://dif.sh/docs/events/. Defaulting to cloud for now.".to_string(),
+            ),
+        });
+    }
+}
+
 fn simple_error(
     code: &str,
     message: String,
@@ -328,7 +328,7 @@ fn sort_report(report: &mut Report) {
 mod tests {
     use super::*;
     use crate::{
-        config::{BucketingConfig, BuildConfig, Config, ExposureConfig, FireAt},
+        config::{BucketingConfig, BuildConfig, Config},
         parse::{parse_experiment_str, ParsedSurface},
         spec::Surface,
     };
@@ -343,10 +343,8 @@ mod tests {
                 id: "user_id".into(),
                 fallback: "anon_cookie".into(),
             },
-            exposure: ExposureConfig {
-                sink: "webhook".into(),
-                fire_at: FireAt::Render,
-            },
+            events: None,
+            exposure: None,
             build: BuildConfig::default(),
         }
     }
@@ -412,26 +410,6 @@ created: 2026-01-01";
         let report = run(&ws);
         assert!(report.is_clean(), "expected clean: {:?}", report.errors);
         assert!(report.warnings.is_empty());
-    }
-
-    #[test]
-    fn rejects_fire_at_assignment() {
-        let mut config = empty_config();
-        config.exposure.fire_at = FireAt::Assignment;
-        let ws = make_workspace(
-            vec![parse(VALID_FRONTMATTER, "x")],
-            vec![make_surface("home")],
-            config,
-        );
-        let report = run(&ws);
-        let e009: Vec<_> = report.errors.iter().filter(|d| d.code == "E009").collect();
-        assert_eq!(
-            e009.len(),
-            1,
-            "expected exactly one E009: {:?}",
-            report.errors
-        );
-        assert_eq!(e009[0].file, paths::CONFIG_FILE);
     }
 
     #[test]
@@ -743,5 +721,35 @@ created: 2026-01-02";
         let report = run(&ws);
         assert!(!report.errors.iter().any(|d| d.code == "E008"));
         assert!(!report.warnings.iter().any(|d| d.code == "W002"));
+    }
+
+    #[test]
+    fn legacy_exposure_block_warns() {
+        let mut config = empty_config();
+        config.exposure = Some(serde_yaml::Value::Null);
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        let report = run(&ws);
+        let w = report
+            .warnings
+            .iter()
+            .find(|d| d.code == "W003")
+            .expect("W003");
+        assert!(w.message.contains("exposure"));
+        assert!(w.help.as_deref().unwrap_or("").contains("events"));
+    }
+
+    #[test]
+    fn no_legacy_exposure_no_warning() {
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        let report = run(&ws);
+        assert!(!report.warnings.iter().any(|d| d.code == "W003"));
     }
 }

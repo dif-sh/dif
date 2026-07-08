@@ -83,7 +83,7 @@ describe("syncOverrides", () => {
 
   it("reads the ?_dif param, persists a cookie, pushes to state, and strips the URL", () => {
     setupBrowser("http://localhost/page?_dif=a=variant_a,b=control&keep=1");
-    dif.init({ userId: () => "u", sink: [] });
+    dif.init({ userId: () => "u" });
     const active = syncOverrides();
     assert.deepEqual(active, { a: "variant_a", b: "control" });
     assert.deepEqual(dif.getOverrides(), { a: "variant_a", b: "control" });
@@ -98,7 +98,7 @@ describe("syncOverrides", () => {
 
   it("?_dif=off clears the cookie and state", () => {
     setupBrowser("http://localhost/page?_dif=off", "_dif=a%3Dvariant_a");
-    dif.init({ userId: () => "u", sink: [] });
+    dif.init({ userId: () => "u" });
     const active = syncOverrides();
     assert.deepEqual(active, {});
     assert.deepEqual(dif.getOverrides(), {});
@@ -106,13 +106,13 @@ describe("syncOverrides", () => {
 
   it("with no param, resolves from the persisted cookie", () => {
     setupBrowser("http://localhost/page", "_dif=a%3Dvariant_a%2Cb%3Dcontrol");
-    dif.init({ userId: () => "u", sink: [] });
+    dif.init({ userId: () => "u" });
     assert.deepEqual(syncOverrides(), { a: "variant_a", b: "control" });
   });
 
   it("allow:false ignores and clears", () => {
     setupBrowser("http://localhost/page?_dif=a=variant_a");
-    dif.init({ userId: () => "u", sink: [] });
+    dif.init({ userId: () => "u" });
     assert.deepEqual(syncOverrides({ allow: false }), {});
     assert.deepEqual(dif.getOverrides(), {});
   });

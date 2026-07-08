@@ -19,8 +19,10 @@
 //! stay at the repo root — those are editor/agent conventions, not dif content.
 
 use super::CmdError;
-use clap::Args as ClapArgs;
-use console::style;
+use clap::{Args as ClapArgs, ValueEnum};
+use console::{style, Term};
+use dialoguer::Select;
+use dif_core::config::EventsMode;
 use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -31,6 +33,12 @@ pub struct Args {
     /// Name of the default surface to create. Defaults to `home`.
     #[arg(long)]
     pub surface: Option<String>,
+
+    /// How events are delivered: `cloud` (built-in dif.sh Cloud delivery) or
+    /// `custom` (you export exposure/track handlers in `dif/events/`). Omit to
+    /// be prompted on a TTY, or to default to cloud when non-interactive.
+    #[arg(long, value_enum)]
+    pub events: Option<EventsModeArg>,
 
     /// Overwrite existing files. Off by default — refuses to clobber.
     #[arg(long)]
@@ -44,15 +52,60 @@ pub struct Args {
     pub no_agent_files: bool,
 }
 
+/// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum EventsModeArg {
+    /// Built-in delivery to dif.sh Cloud.
+    Cloud,
+    /// User-authored handlers in `dif/events/{exposure,track}.ts`.
+    Custom,
+}
+
+impl From<EventsModeArg> for EventsMode {
+    fn from(a: EventsModeArg) -> Self {
+        match a {
+            EventsModeArg::Cloud => EventsMode::Cloud,
+            EventsModeArg::Custom => EventsMode::Custom,
+        }
+    }
+}
+
 /// Entrypoint. See PLAN.md step 3.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
-    run_in(&cwd, args, json)
+    let mode = resolve_events_mode(args.events, json);
+    run_in(&cwd, args, mode, json)
+}
+
+/// Decide the events mode. An explicit `--events` flag wins. Otherwise, on an
+/// interactive terminal, prompt. In any non-interactive context (`--json`,
+/// piped stdin, CI) default to cloud rather than block on a prompt that can't
+/// be answered.
+fn resolve_events_mode(flag: Option<EventsModeArg>, json: bool) -> EventsMode {
+    if let Some(m) = flag {
+        return m.into();
+    }
+    if json || !Term::stdout().is_term() {
+        return EventsMode::Cloud;
+    }
+    let items = [
+        "cloud — built-in delivery to dif.sh Cloud",
+        "custom — you write exposure/track handlers in dif/events/",
+    ];
+    match Select::new()
+        .with_prompt("How should dif deliver events?")
+        .items(&items)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(1)) => EventsMode::Custom,
+        _ => EventsMode::Cloud,
+    }
 }
 
 /// Test-friendly inner that takes an explicit cwd so the `current_dir()` side
 /// effect can be sidestepped. Mirrors the pattern in [`super::scaffold_audiences`].
-fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
+fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCode, CmdError> {
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let project = cwd
         .file_name()
@@ -60,20 +113,23 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .unwrap_or("project")
         .to_string();
 
-    let dirs = [
+    let mut dirs = vec![
         cwd.join(paths::EXPERIMENTS_ACTIVE),
         cwd.join(paths::EXPERIMENTS_CONCLUDED),
         cwd.join(paths::SURFACES_DIR),
         cwd.join(paths::AUDIENCES_DIR),
         cwd.join(paths::GENERATED_DIR),
     ];
+    if mode == EventsMode::Custom {
+        dirs.push(cwd.join(paths::EVENTS_DIR));
+    }
     // Plain dif-owned files: the structural scaffold plus the dif-namespaced
     // skill files. Written verbatim and guarded by the refuse-unless-`--force`
     // collision check.
     let mut plain_files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(paths::CONFIG_FILE),
-            default_config_yaml(&project, &surface),
+            default_config_yaml(&project, &surface, mode),
         ),
         (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
         (
@@ -89,6 +145,18 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
             DEFAULT_DEVICE_TYPE_TS.to_string(),
         ),
     ];
+    // Custom events mode scaffolds the two handler files the user owns, mirroring
+    // the audience resolvers above.
+    if mode == EventsMode::Custom {
+        plain_files.push((
+            cwd.join(paths::EVENTS_DIR).join("exposure.ts"),
+            DEFAULT_EXPOSURE_TS.to_string(),
+        ));
+        plain_files.push((
+            cwd.join(paths::EVENTS_DIR).join("track.ts"),
+            DEFAULT_TRACK_TS.to_string(),
+        ));
+    }
     if !args.no_agent_files {
         plain_files.extend(agent_skill_files(cwd));
     }
@@ -136,7 +204,7 @@ fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
         std::fs::write(&mf.path, merged)?;
     }
 
-    report_success(&surface, json, !args.no_agent_files);
+    report_success(&surface, json, !args.no_agent_files, mode);
     Ok(ExitCode::from(0))
 }
 
@@ -161,7 +229,7 @@ fn report_collisions(paths: &[&Path], json: bool) {
     eprintln!("re-run with {} to overwrite.", style("--force").bold());
 }
 
-fn report_success(surface: &str, json: bool, include_agent_files: bool) {
+fn report_success(surface: &str, json: bool, include_agent_files: bool, mode: EventsMode) {
     if json {
         let mut created: Vec<String> = vec![
             paths::EXPERIMENTS_ACTIVE.into(),
@@ -175,6 +243,10 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool) {
             format!("{}/locale.ts", paths::AUDIENCES_DIR),
             format!("{}/device_type.ts", paths::AUDIENCES_DIR),
         ];
+        if mode == EventsMode::Custom {
+            created.push(format!("{}/exposure.ts", paths::EVENTS_DIR));
+            created.push(format!("{}/track.ts", paths::EVENTS_DIR));
+        }
         if include_agent_files {
             created.extend(AGENT_FILE_PATHS.iter().map(|s| (*s).to_string()));
         }
@@ -194,6 +266,11 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool) {
     println!("{check} wrote dif/surfaces/{surface}.md");
     println!("{check} wrote dif/audiences/locale.ts");
     println!("{check} wrote dif/audiences/device_type.ts");
+    if mode == EventsMode::Custom {
+        println!("{check} created dif/events/");
+        println!("{check} wrote dif/events/exposure.ts");
+        println!("{check} wrote dif/events/track.ts");
+    }
     if include_agent_files {
         println!("{check} merged dif guidance into CLAUDE.md, AGENTS.md, .cursorrules");
         println!(
@@ -207,7 +284,24 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool) {
 /// We do not serialize from the `Config` struct because serde_yaml strips
 /// comments, and the comments are the difference between a config file that
 /// teaches a first-time user and one that confuses them.
-fn default_config_yaml(project: &str, surface: &str) -> String {
+fn default_config_yaml(project: &str, surface: &str, mode: EventsMode) -> String {
+    let events_block = match mode {
+        EventsMode::Cloud => {
+            "# How events are delivered. `cloud` posts exposures and dif.track()
+# metrics to dif.sh Cloud. The url is recorded here so the SDK and the cloud
+# agree on where to send them.
+events:
+  mode: cloud
+  url: https://cloud.dif.sh"
+        }
+        EventsMode::Custom => {
+            "# How events are delivered. `custom` calls the handlers you export from
+# dif/events/exposure.ts and dif/events/track.ts — forward to Amplitude,
+# Mixpanel, a webhook, or wherever you like.
+events:
+  mode: custom"
+        }
+    };
     format!(
         "# dif.sh project config. Checked in. Edit by hand or re-run `dif init`.
 
@@ -230,10 +324,7 @@ bucketing:
   id: user_id
   fallback: anon_cookie
 
-# Where exposure events go. Supported sinks: webhook, segment, amplitude, mixpanel.
-exposure:
-  sink: webhook
-  fire_at: render   # never at assignment.
+{events_block}
 
 build:
   out: dif/generated
@@ -273,6 +364,44 @@ export default function resolve(): \"mobile\" | \"tablet\" | \"desktop\" | null 
   if (window.matchMedia(\"(max-width: 640px)\").matches) return \"mobile\";
   if (window.matchMedia(\"(max-width: 1024px)\").matches) return \"tablet\";
   return \"desktop\";
+}
+";
+
+/// Custom-mode exposure handler. Scaffolded only when `dif init` chooses custom
+/// events. User-owned the moment it lands — mirrors the audience resolvers.
+pub(crate) const DEFAULT_EXPOSURE_TS: &str =
+    "// dif/events/exposure.ts — deliver one exposure event.
+//
+// dif calls this once per (experiment, user) per session, at render time. Do
+// whatever you like: forward to Amplitude, Mixpanel, Segment, a webhook, your
+// own backend. Keep it non-throwing — analytics must never crash a render.
+//
+// Edit freely — once scaffolded, dif treats this file as yours.
+import type { ExposureEvent } from \"@dif.sh/sdk\";
+
+export default function exposure(event: ExposureEvent): void {
+  // Example (Amplitude):
+  //   amplitude.track(\"dif.exposure\", {
+  //     experiment: event.experiment,
+  //     variant: event.variant,
+  //   });
+  if (typeof console !== \"undefined\") console.debug(\"[dif] exposure\", event);
+}
+";
+
+/// Custom-mode track handler. Scaffolded alongside `exposure.ts` in custom mode.
+pub(crate) const DEFAULT_TRACK_TS: &str = "// dif/events/track.ts — deliver one metric event.
+//
+// dif calls this every time your app calls dif.track(...). Forward the metric
+// to your analytics tool of choice. Keep it non-throwing.
+//
+// Edit freely — once scaffolded, dif treats this file as yours.
+import type { MetricEvent } from \"@dif.sh/sdk\";
+
+export default function track(event: MetricEvent): void {
+  // Example (Mixpanel):
+  //   mixpanel.track(event.metric, { value: event.value, ...event.props });
+  if (typeof console !== \"undefined\") console.debug(\"[dif] track\", event);
 }
 ";
 
@@ -465,13 +594,16 @@ mod tests {
 
     #[test]
     fn emitted_config_parses_as_config() {
-        let yaml = default_config_yaml("acme-shop", "home");
+        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Cloud);
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.project, "acme-shop");
         assert_eq!(config.default_surface, "home");
         assert_eq!(config.bucketing.id, "user_id");
         assert_eq!(config.bucketing.fallback, "anon_cookie");
-        assert_eq!(config.exposure.sink, "webhook");
+        assert_eq!(config.events().mode, EventsMode::Cloud);
+        assert_eq!(config.events().url.as_deref(), Some("https://cloud.dif.sh"));
+        // No legacy exposure block in a freshly-scaffolded config.
+        assert!(config.exposure.is_none());
         let names: Vec<&str> = config
             .audience_attributes
             .iter()
@@ -481,11 +613,27 @@ mod tests {
     }
 
     #[test]
+    fn emitted_custom_config_parses_as_custom() {
+        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Custom);
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert_eq!(config.events().mode, EventsMode::Custom);
+        assert!(config.events().url.is_none());
+    }
+
+    #[test]
     fn scaffolded_audience_files_contain_resolver_default_export() {
         assert!(DEFAULT_LOCALE_TS.contains("export default function resolve"));
         assert!(DEFAULT_LOCALE_TS.contains("navigator.language"));
         assert!(DEFAULT_DEVICE_TYPE_TS.contains("export default function resolve"));
         assert!(DEFAULT_DEVICE_TYPE_TS.contains("matchMedia"));
+    }
+
+    #[test]
+    fn scaffolded_event_files_contain_handler_default_export() {
+        assert!(DEFAULT_EXPOSURE_TS.contains("export default function exposure"));
+        assert!(DEFAULT_EXPOSURE_TS.contains("ExposureEvent"));
+        assert!(DEFAULT_TRACK_TS.contains("export default function track"));
+        assert!(DEFAULT_TRACK_TS.contains("MetricEvent"));
     }
 
     #[test]
@@ -505,9 +653,11 @@ mod tests {
             tmp.path(),
             Args {
                 surface: None,
+                events: None,
                 force: false,
                 no_agent_files: false,
             },
+            EventsMode::Cloud,
             true,
         )
         .expect("init");
@@ -538,9 +688,11 @@ mod tests {
             tmp.path(),
             Args {
                 surface: None,
+                events: None,
                 force: false,
                 no_agent_files: true,
             },
+            EventsMode::Cloud,
             true,
         )
         .expect("init");
@@ -552,6 +704,58 @@ mod tests {
         assert!(tmp.path().join("dif/config.yaml").exists());
         assert!(tmp.path().join("dif/surfaces/home.md").exists());
         assert!(tmp.path().join("dif/audiences/locale.ts").exists());
+    }
+
+    #[test]
+    fn cloud_mode_scaffolds_no_event_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                force: false,
+                no_agent_files: true,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+        assert!(!tmp.path().join("dif/events").exists());
+        let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert!(config.contains("mode: cloud"));
+        assert!(config.contains("url: https://cloud.dif.sh"));
+    }
+
+    #[test]
+    fn custom_mode_scaffolds_event_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                force: false,
+                no_agent_files: true,
+            },
+            EventsMode::Custom,
+            true,
+        )
+        .expect("init");
+        let exposure = tmp.path().join("dif/events/exposure.ts");
+        let track = tmp.path().join("dif/events/track.ts");
+        assert!(exposure.exists(), "exposure.ts not scaffolded");
+        assert!(track.exists(), "track.ts not scaffolded");
+        assert!(std::fs::read_to_string(&exposure)
+            .unwrap()
+            .contains("export default function exposure"));
+        assert!(std::fs::read_to_string(&track)
+            .unwrap()
+            .contains("export default function track"));
+        // The audience scaffold still lands.
+        assert!(tmp.path().join("dif/audiences/locale.ts").exists());
+        let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert!(config.contains("mode: custom"));
     }
 
     #[test]
@@ -569,9 +773,11 @@ mod tests {
             tmp.path(),
             Args {
                 surface: None,
+                events: None,
                 force: false,
                 no_agent_files: false,
             },
+            EventsMode::Cloud,
             true,
         )
         .expect("init should succeed despite a pre-existing CLAUDE.md");
@@ -596,11 +802,12 @@ mod tests {
         // --force on the re-run bypasses the structural collision so the merge path runs twice.
         let args = || Args {
             surface: None,
+            events: None,
             force: true,
             no_agent_files: false,
         };
-        run_in(tmp.path(), args(), true).expect("first");
-        run_in(tmp.path(), args(), true).expect("second");
+        run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
+        run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
 
         let merged = std::fs::read_to_string(&claude).unwrap();
         assert_eq!(
@@ -632,9 +839,11 @@ mod tests {
             tmp.path(),
             Args {
                 surface: None,
+                events: None,
                 force: true,
                 no_agent_files: false,
             },
+            EventsMode::Cloud,
             true,
         )
         .expect("init --force");
@@ -667,9 +876,11 @@ mod tests {
             tmp.path(),
             Args {
                 surface: None,
+                events: None,
                 force: false,
                 no_agent_files: false,
             },
+            EventsMode::Cloud,
             true,
         )
         .expect("init returns Ok with a non-zero exit code");
@@ -751,7 +962,7 @@ mod tests {
     #[test]
     fn validation_errors_doc_lists_every_real_code() {
         let codes = [
-            "E001", "E003", "E004", "E005", "E006", "E007", "E008", "E009", "W001", "W002",
+            "E001", "E003", "E004", "E005", "E006", "E007", "E008", "W001", "W002", "W003",
         ];
         for code in codes {
             assert!(

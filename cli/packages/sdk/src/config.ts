@@ -4,8 +4,14 @@
 // getState(). One config per bundle; calling init again overwrites. This is
 // intentional — there is only one "current user" per app instance.
 
-import { cloudSink } from "./sinks/cloud.js";
-import type { AttributeBag, DifConfig, DifInitConfig, Sink } from "./types.js";
+import { cloudSink, cloudTrack } from "./sinks/cloud.js";
+import type {
+  AttributeBag,
+  DifConfig,
+  DifInitConfig,
+  MetricEvent,
+  Sink,
+} from "./types.js";
 
 export type { DifInitConfig };
 
@@ -16,6 +22,8 @@ export interface ResolvedState {
   userId: () => string | null;
   attributes: () => AttributeBag;
   sinks: Sink[];
+  /** Where `dif.track()` metrics go — cloud POST or the user's custom handler. */
+  trackHandler: (event: MetricEvent) => void;
   enabled: boolean;
   /** Active QA/preview forces (experiment id → variant). */
   overrides: Record<string, string>;
@@ -30,20 +38,25 @@ const DEFAULT_API_URL = "https://cloud.dif.sh";
 
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;
-  const sinkVal = merged.sink;
-  const apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
+  const events = merged.events;
   const publishableKey = merged.publishableKey ?? null;
 
-  // Auto-attach the cloud sink when the caller didn't specify any sinks and a
-  // publishable key is configured. Without this, exposures fired by `dif(...)`
-  // call sites silently drop on the floor even though `dif.track` already
-  // posts to the same cloud. Opt out by passing `sink: []`; replace by passing
-  // `sink: yourSink` or `sink: [yourSink]`.
+  // Two delivery modes. Custom routes exposures + tracks to the user's handlers
+  // (generated from `dif/events/{exposure,track}.ts`). Cloud — the default when
+  // no `events` config is present — posts to dif.sh Cloud, attaching the cloud
+  // sink only when a publishable key is configured.
+  let apiUrl: string;
   let sinks: Sink[];
-  if (sinkVal === undefined) {
-    sinks = publishableKey ? [cloudSink({ apiUrl, publishableKey })] : [];
+  let trackHandler: (event: MetricEvent) => void;
+
+  if (events?.mode === "custom") {
+    apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
+    sinks = [{ kind: "custom", emit: events.exposure }];
+    trackHandler = events.track;
   } else {
-    sinks = Array.isArray(sinkVal) ? sinkVal : [sinkVal];
+    apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
+    sinks = publishableKey ? [cloudSink({ apiUrl, publishableKey })] : [];
+    trackHandler = cloudTrack({ apiUrl, publishableKey });
   }
 
   state = {
@@ -53,6 +66,7 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     userId: merged.userId ?? (() => null),
     attributes: merged.attributes ?? (() => ({})),
     sinks,
+    trackHandler,
     enabled: merged.enabled !== false,
     overrides: merged.overrides ?? {},
   };
