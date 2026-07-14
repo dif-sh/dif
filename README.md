@@ -1,77 +1,33 @@
 # dif.sh
 
-**Experiments belong in the repo.**
+**Feature flags and A/B tests that live in your repo as Markdown files. One command to install, no signup.**
 
-One `.md` file per experiment, in the repo with the code. Every flag, A/B
-test, holdout, and rollout is versioned in git and reviewable in a PR. Your
-coding agent reads `dif/context.json` on session start, so prior learning
-travels with the work.
-
-## Install
-
-```sh
-# macOS / Linux — single static binary, no Node required
-curl -fsSL https://dif.sh/install.sh | sh
-
-# macOS via Homebrew
-brew install dif-sh/tap/dif
-
-# Any platform with Node 18+
-npm install -g @dif.sh/cli
-```
+[![npm](https://img.shields.io/npm/v/@dif.sh/cli)](https://www.npmjs.com/package/@dif.sh/cli)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## Quickstart
 
-From an empty repo to a tested experiment rendering in your app.
-
-**1. `dif init`** — scaffold the workspace. One `dif/` directory holds everything.
-
 ```sh
-$ dif init
-✓ wrote dif/config.yaml
-✓ created dif/experiments/{active,concluded}/
-✓ created dif/surfaces/home.md
-✓ created dif/audiences/{locale,device_type}.ts
-✓ added dif guidance to CLAUDE.md, AGENTS.md
+# macOS / Linux: single static binary, no Node required
+curl -fsSL https://dif.sh/install.sh | sh
+
+# any platform with Node 18+
+npm install -g @dif.sh/cli
 ```
 
-**2. `dif new`** — draft an experiment. Owner comes from `git config user.email`.
+Then, in your repo:
 
 ```sh
-$ dif new checkout-cta-v2 --surface home
-→ reading dif/surfaces/home.md
-  found 0 prior learnings
-→ drafted dif/experiments/active/checkout-cta-v2.md
-  status: draft, owner: ada@acme.dev
+dif init                                # scaffold dif/, config, agent files
+dif new home-hero-cta --surface home    # draft an experiment file
+dif validate                            # check everything
+dif build                               # generate the TS client + context.json
 ```
 
-Open the file, fill in the hypothesis, set `status: active`.
-
-**3. `dif validate`** — every check in one pass. Errors include the source location.
-
-```sh
-$ dif validate
-✓ all checks passed
-```
-
-**4. `dif build`** — compile the runtime artifacts your app imports and the
-context file your agent reads.
-
-```sh
-$ dif build
-✓ validated 1 active experiment
-✓ client    → dif/generated/client.ts
-✓ audiences → dif/generated/audiences.ts
-✓ context   → dif/context.json
-```
-
-**5. Render it** — install the SDK, import the generated client once at boot,
-and call `dif()` at the render site. Full reference on the
-[SDK page](https://dif.sh/docs/sdk/).
-
-```sh
-$ npm install @dif.sh/sdk
-```
+`dif new` drafts the file with your git email as owner. Open it, write the
+hypothesis, set `status: active`, and run `dif build`. Then install the
+runtime (`npm install @dif.sh/sdk`, zero dependencies), import the generated
+client once at boot, and call `dif()` at the render site:
 
 ```ts
 import "./dif/generated/client";
@@ -83,76 +39,201 @@ dif.init({
   attributes: () => attributes(),
 });
 
-const cta = dif("checkout-cta-v2", {
-  control:   () => "Place order",
-  variant_a: () => "Get it today",
+const cta = dif("home-hero-cta", {
+  control:   () => "Start free trial",
+  variant_a: () => "Try it free for 30 days",
 });
 
 button.textContent = cta();
 ```
 
-## Repo layout
+Full documentation lives at [www.dif.sh/docs](https://www.dif.sh/docs).
 
+## Why dif?
+
+A feature flag is part of your codebase. So it should live in your repo.
+
+Every flag and every experiment in dif is one Markdown file, checked into git
+next to the code it changes. It gets reviewed in a pull request. Its history
+is the git history. When it is done, the decision and what you learned go in
+the same file.
+
+The alternative is what most teams have now. Flags live in a web dashboard,
+disconnected from the code, and they rot there. Nobody remembers why
+`new-checkout-v2` exists or whether it is safe to delete, so it sits at 100%
+for three years with a dead branch behind it. Experiment results end up in
+someone's old Slack thread and the same failed test gets re-run two years
+later.
+
+Files also mean assignment can be a pure function. There is no assignment database and no network request to evaluate a
+flag, and a user never flips between variants across page loads or devices. The same math runs in the Rust CLI and the
+TypeScript SDK, locked by a shared test fixture that fails CI on both sides
+if the two implementations drift by a single bucket.
+
+## A flag / experiment
+
+Both are the same file format. Here is a flag mid-ramp:
+
+```md
+---
+id: new-checkout
+status: active
+owner: sam@acme.com
+surface: checkout
+hypothesis: >
+  Inlining the address form will lift completed checkouts on mobile
+  without moving refunds.
+audience:
+  include:
+    - device_type: [mobile, tablet]
+  exclude:
+    - plan: free
+variants:
+  - id: "off"
+    weight: 90
+    summary: Current checkout
+  - id: "on"
+    weight: 10
+    summary: Rebuilt checkout with the address form inlined
+metrics:
+  primary: completed_checkout
+  guardrails:
+    - refund_rate
+exclusion_group: checkout
+created: 2026-07-01
+---
+
+## Brief
+
+Ramp to 25% once the guardrails hold for a week.
 ```
-README.md                # this file
-PUBLIC_DOCS.md           # full reference docs (mirrors dif.sh/docs)
-LICENSE                  # MIT
-cli/                     # the CLI — Cargo workspace + npm packages
-  crates/dif-core/       # parser, validator, resolver, codegen (Rust library)
-  crates/dif-cli/        # the `dif` binary
-  packages/cli/          # @dif.sh/cli — Node wrapper for `npm install -g`
-  packages/sdk/          # @dif.sh/sdk — runtime SDK (TypeScript)
-  packages/react/        # @dif.sh/react — provider + useDif hook
-  packages/svelte/       # @dif.sh/svelte — Svelte 5 / SvelteKit adapter
-dist/                    # install.sh + Homebrew tap template
-.github/workflows/       # CI + release
+
+And an experiment:
+
+```md
+---
+id: checkout-cta-v2
+status: active
+owner: sam@acme.com
+surface: checkout
+hypothesis: >
+  A CTA that names the outcome ("Pay $49") beats the generic "Continue"
+  at the final step.
+variants:
+  - id: control
+    weight: 50
+  - id: variant_a
+    weight: 50
+metrics:
+  primary: completed_checkout
+  guardrails:
+    - refund_rate
+exclusion_group: checkout
+created: 2026-07-01
+---
 ```
 
-## Architecture
+The only structural difference is the weights. A flag is an experiment you
+are ramping toward 100%. An experiment is one you are holding at a split
+until the numbers answer the hypothesis. Same schema, same bucketing math,
+same validator, same SDK call. An experiment that wins becomes a flag you
+ramp, and a flag you are unsure about becomes an experiment, without touching
+a line of application code.
 
-Three artifacts, two languages, one source of truth.
+(The shared `exclusion_group` is there because both are live on the checkout
+surface at the same time. More on that below.)
 
-- **`dif-core`** (Rust crate) — parsing, audience eval, deterministic
-  bucketing, exclusion graph, codegen. Where correctness lives.
-- **`dif-cli`** (Rust binary) — thin clap wrapper that dispatches the six
-  verbs into `dif-core`. Single static binary.
-- **`@dif.sh/sdk`** (TypeScript SDK) — ~5 kB gzipped, zero deps. Lives in
-  the customer's app. Reads the generated TS artifact, evaluates audience,
-  buckets the user, fires one exposure event per (experiment, user) per
-  session, returns the variant.
+## Using the CLI
 
-The contract between Rust and TS is one generated file
-(`dif/generated/client.ts`) plus `dif/context.json`. No FFI, no NAPI, no
-WASM at the runtime boundary — the customer's install surface stays as
-boring as humanly possible.
+`dif validate` is a type checker for your experiments. Weights must total
+100. Referenced surfaces and audience attributes
+must exist. It also scans your application source for `dif("...")` call sites
+and warns when code points at an experiment that is not in the repo. Run it
+in CI and a broken flag fails the PR like a broken build.
 
-A cross-language fixture (`crates/dif-core/tests/fixtures/bucket_tests.json`)
-locks the bucketing contract: any drift between Rust and TS fails CI on
-both sides.
+It catches experiment collisions too. Two active experiments on
+the same surface must either share an `exclusion_group`, which guarantees
+each user sees at most one of them, or have audiences that provably cannot
+overlap. If dif cannot prove separation, validation fails.
 
-## Local development
+`dif qa --user u_8131 --attr device_type=mobile` shows which variant that
+user gets and why. Add `--force checkout-cta-v2=variant_a` and it also returns a preview link (`?_dif=...`) that pins the variant in a browser. Forced assignments don't fire exposure events.
+
+`dif conclude` records the decision, dates it, moves the file to
+`dif/experiments/concluded/`, and appends a one-line learning to the surface.
+The next `dif new` on that surface reads those learnings into the draft, so
+the same failed idea does not get rebuilt by someone new in two years.
+
+`dif build` compiles everything the runtime needs: a typed client at
+`dif/generated/client.ts`, audience resolvers, event delivery, and
+`dif/context.json` for your agent.
+
+## Working with agents
+
+`dif init` merges a managed block into `CLAUDE.md`, `AGENTS.md`, and
+`.cursorrules`, and installs Claude Code skills for authoring experiments,
+concluding them, and generating surfaces. `dif build` writes
+`dif/context.json`: every active experiment, plus the most recent learning on
+each surface.
+
+This is the part a dashboard cannot do. In dif the flags are
+files, so the agent reads them like any other source and writes them the same
+way. Tell it to add a flag for the new checkout and it can draft the file,
+gate the code path, and run `dif validate` to check its own work.
+
+## Analytics
+
+You can run dif with no analytics at all. Assignment is local, so flags and
+ramps work with nothing configured.
+
+When you want more analysis, point the SDK at dif.sh Cloud:
+
+```ts
+dif.init({
+  project: "acme",
+  publishableKey: "dif_pk_live_...",
+  userId: () => currentUser?.id ?? null,
+});
+```
+
+Cloud handles event ingest, metrics, statistical analysis. It runs hosted at
+[cloud.dif.sh](https://cloud.dif.sh). Nothing in the core
+requires it.
+
+If you already have an events pipeline, run `dif init --events custom`
+instead. That scaffolds `dif/events/exposure.ts` and `dif/events/track.ts`,
+two handlers you own. Forward events to Segment, Amplitude, a webhook, or
+whatever you run; dif does not care where they go. There are no bundled
+third-party integrations, just those two functions.
+
+Metric tracking is one call either way:
+
+```ts
+dif.track("completed_checkout");
+dif.track("revenue", { value: 49 });
+```
+
+## Development
+
+```text
+cli/
+  crates/dif-core/   # parser, validator, bucketing, codegen (Rust)
+  crates/dif-cli/    # the `dif` binary
+  packages/cli/      # @dif.sh/cli, the npm wrapper
+  packages/sdk/      # @dif.sh/sdk, the runtime SDK (TypeScript, zero deps)
+  packages/react/    # @dif.sh/react
+  packages/svelte/   # @dif.sh/svelte
+dist/                # install.sh + Homebrew tap template
+```
 
 ```sh
 cd cli
-cargo test --workspace            # Rust tests (parser, validator, codegen, etc.)
+cargo test --workspace       # Rust: parser, validator, codegen
 
 cd packages/sdk
-npm install
-npm test                          # SHA-256 vectors + the bucket fixture
+npm install && npm test      # TS
 ```
-
-CI runs both on every PR. The release workflow at
-[`.github/workflows/release.yml`](.github/workflows/release.yml) cuts a
-GitHub release on every `v*` tag push and publishes the npm packages.
-
-## dif.sh Cloud
-
-The hosted control plane — event ingest, metrics catalog, statistical
-analysis, and PR write-back — runs at [cloud.dif.sh](https://cloud.dif.sh) and
-is self-hostable from
-[`dif-sh/dif-cloud`](https://github.com/dif-sh/dif-cloud). Point the SDK at it
-with `dif.init({ publishableKey, apiUrl: "https://cloud.dif.sh" })`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
