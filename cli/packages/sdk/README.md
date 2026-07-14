@@ -2,10 +2,10 @@
 
 Client SDK for [dif.sh](https://dif.sh). Handles two things:
 
-1. **Experiment assignment** — picks the variant for each user and fires a
+1. **Experiment assignment**: picks the variant for each user and fires a
    deterministic exposure event.
-2. **Metric tracking** — fires conversion / outcome events to dif.sh Cloud
-   so the analysis layer can compute lift.
+2. **Metric tracking**: fires conversion and outcome events so the analysis
+   layer can compute lift.
 
 ## Install
 
@@ -13,11 +13,15 @@ Client SDK for [dif.sh](https://dif.sh). Handles two things:
 npm install @dif.sh/sdk
 ```
 
+Zero runtime dependencies. Works in the browser and on the server
+(Node 20.6+).
+
 ## Initialize once, at app boot
 
 ```ts
-import { dif } from "@dif.sh/sdk";
+import "../dif/generated/client"; // side effect: registers active experiments
 import { attributes } from "../dif/generated/audiences";
+import { dif } from "@dif.sh/sdk";
 
 dif.init({
   project: "acme-shop",
@@ -50,7 +54,7 @@ dif.init({
 });
 ```
 
-`dif init` scaffolds two starters — `audiences/locale.ts` (returns
+`dif init` scaffolds two starters: `audiences/locale.ts` (returns
 `navigator.language`) and `audiences/device_type.ts` (returns
 `"mobile" | "tablet" | "desktop"` via `matchMedia`). Both return `null` on
 the server, which fails the predicate match closed during SSR. Add your own
@@ -71,14 +75,10 @@ const cta = dif("checkout-cta-v2", {
 <button>{cta()}</button>;
 ```
 
-You normally don't write the `dif(...)` call by hand — `dif build` emits a
-generated module with one typed export per active experiment. Import the
-named export and call it:
-
-```ts
-import { checkoutCta } from "../dif/generated/client";
-<button>{checkoutCta()}</button>;
-```
+The experiment definitions come from `dif/generated/client.ts`, a
+side-effect module emitted by `dif build`. Importing it once at boot
+registers every active experiment (variants, weights, salt, audience) with
+the SDK; after that, every `dif()` call resolves locally.
 
 Variant resolution is deterministic, sticky per user, and byte-compatible
 with `dif-core` (Rust). One exposure event fires per `(experiment, user)`
@@ -101,7 +101,7 @@ dif.track("article_read", {
 ```
 
 Calls are fire-and-forget: one HTTP POST per event using `fetch` with
-`keepalive: true`. The call never throws — bad analytics must not crash a
+`keepalive: true`. The call never throws; bad analytics must not crash a
 render. When `publishableKey` isn't configured, the call logs to
 `console.debug` and drops.
 
@@ -149,13 +149,14 @@ useEffect(() => track("completed_checkout"), []);
 
 **Does:**
 - Variant lookup against the generated experiment spec.
-- Deterministic SHA-256 bucketing — byte-compatible with `dif-core` (Rust).
-- Audience predicate evaluation. (Exclusion-group conflicts are resolved at
-  build time by `dif build`, not in this runtime.)
+- Deterministic SHA-256 bucketing, byte-compatible with `dif-core` (Rust).
+- Audience predicate evaluation and exclusion-group arbitration. Within a
+  group, the SDK picks the same winner as `dif qa` (sorted by created date,
+  then id), so the CLI and the runtime agree on who sees what.
 - One exposure event per `(experiment, user)` per session. Delivered per the
   `events` config from `dif build`: cloud mode posts to dif.sh Cloud, custom
   mode calls your `dif/events/exposure.ts` handler.
-- Metric tracking (`dif.track`) — to dif.sh Cloud in cloud mode, or your
+- Metric tracking (`dif.track`): to dif.sh Cloud in cloud mode, or your
   `dif/events/track.ts` handler in custom mode. Server tracking is cloud-only.
 
 **Does not (in v0):**
@@ -166,10 +167,11 @@ useEffect(() => track("completed_checkout"), []);
 
 ## Preview & QA forcing
 
-The SDK honors a `?_dif=` URL param / `_dif` cookie so QA, designers, and PMs can
-force a variant by clicking a link — a forced assignment **never fires an
-exposure**. The framework adapters (`@dif.sh/svelte`, `@dif.sh/react`) wire this
-up automatically; in a vanilla app, call `syncOverrides()` once after `dif.init`:
+The SDK honors a `?_dif=` URL param / `_dif` cookie so QA, designers, and
+PMs can force a variant by clicking a link. A forced assignment **never
+fires an exposure**. The framework adapters (`@dif.sh/svelte`,
+`@dif.sh/react`) wire this up automatically; in a vanilla app, call
+`syncOverrides()` once after `dif.init`:
 
 ```ts
 import { dif, syncOverrides, mountDifPreview } from "@dif.sh/sdk";
@@ -181,5 +183,3 @@ mountDifPreview(); // optional badge: active forces + a one-click clear
 Link form (matches `dif qa --preview-url`): `?_dif=exp=variant,exp2=variant2`;
 `?_dif=off` clears. Also `dif.setOverrides({ exp: "variant" })` /
 `dif.getOverrides()`. Pass `syncOverrides({ allow: false })` to gate by env.
-
-See [../../PLAN.md](../../PLAN.md) for the architectural rationale.
