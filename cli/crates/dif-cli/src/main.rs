@@ -1,7 +1,7 @@
 //! `dif` — the CLI entrypoint.
 //!
-//! Six verbs, no plugins, no config wizard. Every command dispatches into
-//! `dif-core`; this file is only here to translate flags into function
+//! A handful of verbs, no plugins, no config wizard. Every command dispatches
+//! into `dif-core`; this file is only here to translate flags into function
 //! calls and pretty-print the results.
 
 use clap::{Parser, Subcommand};
@@ -25,6 +25,8 @@ struct Cli {
 enum Command {
     /// Scaffold the dif.sh convention in the current directory.
     Init(cmd::init::Args),
+    /// Connect the workspace to dif.sh Cloud with a publishable key.
+    Connect(cmd::connect::Args),
     /// Draft a new experiment, informed by the surface's prior learnings.
     New(cmd::new::Args),
     /// Check the workspace: schema, owners, surface refs, exclusion graph.
@@ -43,6 +45,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Command::Init(args) => cmd::init::run(args, cli.json),
+        Command::Connect(args) => cmd::connect::run(args, cli.json),
         Command::New(args) => cmd::new::run(args, cli.json),
         Command::Validate(args) => cmd::validate::run(args, cli.json),
         Command::Build(args) => cmd::build::run(args, cli.json),

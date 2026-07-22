@@ -16,11 +16,12 @@ dif/generated/                              gitignored; output of `dif build`
 dif/context.json                            agent-facing summary of active experiments
 ```
 
-## The six verbs
+## The verbs
 
 | Verb | What it does |
 |---|---|
-| `dif init` | Scaffold the convention. Done once per repo. |
+| `dif init` | Scaffold the convention. Done once per repo. Add `--key <dif_pk_…>` to connect to dif.sh Cloud at the same time. |
+| `dif connect --key <dif_pk_…>` | Point an existing workspace at dif.sh Cloud: writes the publishable key + cloud mode into `dif/config.yaml`. Re-run `dif build` after. |
 | `dif new <id> --surface <name>` | Draft `dif/experiments/active/<id>.md`. Embeds the surface's last 3 learnings as an HTML comment in the Brief. |
 | `dif validate` | Schema, weights, audience, exclusion checks. Exit 1 on any error. |
 | `dif build` | Compile to `dif/generated/client.ts` + `dif/context.json`. Runs validate first. |

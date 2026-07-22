@@ -21,19 +21,26 @@ Zero runtime dependencies. Works in the browser and on the server
 ```ts
 import "../dif/generated/client"; // side effect: registers active experiments
 import { attributes } from "../dif/generated/audiences";
+import { events } from "../dif/generated/events"; // cloud config + publishable key
 import { dif } from "@dif.sh/sdk";
 
 dif.init({
-  project: "acme-shop",
-  publishableKey: "dif_pk_live_…", // browser-safe write key
+  events,                          // from `dif build`; carries your publishable key
   userId: () => currentUser?.id ?? null,
   attributes: () => attributes(),  // wired audience bag from `dif build`
 });
 ```
 
-Get a publishable key from your project's Settings → Keys tab in dif.sh
-Cloud. Publishable keys are safe to embed in browser bundles; they can only
-write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist.
+Connect the project once with the key from cloud onboarding — `dif connect
+--key dif_pk_live_…` (or `dif init --key …` on a new project). That writes the
+key into `dif/config.yaml`, and `dif build` bakes it into
+`dif/generated/events.ts`, so nothing secret is pasted into app code and no env
+var is needed. Get the key from your project's Settings → Keys tab in dif.sh
+Cloud; publishable keys are safe to embed in browser bundles (they can only
+write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist).
+
+Passing an explicit top-level `publishableKey` to `dif.init` still works and
+overrides the one baked into `events` — handy for per-environment keys.
 
 ## Wiring audiences
 

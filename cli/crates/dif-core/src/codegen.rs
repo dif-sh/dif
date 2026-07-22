@@ -138,16 +138,20 @@ pub fn render_events(workspace: &Workspace, out_dir: &Path) -> String {
             let url = events.url.as_deref().unwrap_or("https://cloud.dif.sh");
             out.push('\n');
             out.push_str("/**\n");
+            out.push_str(" * Cloud event delivery. Pass `events` to `dif.init()` so exposures +\n");
+            out.push_str(" * `dif.track()` post to dif.sh Cloud. When set via `dif connect` /\n");
             out.push_str(
-                " * Cloud event delivery. Pass `events` to `dif.init()` (alongside your\n",
-            );
-            out.push_str(
-                " * publishable key) so exposures + `dif.track()` post to dif.sh Cloud.\n",
+                " * `dif init --key`, the publishable key rides on this object — no env var.\n",
             );
             out.push_str(" */\n");
+            let key_field = match events.key.as_deref() {
+                Some(key) => format!(", publishableKey: \"{}\"", js_escape(key)),
+                None => String::new(),
+            };
             out.push_str(&format!(
-                "export const events = {{ mode: \"cloud\", apiUrl: \"{}\" }} as const;\n",
-                js_escape(url)
+                "export const events = {{ mode: \"cloud\", apiUrl: \"{}\"{} }} as const;\n",
+                js_escape(url),
+                key_field
             ));
         }
     }
@@ -742,12 +746,15 @@ created: 2026-01-01",
         ws.config.events = Some(crate::config::EventsConfig {
             mode: crate::config::EventsMode::Cloud,
             url: Some("https://cloud.example.com".into()),
+            key: None,
         });
         let out_dir = root.join("dif").join("generated");
         let rendered = render_events(&ws, &out_dir);
 
         assert!(rendered.contains("mode: \"cloud\""));
         assert!(rendered.contains("apiUrl: \"https://cloud.example.com\""));
+        // No key configured → no publishableKey leaks into the client.
+        assert!(!rendered.contains("publishableKey"));
         // No handler imports in cloud mode.
         assert!(!rendered.contains("import exposure"));
         assert!(!rendered.contains("import track"));
@@ -762,6 +769,22 @@ created: 2026-01-01",
         let rendered = render_events(&ws, &out_dir);
         assert!(rendered.contains("mode: \"cloud\""));
         assert!(rendered.contains("apiUrl: \"https://cloud.dif.sh\""));
+        assert!(!rendered.contains("publishableKey"));
+    }
+
+    #[test]
+    fn events_cloud_mode_emits_key() {
+        let root = PathBuf::from("/tmp/dif-test-ws");
+        let mut ws = ws_with(vec![], vec![], root.clone());
+        ws.config.events = Some(crate::config::EventsConfig {
+            mode: crate::config::EventsMode::Cloud,
+            url: None,
+            key: Some("dif_pk_live_abc123".into()),
+        });
+        let out_dir = root.join("dif").join("generated");
+        let rendered = render_events(&ws, &out_dir);
+        assert!(rendered.contains("mode: \"cloud\""));
+        assert!(rendered.contains("publishableKey: \"dif_pk_live_abc123\""));
     }
 
     #[test]
@@ -771,6 +794,7 @@ created: 2026-01-01",
         ws.config.events = Some(crate::config::EventsConfig {
             mode: crate::config::EventsMode::Custom,
             url: None,
+            key: None,
         });
         let out_dir = root.join("dif").join("generated");
         let rendered = render_events(&ws, &out_dir);
@@ -787,6 +811,7 @@ created: 2026-01-01",
         ws.config.events = Some(crate::config::EventsConfig {
             mode: crate::config::EventsMode::Custom,
             url: None,
+            key: None,
         });
         let out_dir = root.join("dif").join("generated");
         let a = render_events(&ws, &out_dir);

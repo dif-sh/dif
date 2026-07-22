@@ -33,19 +33,24 @@ export const load = (event) => ({ dif: difLoad(event) });
 <script lang="ts">
   import { setContext } from "svelte";
   import { initDif, DIF_CONTEXT_KEY } from "@dif.sh/svelte";
-  import { PUBLIC_DIF_PUBLISHABLE_KEY, PUBLIC_DIF_CLOUD_URL } from "$env/static/public";
+  import { events } from "$lib/dif/generated/events"; // cloud config + publishable key
 
   let { data, children } = $props();
   setContext(DIF_CONTEXT_KEY, data.dif);
   initDif({
     data: data.dif,
-    publishableKey: PUBLIC_DIF_PUBLISHABLE_KEY,
-    apiUrl: PUBLIC_DIF_CLOUD_URL, // https://cloud.dif.sh (or your own deployment)
+    events, // publishable key + apiUrl, baked in by `dif build`
   });
 </script>
 
 {@render children()}
 ```
+
+Connect the project once with `dif connect --key dif_pk_live_…` (or `dif init
+--key …`; add `--url` for a self-hosted deployment). The key and cloud URL live
+in `dif/config.yaml` and `dif build` bakes them into
+`dif/generated/events.ts`, so there are no `PUBLIC_DIF_PUBLISHABLE_KEY` /
+`PUBLIC_DIF_CLOUD_URL` env vars to wire up.
 
 **Any component** (read an experiment as a store):
 
