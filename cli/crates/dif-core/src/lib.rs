@@ -15,6 +15,7 @@ pub mod audience_files;
 pub mod bucket;
 pub mod codegen;
 pub mod config;
+pub mod config_edit;
 pub mod context;
 pub mod diag;
 pub mod exclusion;

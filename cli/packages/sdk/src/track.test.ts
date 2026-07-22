@@ -97,6 +97,24 @@ describe("dif.track", () => {
     assert.ok(typeof body.fired_at === "number");
   });
 
+  it("uses the publishable key baked into events config", async () => {
+    dif.init({
+      userId: () => "u-1",
+      events: {
+        mode: "cloud",
+        apiUrl: "https://api.example.test",
+        publishableKey: "dif_pk_live_from_events",
+      },
+    });
+    dif.track("completed_checkout", { value: 10 });
+    await Promise.resolve();
+    assert.equal(fetchCalls.length, 1);
+    const call = fetchCalls[0]!;
+    assert.equal(call.url, "https://api.example.test/v1/track");
+    const headers = call.init.headers as Record<string, string>;
+    assert.equal(headers.authorization, "Bearer dif_pk_live_from_events");
+  });
+
   it("strips trailing slash from apiUrl", async () => {
     dif.init({
       project: "acme",
