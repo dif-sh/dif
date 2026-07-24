@@ -177,6 +177,12 @@ concluding them, and generating surfaces. `dif build` writes
 `dif/context.json`: every active experiment, plus the most recent learning on
 each surface.
 
+Use `--agents` to scaffold only a subset: a comma-separated list of `claude`
+(`CLAUDE.md` + the `.claude/skills/dif-*` skills), `general` (`AGENTS.md`),
+`cursor` (`.cursorrules`), or `none`. Omit the flag to install all three.
+`--agents none` writes no agent files (the former `--no-agent-files`, now a
+hidden alias).
+
 This is the part a dashboard cannot do. In dif the flags are
 files, so the agent reads them like any other source and writes them the same
 way. Tell it to add a flag for the new checkout and it can draft the file,

@@ -51,12 +51,36 @@ pub struct Args {
     #[arg(long)]
     pub force: bool,
 
-    /// Skip writing agent-onboarding files (CLAUDE.md, AGENTS.md, .cursorrules,
-    /// and the `.claude/skills/dif-*` directories). On by default — dif's
+    /// Which agent-onboarding integrations to scaffold. Comma-separated:
+    /// `claude` (CLAUDE.md + .claude/skills/dif-*), `general` (AGENTS.md),
+    /// `cursor` (.cursorrules), or `none`. Omit to scaffold all three — dif's
     /// product thesis is "primary developer is now an AI agent", so the
-    /// guidance ships unless you opt out.
-    #[arg(long)]
+    /// guidance ships unless you opt out. `none` cannot be combined with other
+    /// targets.
+    #[arg(
+        long,
+        value_enum,
+        value_delimiter = ',',
+        conflicts_with = "no_agent_files"
+    )]
+    pub agents: Option<Vec<AgentTarget>>,
+
+    /// Deprecated alias for `--agents none`. Hidden; kept for back-compat.
+    #[arg(long, hide = true, conflicts_with = "agents")]
     pub no_agent_files: bool,
+}
+
+/// `--agents` targets. Each maps to a set of scaffolded files;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum AgentTarget {
+    /// CLAUDE.md,`.claude/skills/dif-*` skill directories.
+    Claude,
+    /// AGENTS.md
+    General,
+    /// .cursorrules, plaintext
+    Cursor,
+    /// Write no agent files. Not combinable with other targets.
+    None,
 }
 
 /// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
@@ -127,9 +151,74 @@ fn resolve_events_mode(
     Ok(mode)
 }
 
+/// Which agent-onboarding integrations to write, resolved from the flags.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AgentSelection {
+    claude: bool,
+    general: bool,
+    cursor: bool,
+}
+
+impl AgentSelection {
+    const ALL: Self = Self {
+        claude: true,
+        general: true,
+        cursor: true,
+    };
+    const NONE: Self = Self {
+        claude: false,
+        general: false,
+        cursor: false,
+    };
+}
+
+/// Resolve the agent selection from the flags. Returns `Err(msg)` only for the
+/// one invalid input clap cannot express on its own: `none` combined with
+/// another target inside the same `--agents` value list.
+///
+/// - `--no-agent-files` → none (back-compat alias; clap guarantees it isn't
+///   passed alongside `--agents`).
+/// - `--agents` omitted → all three (preserves the prior default).
+/// - otherwise, exactly the listed targets.
+fn resolve_agents(
+    agents: Option<Vec<AgentTarget>>,
+    no_agent_files: bool,
+) -> Result<AgentSelection, &'static str> {
+    if no_agent_files {
+        return Ok(AgentSelection::NONE);
+    }
+    let Some(values) = agents else {
+        return Ok(AgentSelection::ALL);
+    };
+    if values.is_empty() {
+        return Err("--agents requires at least one value");
+    }
+    let has_none = values.contains(&AgentTarget::None);
+    let has_other = values.iter().any(|t| *t != AgentTarget::None);
+    if has_none && has_other {
+        return Err("`--agents none` cannot be combined with other targets");
+    }
+    if has_none {
+        return Ok(AgentSelection::NONE);
+    }
+    Ok(AgentSelection {
+        claude: values.contains(&AgentTarget::Claude),
+        general: values.contains(&AgentTarget::General),
+        cursor: values.contains(&AgentTarget::Cursor),
+    })
+}
+
 /// Test-friendly inner that takes an explicit cwd so the `current_dir()` side
 /// effect can be sidestepped. Mirrors the pattern in [`super::scaffold_audiences`].
 fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCode, CmdError> {
+    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+        Ok(sel) => sel,
+        Err(msg) => {
+            report_usage_error(msg, json);
+            return Ok(ExitCode::from(2));
+        }
+    };
+
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let project = cwd
         .file_name()
@@ -181,19 +270,18 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
             DEFAULT_TRACK_TS.to_string(),
         ));
     }
-    if !args.no_agent_files {
+    // The `.claude/skills/dif-*` files are Claude-only and written verbatim, so
+    // they're gated on the `claude` target alone.
+    if sel.claude {
         plain_files.extend(agent_skill_files(cwd));
     }
 
     // Shared agent files (CLAUDE.md, AGENTS.md, .cursorrules) are co-owned with
     // the user, so we never clobber them: dif's guidance lives inside a delimited
     // managed block that we append once and refresh in place. They never trip the
-    // collision guard — appending a block can't destroy anything.
-    let merge_files: Vec<ManagedFile> = if args.no_agent_files {
-        Vec::new()
-    } else {
-        agent_merge_files(cwd)
-    };
+    // collision guard — appending a block can't destroy anything. Each is gated
+    // on its own target.
+    let merge_files: Vec<ManagedFile> = agent_merge_files(cwd, sel);
 
     if !args.force {
         let collisions: Vec<&Path> = plain_files
@@ -228,7 +316,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         std::fs::write(&mf.path, merged)?;
     }
 
-    report_success(&surface, json, !args.no_agent_files, mode);
+    report_success(&surface, json, sel, mode);
     Ok(ExitCode::from(0))
 }
 
@@ -253,30 +341,59 @@ fn report_collisions(paths: &[&Path], json: bool) {
     eprintln!("re-run with {} to overwrite.", style("--force").bold());
 }
 
-fn report_success(surface: &str, json: bool, include_agent_files: bool, mode: EventsMode) {
+/// Report an invalid `--agents` value list (the one case clap can't catch).
+/// Mirrors [`report_collisions`]: JSON envelope or a red stderr line.
+fn report_usage_error(msg: &str, json: bool) {
     if json {
-        let mut created: Vec<String> = vec![
-            paths::EXPERIMENTS_ACTIVE.into(),
-            paths::EXPERIMENTS_CONCLUDED.into(),
-            paths::SURFACES_DIR.into(),
-            paths::AUDIENCES_DIR.into(),
-            paths::GENERATED_DIR.into(),
-            paths::CONFIG_FILE.into(),
-            paths::GITIGNORE_FILE.into(),
-            format!("{}/{surface}.md", paths::SURFACES_DIR),
-            format!("{}/locale.ts", paths::AUDIENCES_DIR),
-            format!("{}/device_type.ts", paths::AUDIENCES_DIR),
-        ];
-        if mode == EventsMode::Custom {
-            created.push(format!("{}/exposure.ts", paths::EVENTS_DIR));
-            created.push(format!("{}/track.ts", paths::EVENTS_DIR));
-        }
-        if include_agent_files {
-            created.extend(AGENT_FILE_PATHS.iter().map(|s| (*s).to_string()));
-        }
+        let payload = serde_json::json!({
+            "ok": false,
+            "error": "usage",
+            "message": msg,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    eprintln!("{} {msg}", style("✗").red().bold());
+}
+
+/// The relative paths `dif init` writes for a given surface, events mode, and
+/// agent selection — the source of truth for the JSON `created[]` array.
+/// Factored out of [`report_success`] so it can be tested on directly (the
+/// JSON is otherwise only observable via stdout, which is racy in test environments).
+fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<String> {
+    let mut created: Vec<String> = vec![
+        paths::EXPERIMENTS_ACTIVE.into(),
+        paths::EXPERIMENTS_CONCLUDED.into(),
+        paths::SURFACES_DIR.into(),
+        paths::AUDIENCES_DIR.into(),
+        paths::GENERATED_DIR.into(),
+        paths::CONFIG_FILE.into(),
+        paths::GITIGNORE_FILE.into(),
+        format!("{}/{surface}.md", paths::SURFACES_DIR),
+        format!("{}/locale.ts", paths::AUDIENCES_DIR),
+        format!("{}/device_type.ts", paths::AUDIENCES_DIR),
+    ];
+    if mode == EventsMode::Custom {
+        created.push(format!("{}/exposure.ts", paths::EVENTS_DIR));
+        created.push(format!("{}/track.ts", paths::EVENTS_DIR));
+    }
+    if sel.claude {
+        created.extend(CLAUDE_FILE_PATHS.iter().map(|s| (*s).to_string()));
+    }
+    if sel.general {
+        created.extend(GENERAL_FILE_PATHS.iter().map(|s| (*s).to_string()));
+    }
+    if sel.cursor {
+        created.extend(CURSOR_FILE_PATHS.iter().map(|s| (*s).to_string()));
+    }
+    created
+}
+
+fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMode) {
+    if json {
         let payload = serde_json::json!({
             "ok": true,
-            "created": created,
+            "created": created_paths(surface, sel, mode),
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
         return;
@@ -295,11 +412,17 @@ fn report_success(surface: &str, json: bool, include_agent_files: bool, mode: Ev
         println!("{check} wrote dif/events/exposure.ts");
         println!("{check} wrote dif/events/track.ts");
     }
-    if include_agent_files {
-        println!("{check} merged dif guidance into CLAUDE.md, AGENTS.md, .cursorrules");
+    if sel.claude {
+        println!("{check} merged dif guidance into CLAUDE.md");
         println!(
             "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
         );
+    }
+    if sel.general {
+        println!("{check} merged dif guidance into AGENTS.md");
+    }
+    if sel.cursor {
+        println!("{check} merged dif guidance into .cursorrules");
     }
 }
 
@@ -475,13 +598,11 @@ pub(crate) const SKILL_CONCLUDE: &str =
 pub(crate) const SKILL_GENERATE_SURFACES: &str =
     include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
 
-/// Paths (relative to the workspace root) that `dif init` writes when
-/// agent-onboarding is enabled. Used by `report_success` for the JSON
-/// `created[]` array and by tests to assert the scaffolded set.
-pub(crate) const AGENT_FILE_PATHS: &[&str] = &[
+/// Paths (relative to the workspace root) written for the `claude` target:
+/// the CLAUDE.md orientation file plus the `.claude/skills/dif-*` directories.
+/// Used by `report_success` for the JSON `created[]` array and by tests.
+pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
     "CLAUDE.md",
-    "AGENTS.md",
-    ".cursorrules",
     ".claude/skills/dif-author-experiment/SKILL.md",
     ".claude/skills/dif-author-experiment/references/frontmatter.md",
     ".claude/skills/dif-author-experiment/references/validation-errors.md",
@@ -489,6 +610,12 @@ pub(crate) const AGENT_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-conclude-experiment/SKILL.md",
     ".claude/skills/dif-generate-surfaces/SKILL.md",
 ];
+
+/// Path written for the `general` target: the model-agnostic AGENTS.md.
+pub(crate) const GENERAL_FILE_PATHS: &[&str] = &["AGENTS.md"];
+
+/// Path written for the `cursor` target: .cursorrules.
+pub(crate) const CURSOR_FILE_PATHS: &[&str] = &[".cursorrules"];
 
 /// Markers that delimit dif's managed block inside a co-owned file. Everything
 /// between them is dif's to rewrite on each `init`; everything outside is the
@@ -539,32 +666,39 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
 
 /// The co-owned agent files (CLAUDE.md, AGENTS.md, .cursorrules), each carrying
 /// dif's guidance inside a managed block stamped with the crate version so a
-/// user can detect drift between their scaffolded files and the binary.
-fn agent_merge_files(cwd: &Path) -> Vec<ManagedFile> {
+/// user can detect drift between their scaffolded files and the binary. Only the
+/// files whose target is selected are returned.
+fn agent_merge_files(cwd: &Path, sel: AgentSelection) -> Vec<ManagedFile> {
     let v = env!("CARGO_PKG_VERSION");
     let md_stamp =
         format!("<!-- generated by dif v{v}; safe to re-run `dif init` to refresh -->\n\n");
     let hash_stamp = format!("# generated by dif v{v}; safe to re-run `dif init` to refresh\n\n");
-    vec![
-        ManagedFile {
+    let mut files = Vec::new();
+    if sel.claude {
+        files.push(ManagedFile {
             path: cwd.join("CLAUDE.md"),
             block: format!("{md_stamp}{CLAUDE_MD}"),
             start: MD_BLOCK_START,
             end: MD_BLOCK_END,
-        },
-        ManagedFile {
+        });
+    }
+    if sel.general {
+        files.push(ManagedFile {
             path: cwd.join("AGENTS.md"),
             block: format!("{md_stamp}{AGENTS_MD}"),
             start: MD_BLOCK_START,
             end: MD_BLOCK_END,
-        },
-        ManagedFile {
+        });
+    }
+    if sel.cursor {
+        files.push(ManagedFile {
             path: cwd.join(".cursorrules"),
             block: format!("{hash_stamp}{CURSORRULES}"),
             start: HASH_BLOCK_START,
             end: HASH_BLOCK_END,
-        },
-    ]
+        });
+    }
+    files
 }
 
 /// The dif-namespaced Claude Code skill files. These live entirely under
@@ -690,6 +824,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: false,
@@ -698,7 +833,11 @@ mod tests {
             true,
         )
         .expect("init");
-        for rel in AGENT_FILE_PATHS {
+        for rel in CLAUDE_FILE_PATHS
+            .iter()
+            .chain(GENERAL_FILE_PATHS)
+            .chain(CURSOR_FILE_PATHS)
+        {
             let p = tmp.path().join(rel);
             assert!(p.exists(), "missing scaffolded file: {rel}");
             let content = std::fs::read_to_string(&p).unwrap();
@@ -726,6 +865,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: true,
@@ -734,7 +874,11 @@ mod tests {
             true,
         )
         .expect("init");
-        for rel in AGENT_FILE_PATHS {
+        for rel in CLAUDE_FILE_PATHS
+            .iter()
+            .chain(GENERAL_FILE_PATHS)
+            .chain(CURSOR_FILE_PATHS)
+        {
             let p = tmp.path().join(rel);
             assert!(!p.exists(), "unexpected scaffolded file: {rel}");
         }
@@ -752,6 +896,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: true,
@@ -775,6 +920,7 @@ mod tests {
                 surface: None,
                 events: None,
                 key: Some("dif_pk_live_xyz".into()),
+                agents: None,
                 force: false,
                 no_agent_files: true,
             },
@@ -823,6 +969,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: true,
@@ -863,6 +1010,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: false,
@@ -893,6 +1041,7 @@ mod tests {
         let args = || Args {
             surface: None,
             events: None,
+            agents: None,
             key: None,
             force: true,
             no_agent_files: false,
@@ -931,6 +1080,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: true,
                 no_agent_files: false,
@@ -969,6 +1119,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                agents: None,
                 key: None,
                 force: false,
                 no_agent_files: false,
@@ -984,6 +1135,293 @@ mod tests {
             "init should have refused on the structural collision"
         );
         assert!(!tmp.path().join("CLAUDE.md").exists());
+    }
+
+    // -- `--agents` selection -------------------------------------------------
+
+    #[test]
+    fn resolve_agents_defaults_to_all() {
+        assert_eq!(resolve_agents(None, false).unwrap(), AgentSelection::ALL);
+    }
+
+    #[test]
+    fn resolve_agents_no_agent_files_alias_is_none() {
+        assert_eq!(resolve_agents(None, true).unwrap(), AgentSelection::NONE);
+    }
+
+    #[test]
+    fn resolve_agents_explicit_none_is_none() {
+        assert_eq!(
+            resolve_agents(Some(vec![AgentTarget::None]), false).unwrap(),
+            AgentSelection::NONE
+        );
+    }
+
+    #[test]
+    fn resolve_agents_selects_named_subset() {
+        assert_eq!(
+            resolve_agents(Some(vec![AgentTarget::Claude]), false).unwrap(),
+            AgentSelection {
+                claude: true,
+                general: false,
+                cursor: false
+            }
+        );
+        assert_eq!(
+            resolve_agents(Some(vec![AgentTarget::General, AgentTarget::Cursor]), false).unwrap(),
+            AgentSelection {
+                claude: false,
+                general: true,
+                cursor: true
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_agents_none_with_other_is_error() {
+        assert!(resolve_agents(Some(vec![AgentTarget::None, AgentTarget::Claude]), false).is_err());
+    }
+
+    #[test]
+    fn resolve_agents_empty_list_is_error() {
+        assert!(resolve_agents(Some(vec![]), false).is_err());
+    }
+
+    #[test]
+    fn agents_claude_only_writes_claude_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                key: None,
+                agents: Some(vec![AgentTarget::Claude]),
+                force: false,
+                no_agent_files: false,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+        assert!(tmp.path().join("CLAUDE.md").exists());
+        assert!(tmp
+            .path()
+            .join(".claude/skills/dif-author-experiment/SKILL.md")
+            .exists());
+        assert!(!tmp.path().join("AGENTS.md").exists());
+        assert!(!tmp.path().join(".cursorrules").exists());
+    }
+
+    #[test]
+    fn agents_general_cursor_writes_those_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                key: None,
+                agents: Some(vec![AgentTarget::General, AgentTarget::Cursor]),
+                force: false,
+                no_agent_files: false,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+        assert!(tmp.path().join("AGENTS.md").exists());
+        assert!(tmp.path().join(".cursorrules").exists());
+        assert!(!tmp.path().join("CLAUDE.md").exists());
+        assert!(!tmp
+            .path()
+            .join(".claude/skills/dif-author-experiment/SKILL.md")
+            .exists());
+    }
+
+    #[test]
+    fn agents_none_suppresses_all_agent_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                key: None,
+                agents: Some(vec![AgentTarget::None]),
+                force: false,
+                no_agent_files: false,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+        for rel in CLAUDE_FILE_PATHS
+            .iter()
+            .chain(GENERAL_FILE_PATHS)
+            .chain(CURSOR_FILE_PATHS)
+        {
+            assert!(!tmp.path().join(rel).exists(), "unexpected: {rel}");
+        }
+        // The structural scaffold still lands.
+        assert!(tmp.path().join("dif/config.yaml").exists());
+        assert!(tmp.path().join("dif/audiences/locale.ts").exists());
+    }
+
+    #[test]
+    fn agents_none_with_other_target_bails_without_writing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                key: None,
+                agents: Some(vec![AgentTarget::None, AgentTarget::Claude]),
+                force: false,
+                no_agent_files: false,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("returns Ok with a non-zero exit code");
+        // Bailed on the usage error before writing anything.
+        assert!(!tmp.path().join("dif/config.yaml").exists());
+        assert!(!tmp.path().join("CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn resolve_agents_dedupes_repeated_values() {
+        // Duplicates collapse to a single instance — the resolver is set-like.
+        assert_eq!(
+            resolve_agents(
+                Some(vec![
+                    AgentTarget::Claude,
+                    AgentTarget::Claude,
+                    AgentTarget::Claude
+                ]),
+                false
+            )
+            .unwrap(),
+            AgentSelection {
+                claude: true,
+                general: false,
+                cursor: false
+            }
+        );
+    }
+
+    #[test]
+    fn created_paths_reflect_selection() {
+        // Default (all agents, cloud events): every structural file, all three
+        // agent groups, and no event files.
+        let all = created_paths("home", AgentSelection::ALL, EventsMode::Cloud);
+        assert!(all.contains(&"dif/config.yaml".to_string()));
+        assert!(all.contains(&"CLAUDE.md".to_string()));
+        assert!(all.contains(&"AGENTS.md".to_string()));
+        assert!(all.contains(&".cursorrules".to_string()));
+        assert!(all
+            .iter()
+            .any(|p| p.starts_with(".claude/skills/dif-author-experiment")));
+        assert!(!all.iter().any(|p| p.contains("events/")));
+
+        // Claude-only: no AGENTS.md / .cursorrules; skills present.
+        let claude = created_paths(
+            "home",
+            AgentSelection {
+                claude: true,
+                general: false,
+                cursor: false,
+            },
+            EventsMode::Cloud,
+        );
+        assert!(claude.contains(&"CLAUDE.md".to_string()));
+        assert!(!claude.contains(&"AGENTS.md".to_string()));
+        assert!(!claude.contains(&".cursorrules".to_string()));
+
+        // general + cursor with custom events: those two agent files, the event
+        // handlers, and no Claude files.
+        let gc = created_paths(
+            "home",
+            AgentSelection {
+                claude: false,
+                general: true,
+                cursor: true,
+            },
+            EventsMode::Custom,
+        );
+        assert!(gc.contains(&"AGENTS.md".to_string()));
+        assert!(gc.contains(&".cursorrules".to_string()));
+        assert!(!gc.contains(&"CLAUDE.md".to_string()));
+        assert!(!gc
+            .iter()
+            .any(|p| p.starts_with(".claude/skills/dif-author-experiment")));
+        assert!(gc.contains(&"dif/events/exposure.ts".to_string()));
+        assert!(gc.contains(&"dif/events/track.ts".to_string()));
+
+        // `none`: structural files only, no agent files at all.
+        let none = created_paths("home", AgentSelection::NONE, EventsMode::Cloud);
+        assert!(none.contains(&"dif/config.yaml".to_string()));
+        assert!(!none.contains(&"CLAUDE.md".to_string()));
+        assert!(!none.contains(&"AGENTS.md".to_string()));
+        assert!(!none.contains(&".cursorrules".to_string()));
+    }
+
+    /// Exercises the clap layer that `run_in` tests bypass: the `--agents`
+    /// value-delimiter splitting, the `none` value, and the reciprocal
+    /// `conflicts_with` against `--no-agent-files`. `Args` derives `clap::Args`,
+    /// so we flatten it into a throwaway `Parser` to get `try_parse_from`.
+    #[test]
+    fn agents_flag_parsing_and_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            args: Args,
+        }
+
+        // Comma-separated list splits into individual targets.
+        let cli = TestCli::try_parse_from(["dif", "--agents", "claude,cursor"]).unwrap();
+        assert_eq!(
+            cli.args.agents,
+            Some(vec![AgentTarget::Claude, AgentTarget::Cursor])
+        );
+
+        // Repeated flags accumulate.
+        let cli =
+            TestCli::try_parse_from(["dif", "--agents", "claude", "--agents", "general"]).unwrap();
+        assert_eq!(
+            cli.args.agents,
+            Some(vec![AgentTarget::Claude, AgentTarget::General])
+        );
+
+        // `none` is a valid enum value.
+        let cli = TestCli::try_parse_from(["dif", "--agents", "none"]).unwrap();
+        assert_eq!(cli.args.agents, Some(vec![AgentTarget::None]));
+
+        // Omitted → None (downstream `resolve_agents` maps this to "all").
+        let cli = TestCli::try_parse_from(["dif"]).unwrap();
+        assert_eq!(cli.args.agents, None);
+
+        // `--agents` and `--no-agent-files` are mutually exclusive at parse time.
+        assert!(
+            TestCli::try_parse_from(["dif", "--agents", "claude", "--no-agent-files"]).is_err(),
+            "clap should reject --agents alongside --no-agent-files"
+        );
+
+        // An unknown target is rejected by the ValueEnum.
+        assert!(
+            TestCli::try_parse_from(["dif", "--agents", "bogus"]).is_err(),
+            "clap should reject an unknown --agents value"
+        );
+
+        // Matching is case-sensitive by design (consistent with `--events`):
+        // a capitalized variant is rejected, not silently accepted.
+        assert!(
+            TestCli::try_parse_from(["dif", "--agents", "Claude"]).is_err(),
+            "clap should reject `Claude` — --agents is case-sensitive"
+        );
     }
 
     #[test]
