@@ -17,13 +17,13 @@ npm install @dif.sh/sdk @dif.sh/react
 
 ```tsx
 import { DifProvider } from "@dif.sh/react";
+import { events } from "@/dif/generated/events"; // cloud config + publishable key
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <DifProvider
       config={{
-        project: "acme-shop",
-        publishableKey: process.env.NEXT_PUBLIC_DIF_PUBLISHABLE_KEY,
+        events,
         userId: () => currentUser?.id ?? null,
       }}
     >
@@ -32,6 +32,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 ```
+
+Connect the project once with `dif connect --key dif_pk_live_…` (or `dif init
+--key …`). The key lands in `dif/config.yaml` and `dif build` bakes it into
+`dif/generated/events.ts`, so there's no `NEXT_PUBLIC_DIF_PUBLISHABLE_KEY` env
+var to wire up. (You can still pass an explicit `publishableKey` in `config` to
+override per environment.)
 
 The provider runs `dif.init(config)` exactly once on first render. The
 underlying state is a module-level singleton; re-mounting the provider with

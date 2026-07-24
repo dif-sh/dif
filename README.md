@@ -19,6 +19,7 @@ Then, in your repo:
 
 ```sh
 dif init                                # scaffold dif/, config, agent files
+dif connect --key dif_pk_live_...       # connect to dif.sh Cloud (optional)
 dif new home-hero-cta --surface home    # draft an experiment file
 dif validate                            # check everything
 dif build                               # generate the TS client + context.json
@@ -192,12 +193,23 @@ gate the code path, and run `dif validate` to check its own work.
 You can run dif with no analytics at all. Assignment is local, so flags and
 ramps work with nothing configured.
 
-When you want more analysis, point the SDK at dif.sh Cloud:
+When you want more analysis, connect to dif.sh Cloud. Copy the command from
+cloud onboarding and run it in your repo:
+
+```sh
+dif connect --key dif_pk_live_...   # writes the key to dif/config.yaml, turns on cloud mode
+```
+
+New project? `dif init --key dif_pk_live_...` scaffolds and connects in one
+step. Either way the key lands in `dif/config.yaml` (it's a publishable key,
+safe to commit) and `dif build` bakes it into the generated client — so `init`
+stays clean, with no env var and no key pasted into code:
 
 ```ts
+import { events } from "./dif/generated/events"; // cloud config + your key
+
 dif.init({
-  project: "acme",
-  publishableKey: "dif_pk_live_...",
+  events,
   userId: () => currentUser?.id ?? null,
 });
 ```

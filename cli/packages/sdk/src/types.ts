@@ -37,11 +37,14 @@ export interface DifConfig {
  * `dif build` into `dif/generated/events.ts`; pass it to `dif.init({ events })`.
  *
  * - `cloud`: the SDK posts to dif.sh Cloud (`<apiUrl>/v1/exposure` + `/v1/track`).
+ *   `publishableKey` is baked in by `dif build` when the project was connected
+ *   via `dif connect` / `dif init --key`, so no env var is needed. An explicit
+ *   top-level `publishableKey` on `dif.init` still overrides it.
  * - `custom`: the SDK calls your handlers — author them in
  *   `dif/events/exposure.ts` and `dif/events/track.ts`.
  */
 export type EventsConfig =
-  | { mode: "cloud"; apiUrl?: string }
+  | { mode: "cloud"; apiUrl?: string; publishableKey?: string }
   | {
       mode: "custom";
       exposure: (event: ExposureEvent) => void;

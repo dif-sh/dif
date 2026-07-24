@@ -81,6 +81,12 @@ pub struct EventsConfig {
     /// Cloud base URL. Set by `dif init` for cloud mode; ignored for custom.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Cloud publishable key (`dif_pk_…`). Written by `dif connect` /
+    /// `dif init --key`; flowed into the generated client so the browser SDK
+    /// authenticates without an env var. Safe to commit — it's the publishable
+    /// key, never the secret server key. Ignored for custom mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 impl Default for EventsConfig {
@@ -88,6 +94,7 @@ impl Default for EventsConfig {
         Self {
             mode: EventsMode::Cloud,
             url: None,
+            key: None,
         }
     }
 }

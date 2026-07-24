@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/cli",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "The dif.sh CLI. Experiments live in the repo. This package downloads the matching Rust binary on install.",
   "license": "MIT",
   "bin": {

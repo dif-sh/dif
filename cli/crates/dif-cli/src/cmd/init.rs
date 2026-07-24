@@ -18,11 +18,12 @@
 //! Agent-onboarding files (CLAUDE.md, AGENTS.md, .cursorrules, .claude/skills/)
 //! stay at the repo root — those are editor/agent conventions, not dif content.
 
-use super::CmdError;
+use super::{validate_publishable_key, CmdError};
 use clap::{Args as ClapArgs, ValueEnum};
 use console::{style, Term};
 use dialoguer::Select;
 use dif_core::config::EventsMode;
+use dif_core::config_edit::render_events_block;
 use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -39,6 +40,12 @@ pub struct Args {
     /// be prompted on a TTY, or to default to cloud when non-interactive.
     #[arg(long, value_enum)]
     pub events: Option<EventsModeArg>,
+
+    /// Publishable key (dif_pk_…) from your dif.sh Cloud project. Implies cloud
+    /// events mode and writes the key into dif/config.yaml so the generated
+    /// client authenticates without an env var. Copy it from cloud onboarding.
+    #[arg(long)]
+    pub key: Option<String>,
 
     /// Overwrite existing files. Off by default — refuses to clobber.
     #[arg(long)]
@@ -95,36 +102,53 @@ impl From<EventsModeArg> for EventsMode {
 }
 
 /// Entrypoint. See PLAN.md step 3.
-pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
+pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
-    let mode = resolve_events_mode(args.events, json);
+    // Validate + normalise a pasted key up front so a bad paste fails before we
+    // scaffold anything.
+    if let Some(raw) = &args.key {
+        args.key = Some(validate_publishable_key(raw)?);
+    }
+    let mode = resolve_events_mode(args.events, args.key.is_some(), json)?;
     run_in(&cwd, args, mode, json)
 }
 
-/// Decide the events mode. An explicit `--events` flag wins. Otherwise, on an
-/// interactive terminal, prompt. In any non-interactive context (`--json`,
-/// piped stdin, CI) default to cloud rather than block on a prompt that can't
-/// be answered.
-fn resolve_events_mode(flag: Option<EventsModeArg>, json: bool) -> EventsMode {
-    if let Some(m) = flag {
-        return m.into();
+/// Decide the events mode. An explicit `--events` flag wins. A `--key` implies
+/// cloud (a key is meaningless for custom mode — that combination is a hard
+/// error). Otherwise, on an interactive terminal, prompt; in any non-interactive
+/// context (`--json`, piped stdin, CI) default to cloud rather than block on a
+/// prompt that can't be answered.
+fn resolve_events_mode(
+    flag: Option<EventsModeArg>,
+    has_key: bool,
+    json: bool,
+) -> Result<EventsMode, CmdError> {
+    let mode = match flag {
+        Some(m) => m.into(),
+        None if has_key => EventsMode::Cloud,
+        None if json || !Term::stdout().is_term() => EventsMode::Cloud,
+        None => {
+            let items = [
+                "cloud — built-in delivery to dif.sh Cloud",
+                "custom — you write exposure/track handlers in dif/events/",
+            ];
+            match Select::new()
+                .with_prompt("How should dif deliver events?")
+                .items(&items)
+                .default(0)
+                .interact_opt()
+            {
+                Ok(Some(1)) => EventsMode::Custom,
+                _ => EventsMode::Cloud,
+            }
+        }
+    };
+    if has_key && mode == EventsMode::Custom {
+        return Err(CmdError::Other(
+            "--key only applies to cloud events; drop --key or pass --events cloud",
+        ));
     }
-    if json || !Term::stdout().is_term() {
-        return EventsMode::Cloud;
-    }
-    let items = [
-        "cloud — built-in delivery to dif.sh Cloud",
-        "custom — you write exposure/track handlers in dif/events/",
-    ];
-    match Select::new()
-        .with_prompt("How should dif deliver events?")
-        .items(&items)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(1)) => EventsMode::Custom,
-        _ => EventsMode::Cloud,
-    }
+    Ok(mode)
 }
 
 /// Which agent-onboarding integrations to write, resolved from the flags.
@@ -218,7 +242,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     let mut plain_files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(paths::CONFIG_FILE),
-            default_config_yaml(&project, &surface, mode),
+            default_config_yaml(&project, &surface, mode, args.key.as_deref()),
         ),
         (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
         (
@@ -407,23 +431,19 @@ fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMo
 /// We do not serialize from the `Config` struct because serde_yaml strips
 /// comments, and the comments are the difference between a config file that
 /// teaches a first-time user and one that confuses them.
-fn default_config_yaml(project: &str, surface: &str, mode: EventsMode) -> String {
+fn default_config_yaml(
+    project: &str,
+    surface: &str,
+    mode: EventsMode,
+    key: Option<&str>,
+) -> String {
+    // The events block (comment + mapping) is rendered by dif-core so `dif init`
+    // and `dif connect` stay byte-for-byte in agreement.
     let events_block = match mode {
         EventsMode::Cloud => {
-            "# How events are delivered. `cloud` posts exposures and dif.track()
-# metrics to dif.sh Cloud. The url is recorded here so the SDK and the cloud
-# agree on where to send them.
-events:
-  mode: cloud
-  url: https://cloud.dif.sh"
+            render_events_block(EventsMode::Cloud, Some("https://cloud.dif.sh"), key)
         }
-        EventsMode::Custom => {
-            "# How events are delivered. `custom` calls the handlers you export from
-# dif/events/exposure.ts and dif/events/track.ts — forward to Amplitude,
-# Mixpanel, a webhook, or wherever you like.
-events:
-  mode: custom"
-        }
+        EventsMode::Custom => render_events_block(EventsMode::Custom, None, None),
     };
     format!(
         "# dif.sh project config. Checked in. Edit by hand or re-run `dif init`.
@@ -728,7 +748,7 @@ mod tests {
 
     #[test]
     fn emitted_config_parses_as_config() {
-        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Cloud);
+        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Cloud, None);
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.project, "acme-shop");
         assert_eq!(config.default_surface, "home");
@@ -736,6 +756,8 @@ mod tests {
         assert_eq!(config.bucketing.fallback, "anon_cookie");
         assert_eq!(config.events().mode, EventsMode::Cloud);
         assert_eq!(config.events().url.as_deref(), Some("https://cloud.dif.sh"));
+        // No key unless `--key` was passed.
+        assert!(config.events().key.is_none());
         // No legacy exposure block in a freshly-scaffolded config.
         assert!(config.exposure.is_none());
         let names: Vec<&str> = config
@@ -747,8 +769,22 @@ mod tests {
     }
 
     #[test]
+    fn emitted_config_with_key_records_it() {
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            Some("dif_pk_live_xyz"),
+        );
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert_eq!(config.events().mode, EventsMode::Cloud);
+        assert_eq!(config.events().key.as_deref(), Some("dif_pk_live_xyz"));
+        assert!(yaml.contains("  key: dif_pk_live_xyz"));
+    }
+
+    #[test]
     fn emitted_custom_config_parses_as_custom() {
-        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Custom);
+        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Custom, None);
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.events().mode, EventsMode::Custom);
         assert!(config.events().url.is_none());
@@ -789,6 +825,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: false,
             },
@@ -829,6 +866,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: true,
             },
@@ -859,6 +897,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: true,
             },
@@ -873,6 +912,56 @@ mod tests {
     }
 
     #[test]
+    fn key_flag_writes_key_into_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                key: Some("dif_pk_live_xyz".into()),
+                agents: None,
+                force: false,
+                no_agent_files: true,
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init --key");
+        let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert!(config.contains("mode: cloud"));
+        assert!(config.contains("key: dif_pk_live_xyz"));
+        let parsed: Config = serde_yaml::from_str(&config).unwrap();
+        assert_eq!(parsed.events().key.as_deref(), Some("dif_pk_live_xyz"));
+    }
+
+    #[test]
+    fn resolve_events_mode_key_implies_cloud() {
+        // json=true keeps this non-interactive (no TTY prompt).
+        assert_eq!(
+            resolve_events_mode(None, true, true).unwrap(),
+            EventsMode::Cloud
+        );
+    }
+
+    #[test]
+    fn resolve_events_mode_key_with_custom_is_error() {
+        assert!(resolve_events_mode(Some(EventsModeArg::Custom), true, true).is_err());
+    }
+
+    #[test]
+    fn resolve_events_mode_explicit_flags_without_key() {
+        assert_eq!(
+            resolve_events_mode(Some(EventsModeArg::Custom), false, true).unwrap(),
+            EventsMode::Custom
+        );
+        assert_eq!(
+            resolve_events_mode(None, false, true).unwrap(),
+            EventsMode::Cloud
+        );
+    }
+
+    #[test]
     fn custom_mode_scaffolds_event_files() {
         let tmp = tempfile::TempDir::new().unwrap();
         run_in(
@@ -881,6 +970,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: true,
             },
@@ -921,6 +1011,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: false,
             },
@@ -951,6 +1042,7 @@ mod tests {
             surface: None,
             events: None,
             agents: None,
+            key: None,
             force: true,
             no_agent_files: false,
         };
@@ -989,6 +1081,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: true,
                 no_agent_files: false,
             },
@@ -1027,6 +1120,7 @@ mod tests {
                 surface: None,
                 events: None,
                 agents: None,
+                key: None,
                 force: false,
                 no_agent_files: false,
             },
@@ -1101,6 +1195,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                key: None,
                 agents: Some(vec![AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,
@@ -1126,6 +1221,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                key: None,
                 agents: Some(vec![AgentTarget::General, AgentTarget::Cursor]),
                 force: false,
                 no_agent_files: false,
@@ -1151,6 +1247,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                key: None,
                 agents: Some(vec![AgentTarget::None]),
                 force: false,
                 no_agent_files: false,
@@ -1179,6 +1276,7 @@ mod tests {
             Args {
                 surface: None,
                 events: None,
+                key: None,
                 agents: Some(vec![AgentTarget::None, AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,

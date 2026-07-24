@@ -182,4 +182,45 @@ describe("dif.init exposure delivery", () => {
       0,
     );
   });
+
+  it("cloud mode reads the publishable key baked into events config", async () => {
+    const id = nextExpId();
+    registerActive(id);
+    // No top-level publishableKey — it rides on the generated events object,
+    // as produced by `dif connect` / `dif init --key`.
+    dif.init({
+      userId: () => "u-1",
+      events: {
+        mode: "cloud",
+        apiUrl: "https://api.example.test",
+        publishableKey: "dif_pk_live_from_events",
+      },
+    });
+    dif(id, { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+    const posts = fetchCalls.filter((c) => c.url.endsWith("/v1/exposure"));
+    assert.equal(posts.length, 1, "expected one POST authorized by the events key");
+    const headers = posts[0]!.init.headers as Record<string, string>;
+    assert.equal(headers.authorization, "Bearer dif_pk_live_from_events");
+  });
+
+  it("explicit top-level publishableKey overrides the events key", async () => {
+    const id = nextExpId();
+    registerActive(id);
+    dif.init({
+      publishableKey: "dif_pk_live_explicit",
+      userId: () => "u-1",
+      events: {
+        mode: "cloud",
+        apiUrl: "https://api.example.test",
+        publishableKey: "dif_pk_live_from_events",
+      },
+    });
+    dif(id, { control: () => "c", variant_a: () => "v" })();
+    await Promise.resolve();
+    const posts = fetchCalls.filter((c) => c.url.endsWith("/v1/exposure"));
+    assert.equal(posts.length, 1);
+    const headers = posts[0]!.init.headers as Record<string, string>;
+    assert.equal(headers.authorization, "Bearer dif_pk_live_explicit");
+  });
 });

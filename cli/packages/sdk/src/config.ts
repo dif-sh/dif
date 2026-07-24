@@ -39,7 +39,15 @@ const DEFAULT_API_URL = "https://cloud.dif.sh";
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;
   const events = merged.events;
-  const publishableKey = merged.publishableKey ?? null;
+  // Publishable key precedence: an explicit top-level `publishableKey` wins,
+  // then the one `dif build` baked into the generated cloud `events` object
+  // (from `dif connect` / `dif init --key`). This is deliberately the INVERSE
+  // of the `apiUrl` resolution below — an explicit key is an intentional
+  // per-environment override and must beat the generated default, and this
+  // keeps existing env-var wiring (`publishableKey: process.env.X`) working
+  // unchanged. Custom mode carries no key, so it's provably untouched.
+  const eventsKey = events?.mode === "cloud" ? events.publishableKey : undefined;
+  const publishableKey = merged.publishableKey ?? eventsKey ?? null;
 
   // Two delivery modes. Custom routes exposures + tracks to the user's handlers
   // (generated from `dif/events/{exposure,track}.ts`). Cloud — the default when
