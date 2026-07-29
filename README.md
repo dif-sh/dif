@@ -1,19 +1,57 @@
-# dif.sh
+<p align="center">
+  <a href="https://www.dif.sh">
+    <img src="assets/header-alt.png" alt="dif.sh — free and open-source, self-hosted feature flags that live in your repo as files" width="900">
+  </a>
+</p>
 
-**Feature flags and A/B tests that live in your repo as Markdown files. One command to install, no signup.**
+<h3 align="center">Feature flags and A/B tests that live in your repo as Markdown files.<br>One command to install. No signup. No dashboard to rot in.</h3>
 
-[![npm](https://img.shields.io/npm/v/@dif.sh/cli)](https://www.npmjs.com/package/@dif.sh/cli)
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+<p align="center">
+  <a href="https://www.npmjs.com/package/@dif.sh/cli"><img alt="npm" src="https://img.shields.io/npm/v/@dif.sh/cli?style=for-the-badge&label=npm&labelColor=0F2E29&color=1B4B42"></a>
+  <a href="https://www.npmjs.com/package/@dif.sh/cli"><img alt="downloads" src="https://img.shields.io/npm/dm/@dif.sh/cli?style=for-the-badge&label=downloads&labelColor=0F2E29&color=1B4B42"></a>
+  <a href="https://github.com/dif-sh/dif/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/dif-sh/dif/ci.yml?branch=main&style=for-the-badge&label=ci&labelColor=0F2E29&color=1B4B42"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-CBF56C?style=for-the-badge&labelColor=0F2E29"></a>
+</p>
+
+<p align="center">
+  <img alt="core" src="https://img.shields.io/badge/core-rust-1B4B42?style=for-the-badge&labelColor=0F2E29">
+  <a href="https://www.npmjs.com/package/@dif.sh/sdk"><img alt="sdk" src="https://img.shields.io/badge/sdk-zero%20deps-CBF56C?style=for-the-badge&labelColor=0F2E29"></a>
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-1B4B42?style=for-the-badge&labelColor=0F2E29">
+  <img alt="assignment" src="https://img.shields.io/badge/assignment-local%2C%20no%20network-1B4B42?style=for-the-badge&labelColor=0F2E29">
+  <img alt="signup" src="https://img.shields.io/badge/signup-not%20required-CBF56C?style=for-the-badge&labelColor=0F2E29">
+</p>
+
+---
+
+## Contents
+
+- [Quickstart](#quickstart)
+- [The six commands](#the-six-commands)
+- [Why dif?](#why-dif)
+- [What lands in your repo](#what-lands-in-your-repo)
+- [A flag / experiment](#a-flag--experiment)
+- [Using the CLI](#using-the-cli)
+- [Working with agents](#working-with-agents)
+- [Analytics](#analytics)
+- [dif.sh Cloud](#difsh-cloud)
+- [Development](#development)
+- [License](#license)
 
 ## Quickstart
 
 ```sh
-# macOS / Linux: single static binary, no Node required
-curl -fsSL https://dif.sh/install.sh | sh
-
-# any platform with Node 18+
 npm install -g @dif.sh/cli
 ```
+
+<details>
+<summary>No Node? Install the standalone binary</summary>
+
+```sh
+# macOS / Linux: single static binary, no Node required
+curl -fsSL https://dif.sh/install.sh | sh
+```
+
+</details>
 
 Then, in your repo:
 
@@ -24,6 +62,16 @@ dif new home-hero-cta --surface home    # draft an experiment file
 dif validate                            # check everything
 dif build                               # generate the TS client + context.json
 ```
+
+**Or use the built-in skills.** `dif init` installs Claude Code skills into
+`.claude/skills/`, so you can drive the same loop in plain English and let the
+agent run the commands:
+
+| Skill | Ask for |
+| --- | --- |
+| `dif-generate-surfaces` | *"Set up dif surfaces for this app"* — reads your routes and pages, proposes the surface set, writes the files |
+| `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* — drafts the frontmatter, picks weights, runs `dif validate` |
+| `dif-conclude-experiment` | *"Conclude checkout-cta-v2, variant won, ship it"* — writes the decision, archives the file, logs the learning |
 
 `dif new` drafts the file with your git email as owner. Open it, write the
 hypothesis, set `status: active`, and run `dif build`. Then install the
@@ -50,6 +98,10 @@ button.textContent = cta();
 
 Full documentation lives at [www.dif.sh/docs](https://www.dif.sh/docs).
 
+## The six commands
+
+![The six dif commands: init, new, build, qa, validate, conclude](assets/commands.png)
+
 ## Why dif?
 
 A feature flag is part of your codebase. So it should live in your repo.
@@ -70,6 +122,12 @@ Files also mean assignment can be a pure function. There is no assignment databa
 flag, and a user never flips between variants across page loads or devices. The same math runs in the Rust CLI and the
 TypeScript SDK, locked by a shared test fixture that fails CI on both sides
 if the two implementations drift by a single bucket.
+
+## What lands in your repo
+
+<p align="center">
+  <img src="assets/tree.png" alt="The dif/ directory: experiments/active, experiments/concluded, surfaces, config.yaml, context.json, generated/" width="720">
+</p>
 
 ## A flag / experiment
 
@@ -214,10 +272,6 @@ dif.init({
 });
 ```
 
-Cloud handles event ingest, metrics, statistical analysis. It runs hosted at
-[cloud.dif.sh](https://cloud.dif.sh). Nothing in the core
-requires it.
-
 If you already have an events pipeline, run `dif init --events custom`
 instead. That scaffolds `dif/events/exposure.ts` and `dif/events/track.ts`,
 two handlers you own. Forward events to Segment, Amplitude, a webhook, or
@@ -230,6 +284,29 @@ Metric tracking is one call either way:
 dif.track("completed_checkout");
 dif.track("revenue", { value: 49 });
 ```
+
+## dif.sh Cloud
+
+Cloud handles event ingest, metrics, and statistical analysis. It runs hosted
+at [cloud.dif.sh](https://cloud.dif.sh). Nothing in the core requires it — the
+files in your repo stay the source of truth.
+
+**Pulse** — read an experiment while it runs: lift, confidence, exposures, and
+the hypothesis you wrote in the file sitting right next to the chart.
+
+![Pulse: a live experiment with lift over time, confidence, and the hypothesis from the file](assets/surfaces.png)
+
+**Suggestions** — dif reads your surfaces, your concluded experiments, and the
+behaviour in your data, then drafts the next test with a hypothesis and an
+expected lift. Copy the brief straight into `dif new`.
+
+![Suggestions: AI-drafted experiment briefs with hypothesis, primary metric, and expected lift](assets/suggestions.png)
+
+**History** — every concluded experiment across every surface, with the
+outcome, the lift, and who approved it. The same learnings that get appended
+to your surface files.
+
+![History: concluded experiments across all surfaces with outcome, lift, and approver](assets/history.png)
 
 ## Development
 
