@@ -40,6 +40,36 @@ for pkg in cli sdk react svelte; do
   ( cd "$root/cli/packages/$pkg" && npm version "$version" --no-git-tag-version --allow-same-version >/dev/null )
 done
 
+# 2b. Stamp the sdk peerDependency on react/svelte to match the new version.
+#     `npm version` above never touches peerDependencies, which is exactly how
+#     v0.6.0 shipped react/svelte pinned to `^0.5.0` — excluding the sdk's own
+#     0.6.0 release and causing ERESOLVE errors (or silent downgrades) on
+#     install. Keep this pinned to the same `version` so the three always move
+#     in lockstep.
+for pkg in react svelte; do
+  node -e '
+    const fs = require("fs");
+    const [file, version] = process.argv.slice(1);
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    pkg.peerDependencies = pkg.peerDependencies || {};
+    pkg.peerDependencies["@dif.sh/sdk"] = "^" + version;
+    fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+  ' "$root/cli/packages/$pkg/package.json" "$version"
+done
+
+# 2c. Refresh each package's lockfile (if one is checked in) so it reflects
+#     the bumped version + peerDependency ranges above.
+for pkg in cli sdk react svelte; do
+  if [ -f "$root/cli/packages/$pkg/package-lock.json" ]; then
+    ( cd "$root/cli/packages/$pkg" && npm install --package-lock-only --no-audit --no-fund >/dev/null )
+  fi
+done
+
+# 2d. Stamp the installer's fallback DEFAULT_VERSION so a rate-limited GitHub
+#     API call (dist/install.sh's resolve_latest) still falls back to this
+#     release instead of an older one.
+VERSION="$version" perl -0pi -e 's/^DEFAULT_VERSION="v[^"]*"/DEFAULT_VERSION="v$ENV{VERSION}"/m' "$root/dist/install.sh"
+
 # 3. Regenerate the SDK source stamp from its (now-bumped) package.json.
 node "$root/cli/packages/sdk/scripts/gen-version.mjs"
 

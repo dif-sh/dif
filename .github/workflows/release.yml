@@ -34,13 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: check versions
+        run: RELEASE_TAG="${{ github.ref_name }}" node scripts/check-versions.mjs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: cli
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
       - name: rust tests
         working-directory: cli
         run: cargo test --workspace

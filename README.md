@@ -16,7 +16,7 @@
 <p align="center">
   <img alt="core" src="https://img.shields.io/badge/core-rust-1B4B42?style=for-the-badge&labelColor=0F2E29">
   <a href="https://www.npmjs.com/package/@dif.sh/sdk"><img alt="sdk" src="https://img.shields.io/badge/sdk-zero%20deps-CBF56C?style=for-the-badge&labelColor=0F2E29"></a>
-  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-1B4B42?style=for-the-badge&labelColor=0F2E29">
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-1B4B42?style=for-the-badge&labelColor=0F2E29">
   <img alt="assignment" src="https://img.shields.io/badge/assignment-local%2C%20no%20network-1B4B42?style=for-the-badge&labelColor=0F2E29">
   <img alt="signup" src="https://img.shields.io/badge/signup-not%20required-CBF56C?style=for-the-badge&labelColor=0F2E29">
 </p>
@@ -26,7 +26,7 @@
 ## Contents
 
 - [Quickstart](#quickstart)
-- [The six commands](#the-six-commands)
+- [The eight commands](#the-eight-commands)
 - [Why dif?](#why-dif)
 - [What lands in your repo](#what-lands-in-your-repo)
 - [A flag / experiment](#a-flag--experiment)
@@ -59,6 +59,7 @@ Then, in your repo:
 dif init                                # scaffold dif/, config, agent files
 dif connect --key dif_pk_live_...       # connect to dif.sh Cloud (optional)
 dif new home-hero-cta --surface home    # draft an experiment file
+# open dif/experiments/active/home-hero-cta.md and set `status: active`
 dif validate                            # check everything
 dif build                               # generate the TS client + context.json
 ```
@@ -96,11 +97,29 @@ const cta = dif("home-hero-cta", {
 button.textContent = cta();
 ```
 
+`dif init` gitignores `dif/generated/`, so CI/deploy must run `dif build`
+before the app build or it'll ship without a client. Add `"prebuild": "dif
+build"` to `package.json` and it happens automatically.
+
+The npm packages (`@dif.sh/sdk`, `@dif.sh/react`, `@dif.sh/svelte`) are
+ESM-only — there's no `require()` entry point.
+
 Full documentation lives at [www.dif.sh/docs](https://www.dif.sh/docs).
 
-## The six commands
+## The eight commands
 
-![The six dif commands: init, new, build, qa, validate, conclude](assets/commands.png)
+![The dif commands: init, connect, new, build, qa, validate, conclude, scaffold-audiences](assets/commands.png)
+
+| Command | What it does |
+| --- | --- |
+| `dif init` | Scaffold the dif.sh convention in the current directory. |
+| `dif connect` | Connect the workspace to dif.sh Cloud with a publishable key. |
+| `dif new` | Draft a new experiment, informed by the surface's prior learnings. |
+| `dif validate` | Check the workspace: schema, owners, surface refs, exclusion graph. |
+| `dif build` | Compile active experiments into a typed TS client + context.json. |
+| `dif qa` | Trace the assignment chain for a user and emit a preview URL. |
+| `dif conclude` | Move an experiment to concluded/, draft Decision, append to surface log. |
+| `dif scaffold-audiences` | Idempotently scaffold the starter audience resolvers (locale, device_type). |
 
 ## Why dif?
 
@@ -249,7 +268,9 @@ gate the code path, and run `dif validate` to check its own work.
 ## Analytics
 
 You can run dif with no analytics at all. Assignment is local, so flags and
-ramps work with nothing configured.
+ramps work with nothing configured. Cloud mode is opt-in too: without a
+publishable key, dif records nothing to Cloud until you run `dif connect` —
+no warning, just silence.
 
 When you want more analysis, connect to dif.sh Cloud. Copy the command from
 cloud onboarding and run it in your repo:

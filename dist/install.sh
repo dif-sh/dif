@@ -13,6 +13,7 @@ set -eu
 
 REPO="dif-sh/dif"
 INSTALL_DIR="${DIF_INSTALL_DIR:-$HOME/.local/bin}"
+DEFAULT_VERSION="v0.6.0" # stamped by scripts/prepare-release.sh
 VERSION=""
 
 while [ $# -gt 0 ]; do
@@ -48,27 +49,36 @@ detect_target() {
                 *) err "unsupported Linux arch: $arch";;
             esac
             ;;
-        *) err "unsupported OS: $os (use the npm or Homebrew install path on Windows)";;
+        *) err "unsupported OS: $os (on Windows: npm install -g @dif.sh/cli)";;
     esac
 }
 
 resolve_latest() {
-    # If --version wasn't given, ask the GitHub API for the latest tag.
+    # If --version wasn't given, ask the GitHub API for the latest tag. That
+    # endpoint is unauthenticated and rate-limited to 60 req/hr/IP, which a
+    # traffic spike (e.g. a Show HN front page) can blow through — fall back
+    # to the version this script was stamped with rather than failing.
     if [ -n "$VERSION" ]; then
         echo "$VERSION"
         return
     fi
+    resolved=""
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+        resolved="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
             | grep -m1 '"tag_name"' \
-            | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+            | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
+        resolved="$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
             | grep -m1 '"tag_name"' \
-            | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+            | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
     else
         err "neither curl nor wget found in PATH"
     fi
+    if [ -z "$resolved" ]; then
+        echo "→ GitHub API unavailable (rate limit?) — falling back to ${DEFAULT_VERSION}" >&2
+        resolved="$DEFAULT_VERSION"
+    fi
+    echo "$resolved"
 }
 
 download() {
@@ -95,15 +105,18 @@ sha256_of() {
 }
 
 verify_checksum() {
-    # Verify $1 against its published .sha256 sidecar at $2. Fatal on mismatch;
-    # warns (but proceeds) if no sidecar or no local sha256 tool is available —
-    # this catches corrupted/partial downloads and tampered assets.
+    # Verify $1 against its published .sha256 sidecar at $2. Fatal on mismatch
+    # AND on a missing/failed sidecar download — a missing sidecar is exactly
+    # as suspicious as a mismatch (corrupted upload, CDN edge cache serving a
+    # stale 404, or a tampered release) and installing an unverified binary
+    # silently is not acceptable. Still warns (but proceeds) when no local
+    # sha256 tool is available, since that's an environment gap, not a
+    # supply-chain signal.
     archive_path="$1"
     sum_url="$2"
     sum_file="${archive_path}.sha256"
     if ! download "$sum_url" "$sum_file" >/dev/null 2>&1; then
-        echo "→ warning: no checksum published for this asset; skipping verification" >&2
-        return 0
+        err "checksum sidecar missing for $(basename "$archive_path") — refusing to install; retry or download manually from https://github.com/dif-sh/dif/releases"
     fi
     expected="$(awk '{print $1}' "$sum_file" | tr 'A-Z' 'a-z' | tr -d '\r\n')"
     actual="$(sha256_of "$archive_path" | tr 'A-Z' 'a-z')"
