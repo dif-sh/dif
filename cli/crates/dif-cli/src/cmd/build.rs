@@ -21,7 +21,7 @@ pub struct Args {
     pub out: Option<PathBuf>,
 }
 
-/// Entrypoint. See PLAN.md step 7.
+/// Entrypoint.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
     let mut workspace = Workspace::load(&cwd)?;
@@ -54,6 +54,11 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .iter()
         .filter(|p| matches!(p.spec.status, Status::Active))
         .count();
+    let draft_count = workspace
+        .active
+        .iter()
+        .filter(|p| matches!(p.spec.status, Status::Draft))
+        .count();
     let client_path = out_dir.join("client.ts");
     let audiences_path = out_dir.join("audiences.ts");
     let events_path = out_dir.join("events.ts");
@@ -63,6 +68,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         let payload = serde_json::json!({
             "ok": true,
             "active": active_count,
+            "drafts": draft_count,
             "client": client_path.display().to_string(),
             "audiences": audiences_path.display().to_string(),
             "events": events_path.display().to_string(),
@@ -73,6 +79,15 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     } else {
         let check = style("✓").green().bold();
         println!("{check} validated {active_count} active experiment(s)");
+        if draft_count > 0 {
+            println!(
+                "  {}",
+                style(format!(
+                    "{draft_count} draft(s) skipped — set `status: active` to include them"
+                ))
+                .dim()
+            );
+        }
         println!(
             "{check} typed client → {}",
             relative_to_cwd(&client_path).display()

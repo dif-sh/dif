@@ -12,6 +12,8 @@ use super::CmdError;
 use clap::Args as ClapArgs;
 use console::style;
 use dif_core::paths;
+use dif_core::workspace::WorkspaceError;
+use dif_core::Workspace;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -32,7 +34,33 @@ struct Outcome {
 /// Entrypoint.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
-    scaffold(&cwd, args.force, json)
+    // Unlike the other workspace commands, this used to operate on `cwd`
+    // directly instead of walking up to find the workspace root — from a
+    // subdirectory it would create an orphan `<subdir>/dif/audiences/` tree
+    // instead of writing into the real one.
+    let root = match Workspace::load(&cwd) {
+        Ok(ws) => ws.root,
+        Err(WorkspaceError::NotFound(_)) => {
+            report_no_workspace(json);
+            return Ok(ExitCode::from(2));
+        }
+        Err(e) => return Err(e.into()),
+    };
+    scaffold(&root, args.force, json)
+}
+
+fn report_no_workspace(json: bool) {
+    if json {
+        let payload = serde_json::json!({ "ok": false, "error": "no_workspace" });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    eprintln!("{} no dif.sh workspace here.", style("✗").red().bold());
+    eprintln!(
+        "    run {} first (or {} to scaffold + connect in one step).",
+        style("dif init").bold(),
+        style("dif init --key <dif_pk_…>").bold(),
+    );
 }
 
 /// Test-friendly inner that takes an explicit cwd so the run-side

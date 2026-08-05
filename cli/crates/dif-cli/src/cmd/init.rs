@@ -101,7 +101,7 @@ impl From<EventsModeArg> for EventsMode {
     }
 }
 
-/// Entrypoint. See PLAN.md step 3.
+/// Entrypoint.
 pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
     // Validate + normalise a pasted key up front so a bad paste fails before we
@@ -211,6 +211,14 @@ fn resolve_agents(
 /// Test-friendly inner that takes an explicit cwd so the `current_dir()` side
 /// effect can be sidestepped. Mirrors the pattern in [`super::scaffold_audiences`].
 fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCode, CmdError> {
+    // Refuse to scaffold directly into $HOME: it would write CLAUDE.md,
+    // AGENTS.md, and real user-level `.claude/skills/…` at the top of the
+    // user's home directory — almost always an accidental `cd`, not intent.
+    if !args.force && is_home_dir(cwd) {
+        report_home_dir_refusal(json);
+        return Ok(ExitCode::from(2));
+    }
+
     let sel = match resolve_agents(args.agents, args.no_agent_files) {
         Ok(sel) => sel,
         Err(msg) => {
@@ -302,7 +310,9 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, content)?;
+        std::fs::write(path, content).map_err(|e| {
+            CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
+        })?;
     }
     // Managed-block merge — preserve any user content already in the file, even
     // under `--force`. Force re-scaffolds the structural files, but must never
@@ -313,11 +323,44 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         }
         let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
         let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
-        std::fs::write(&mf.path, merged)?;
+        std::fs::write(&mf.path, merged).map_err(|e| {
+            CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display()))
+        })?;
     }
 
     report_success(&surface, json, sel, mode);
     Ok(ExitCode::from(0))
+}
+
+/// True when `cwd` is the user's home directory ($HOME, or %USERPROFILE% on
+/// Windows). Compared as plain paths — both sides are already absolute in the
+/// real CLI path (`std::env::current_dir()` and the platform home var), so no
+/// canonicalization is needed, and none is attempted since it would require
+/// the directory to exist.
+fn is_home_dir(cwd: &Path) -> bool {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    match home {
+        Some(home) => Path::new(&home) == cwd,
+        None => false,
+    }
+}
+
+/// Report a refusal to scaffold directly into $HOME. Mirrors
+/// [`report_collisions`]: JSON envelope or a red stderr line.
+fn report_home_dir_refusal(json: bool) {
+    if json {
+        let payload = serde_json::json!({
+            "ok": false,
+            "error": "home_dir",
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    eprintln!(
+        "{} refusing to run `dif init` in your home directory",
+        style("✗").red().bold()
+    );
+    eprintln!("  run this from a project directory instead, or pass --force to override.");
 }
 
 fn report_collisions(paths: &[&Path], json: bool) {
@@ -389,11 +432,23 @@ fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<St
     created
 }
 
+/// The "next steps" block appended to a successful `dif init`, shared between
+/// the pretty text output and the `next` JSON array so they can't drift.
+fn next_steps(surface: &str) -> [String; 3] {
+    [
+        "npm install @dif.sh/sdk".to_string(),
+        format!("dif new <id> --surface {surface} — then edit the file and set status: active"),
+        "dif build".to_string(),
+    ]
+}
+
 fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMode) {
+    let next = next_steps(surface);
     if json {
         let payload = serde_json::json!({
             "ok": true,
             "created": created_paths(surface, sel, mode),
+            "next": next,
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
         return;
@@ -423,6 +478,11 @@ fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMo
     }
     if sel.cursor {
         println!("{check} merged dif guidance into .cursorrules");
+    }
+    println!();
+    println!("next steps:");
+    for (i, step) in next.iter().enumerate() {
+        println!("  {}. {step}", i + 1);
     }
 }
 
@@ -644,7 +704,15 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
     if existing.trim().is_empty() {
         return region;
     }
-    if let Some(s) = existing.find(start) {
+    // Anchor on the LAST start marker rather than the first. A stray,
+    // unterminated start marker earlier in the file (e.g. left behind by an
+    // interrupted previous run — see the append-fallback below) must never be
+    // paired with an end marker that actually belongs to a later, well-formed
+    // block: doing so would treat everything between them as dif's to
+    // rewrite, silently deleting real user content that happened to sit in
+    // between. Keying off the last start marker's own matching end sidesteps
+    // that mismatch entirely.
+    if let Some(s) = existing.rfind(start) {
         if let Some(rel) = existing[s..].find(end) {
             let e = s + rel + end.len();
             let mut out = String::with_capacity(existing.len() + region.len());
@@ -654,7 +722,9 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
             return out;
         }
     }
-    // No managed block yet — append one, separated by a blank line.
+    // No managed block yet (or only a stray/unterminated start marker) —
+    // append a fresh one, preserving everything already in the file. The
+    // stray marker (if any) is left in place; it's inert prose from here on.
     let mut out = existing.to_string();
     if !out.ends_with('\n') {
         out.push('\n');
@@ -1063,6 +1133,38 @@ mod tests {
     }
 
     #[test]
+    fn stray_start_marker_without_end_does_not_swallow_content_on_second_run() {
+        // Regression test: a start marker with no matching end (e.g. left
+        // behind by an interrupted previous run, or hand-edited) used to be
+        // mis-paired on the SECOND run with an end marker that actually
+        // belonged to a different, later block — swallowing everything in
+        // between, including real user content.
+        let start = MD_BLOCK_START;
+        let end = MD_BLOCK_END;
+        let block = "DIF BLOCK CONTENT\n";
+
+        let existing =
+            format!("Top notes.\n{start}\nBottom notes the user wrote after the stray marker.\n");
+
+        // First run: no end anywhere in the file — falls back to appending a
+        // fresh, complete block. This leaves TWO start markers and ONE end
+        // marker in the file (the stray one, plus the freshly appended one).
+        let after_first = merge_managed_block(&existing, block, start, end);
+        assert!(after_first.contains("Bottom notes the user wrote after the stray marker."));
+        assert_eq!(after_first.matches(start).count(), 2);
+        assert_eq!(after_first.matches(end).count(), 1);
+
+        // Second run: must NOT treat the stray start as paired with the
+        // far-away end belonging to the freshly appended block.
+        let after_second = merge_managed_block(&after_first, block, start, end);
+        assert!(
+            after_second.contains("Bottom notes the user wrote after the stray marker."),
+            "user content between the stray start and the later end was swallowed:\n{after_second}"
+        );
+        assert!(after_second.contains("Top notes."));
+    }
+
+    #[test]
     fn force_refreshes_block_without_destroying_user_content() {
         let tmp = tempfile::TempDir::new().unwrap();
         let claude = tmp.path().join("CLAUDE.md");
@@ -1135,6 +1237,70 @@ mod tests {
             "init should have refused on the structural collision"
         );
         assert!(!tmp.path().join("CLAUDE.md").exists());
+    }
+
+    // -- $HOME guard -----------------------------------------------------------
+
+    #[test]
+    fn refuses_to_init_home_directory() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let prev_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", tmp.path());
+
+        let result = run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                agents: None,
+                key: None,
+                force: false,
+                no_agent_files: false,
+            },
+            EventsMode::Cloud,
+            true,
+        );
+
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+
+        let code = result.expect("run_in should return Ok with a refusal exit code");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(
+            !tmp.path().join("dif/config.yaml").exists(),
+            "init should have refused before writing anything"
+        );
+    }
+
+    #[test]
+    fn force_overrides_home_directory_refusal() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let prev_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", tmp.path());
+
+        let result = run_in(
+            tmp.path(),
+            Args {
+                surface: None,
+                events: None,
+                agents: None,
+                key: None,
+                force: true,
+                no_agent_files: true,
+            },
+            EventsMode::Cloud,
+            true,
+        );
+
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+
+        result.expect("init --force should succeed even in $HOME");
+        assert!(tmp.path().join("dif/config.yaml").exists());
     }
 
     // -- `--agents` selection -------------------------------------------------

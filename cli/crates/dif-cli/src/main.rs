@@ -5,6 +5,7 @@
 //! calls and pretty-print the results.
 
 use clap::{Parser, Subcommand};
+use console::style;
 use std::process::ExitCode;
 
 mod cmd;
@@ -43,21 +44,50 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let json = cli.json;
     let result = match cli.command {
-        Command::Init(args) => cmd::init::run(args, cli.json),
-        Command::Connect(args) => cmd::connect::run(args, cli.json),
-        Command::New(args) => cmd::new::run(args, cli.json),
-        Command::Validate(args) => cmd::validate::run(args, cli.json),
-        Command::Build(args) => cmd::build::run(args, cli.json),
-        Command::Qa(args) => cmd::qa::run(args, cli.json),
-        Command::Conclude(args) => cmd::conclude::run(args, cli.json),
-        Command::ScaffoldAudiences(args) => cmd::scaffold_audiences::run(args, cli.json),
+        Command::Init(args) => cmd::init::run(args, json),
+        Command::Connect(args) => cmd::connect::run(args, json),
+        Command::New(args) => cmd::new::run(args, json),
+        Command::Validate(args) => cmd::validate::run(args, json),
+        Command::Build(args) => cmd::build::run(args, json),
+        Command::Qa(args) => cmd::qa::run(args, json),
+        Command::Conclude(args) => cmd::conclude::run(args, json),
+        Command::ScaffoldAudiences(args) => cmd::scaffold_audiences::run(args, json),
     };
 
     match result {
         Ok(code) => code,
         Err(e) => {
             eprintln!("error: {e}");
+            // Special-case "no workspace here" — the single most common way a
+            // fresh clone hits an error — with a hint pointing at the fix,
+            // matching the same hint `dif connect` gives (see connect.rs).
+            let no_workspace = matches!(
+                &e,
+                cmd::CmdError::Workspace(dif_core::workspace::WorkspaceError::NotFound(_))
+            );
+            if no_workspace {
+                eprintln!(
+                    "  run {} to scaffold a workspace here",
+                    style("dif init").bold()
+                );
+            }
+            if json {
+                let error_field = if no_workspace {
+                    "no_workspace".to_string()
+                } else {
+                    e.to_string()
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "ok": false,
+                        "error": error_field,
+                    }))
+                    .unwrap()
+                );
+            }
             ExitCode::from(1)
         }
     }
