@@ -353,10 +353,11 @@ pub fn parse_surface_str(source: &str, id: &str) -> Result<Surface, ParseError> 
 /// accepted.
 fn parse_learning(text: &str) -> Option<Learning> {
     let text = text.trim();
-    if text.len() < 10 {
-        return None;
-    }
-    let date_str = &text[..10];
+    // `get` returns `None` both when `text` is too short and when byte 10
+    // lands mid-codepoint (e.g. a bullet whose em dash starts before byte
+    // 10), so this one check replaces both a length guard and a panicking
+    // slice.
+    let date_str = text.get(..10)?;
     let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()?;
 
     let rest = text[10..].trim_start();
@@ -586,5 +587,24 @@ on desktop, three-step on mobile. Traffic skews returning.
     #[test]
     fn learning_rejects_bad_date() {
         assert!(parse_learning("not-a-date — exp: x").is_none());
+    }
+
+    #[test]
+    fn learning_multibyte_at_byte_10_returns_none() {
+        // The em dash (U+2014, 3 bytes) starts at byte 9, so byte 10 lands
+        // mid-codepoint. Pre-fix, `&text[..10]` panicked here.
+        assert!(parse_learning("No effect— reverted.").is_none());
+    }
+
+    #[test]
+    fn learning_short_multibyte_returns_none() {
+        assert!(parse_learning("héllo—").is_none());
+    }
+
+    #[test]
+    fn surface_multibyte_bullet_does_not_panic() {
+        let source = "# Surface: x\n\nDesc.\n\n## Learnings\n\n- No effect— reverted.\n";
+        let s = parse_surface_str(source, "x").expect("parse");
+        assert_eq!(s.learnings.len(), 0);
     }
 }

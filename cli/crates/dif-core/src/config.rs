@@ -14,6 +14,7 @@ pub struct Config {
     #[serde(default)]
     pub audience_attributes: Vec<AudienceAttribute>,
     /// How users are bucketed.
+    #[serde(default)]
     pub bucketing: BucketingConfig,
     /// How exposure + metric events are delivered. `None` resolves to cloud.
     #[serde(default)]
@@ -69,6 +70,15 @@ pub struct BucketingConfig {
     pub id: String,
     /// Fallback when the primary is null. Typically `anon_cookie`.
     pub fallback: String,
+}
+
+impl Default for BucketingConfig {
+    fn default() -> Self {
+        Self {
+            id: "user_id".to_string(),
+            fallback: "anon_cookie".to_string(),
+        }
+    }
 }
 
 /// How events (exposures + `dif.track()` metrics) are delivered.
@@ -144,4 +154,31 @@ fn default_fail_on() -> Vec<String> {
         "orphan_ref".to_string(),
         "missing_owner".to_string(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimal_config_parses() {
+        // A hand-trimmed config with only the two fields nothing else defaults
+        // for. `bucketing` and `build` are both `#[serde(default)]` now, so
+        // this must not fail even though neither section is present.
+        let yaml = "project: acme-shop\ndefault_surface: home\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("minimal config parses");
+        assert_eq!(config.project, "acme-shop");
+        assert_eq!(config.default_surface, "home");
+        assert_eq!(config.bucketing.id, "user_id");
+        assert_eq!(config.bucketing.fallback, "anon_cookie");
+        assert_eq!(config.build.out, "dif/generated");
+        assert_eq!(
+            config.build.fail_on,
+            vec!["conflict", "orphan_ref", "missing_owner"]
+        );
+        assert!(!config.build.commit_generated);
+        assert!(config.audience_attributes.is_empty());
+        assert!(config.events.is_none());
+        assert!(config.exposure.is_none());
+    }
 }

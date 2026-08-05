@@ -122,7 +122,8 @@ impl Workspace {
     pub fn scan_call_sites(&mut self) -> Result<(), WorkspaceError> {
         let root = self.root.clone();
         // Word-boundary so `notdif(...)` doesn't match. Permissive on id chars
-        // — `validate` enforces the canonical kebab-case shape separately.
+        // — `dif new` enforces the canonical kebab-case shape at creation time
+        // (another agent is implementing that).
         let pattern =
             Regex::new(r#"\bdif\s*\(\s*"([a-zA-Z0-9][a-zA-Z0-9_-]*)""#).expect("static regex");
 

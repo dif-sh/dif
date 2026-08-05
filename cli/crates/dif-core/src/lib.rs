@@ -4,8 +4,6 @@
 //! build the generated TS client + context.json. Everything user-facing
 //! about the CLI lives in `dif-cli`; everything correctness-critical lives
 //! here.
-//!
-//! See [PLAN.md](../../../PLAN.md) for the full architectural rationale.
 
 #![deny(rust_2018_idioms)]
 #![warn(missing_docs)]

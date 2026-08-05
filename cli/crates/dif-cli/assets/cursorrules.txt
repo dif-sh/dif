@@ -4,6 +4,18 @@ This project uses dif.sh (https://dif.sh) — experimentation-as-code. Experimen
 
 When asked to work on an experiment, read this file plus .claude/skills/dif-author-experiment/SKILL.md (and its references/) for the full workflow detail.
 
+# Runtime install
+
+The generated dif/generated/client.ts imports @dif.sh/sdk — install it in the app:
+
+  npm install @dif.sh/sdk
+
+@dif.sh/sdk has zero dependencies. @dif.sh/react and @dif.sh/svelte are optional framework adapters; add one only if you use those bindings.
+
+The CLI (@dif.sh/cli, or the standalone binary) and the SDK are separate packages — installing one doesn't install the other.
+
+dif/generated/ is gitignored, so CI and deploy builds must run `dif build` before the app build. The common pattern is a "prebuild": "dif build" script in package.json.
+
 # File layout
 
 dif/experiments/active/<id>.md              drafts + running experiments
@@ -36,9 +48,12 @@ E005  variant weights don't sum to 100
 E006  audience attribute not declared in dif/config.yaml
 E007  exclusion conflict: same surface, no shared exclusion_group, audiences not disjoint
 E008  declared audience attribute missing its dif/audiences/<name>.ts resolver
+E009  duplicate experiment id across experiments/active/ and experiments/concluded/
+E010  duplicate variant id within one experiment
 W001  call site references an experiment that isn't active (warning)
 W002  audience file has no matching entry in audience_attributes (warning)
 W003  legacy exposure: block in dif/config.yaml, superseded by events: (warning)
+W004  active experiment file's status isn't active (warning)
 
 # Before drafting an experiment
 
@@ -59,4 +74,4 @@ Bad: "Inconclusive."
 .claude/skills/dif-author-experiment/   full authoring workflow + references
 .claude/skills/dif-conclude-experiment/ pre-conclude checklist + Decision writing
 .claude/skills/dif-generate-surfaces/   for fresh repos: propose the initial set of surfaces from app context
-cli/PLAN.md in the dif source repo      canonical spec
+https://dif.sh/docs                     full documentation

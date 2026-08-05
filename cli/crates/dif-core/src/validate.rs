@@ -12,19 +12,23 @@
 //! - `E006` audience attribute not declared in config
 //! - `E007` exclusion conflict (same surface, no shared `exclusion_group`)
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
+//! - `E009` duplicate experiment id across `active/` and `concluded/`
+//! - `E010` duplicate variant id within one experiment
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 //! - `W003` legacy `exposure:` block (superseded by `events:`)
+//! - `W004` active experiment file's `status:` isn't `active`
 
 use crate::{
     diag::{Diagnostic, Report},
     exclusion,
     parse::ParsedExperiment,
     paths,
+    spec::Status,
     workspace::{relative_path, Workspace},
 };
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Run every validation pass against the workspace. Returns the full report;
 /// the caller decides whether errors abort the build.
@@ -39,6 +43,9 @@ pub fn run(workspace: &Workspace) -> Report {
     exclusion_overlap(workspace, &mut report);
     orphan_refs(workspace, &mut report);
     legacy_exposure_block(workspace, &mut report);
+    active_status(workspace, &mut report);
+    duplicate_experiment_ids(workspace, &mut report);
+    duplicate_variant_ids(workspace, &mut report);
     sort_report(&mut report);
     report
 }
@@ -288,6 +295,90 @@ pub fn legacy_exposure_block(workspace: &Workspace, report: &mut Report) {
                 "Replace the `exposure:` block with `events:` (`mode: cloud` or `mode: custom`). See https://dif.sh/docs/events/. Defaulting to cloud for now.".to_string(),
             ),
         });
+    }
+}
+
+/// A file under `experiments/active/` whose `status:` isn't `active` is
+/// almost always a mistake: either it hasn't been promoted yet, or it should
+/// have been moved to `concluded/` and wasn't. Warning, not error — the
+/// workspace still loads and `dif build` just skips the file, so nothing is
+/// broken, but it's worth flagging before the customer wonders why their
+/// experiment isn't running.
+pub fn active_status(workspace: &Workspace, report: &mut Report) {
+    for parsed in &workspace.active {
+        match parsed.spec.status {
+            Status::Active => {}
+            Status::Draft => {
+                report.warnings.push(simple_error(
+                    "W004",
+                    "status is `draft` — `dif build` will skip this experiment".to_string(),
+                    parsed,
+                    workspace,
+                    Some("Set `status: active` when it's ready to run."),
+                ));
+            }
+            Status::Concluded | Status::Archived => {
+                report.warnings.push(simple_error(
+                    "W004",
+                    "status is `concluded` but the file is under experiments/active/".to_string(),
+                    parsed,
+                    workspace,
+                    Some("Run `dif conclude <id>` to archive it properly."),
+                ));
+            }
+        }
+    }
+}
+
+/// Experiment ids must be unique across the whole workspace — `dif conclude`
+/// archives by id, and the runtime keys assignment state off it. A duplicate
+/// means one file silently shadows the other depending on load order.
+pub fn duplicate_experiment_ids(workspace: &Workspace, report: &mut Report) {
+    let mut first_seen: HashMap<&str, &ParsedExperiment> = HashMap::new();
+    for parsed in workspace.active.iter().chain(workspace.concluded.iter()) {
+        let id = parsed.spec.id.as_str();
+        match first_seen.get(id) {
+            Some(first) => {
+                report.errors.push(simple_error(
+                    "E009",
+                    format!(
+                        "duplicate experiment id `{id}`: already declared in `{}`",
+                        relative_path(&first.path, &workspace.root)
+                    ),
+                    parsed,
+                    workspace,
+                    Some(
+                        "ids must be unique across active/ and concluded/; `dif conclude` archives by id and duplicate ids overwrite each other.",
+                    ),
+                ));
+            }
+            None => {
+                first_seen.insert(id, parsed);
+            }
+        }
+    }
+}
+
+/// Variant ids must be unique within one experiment — the runtime buckets
+/// users into a variant by id, so a duplicate silently merges two arms.
+pub fn duplicate_variant_ids(workspace: &Workspace, report: &mut Report) {
+    for parsed in workspace.active.iter().chain(workspace.concluded.iter()) {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for variant in &parsed.spec.variants {
+            *counts.entry(variant.id.as_str()).or_insert(0) += 1;
+        }
+        let mut dupes: Vec<(&str, usize)> =
+            counts.into_iter().filter(|(_, count)| *count > 1).collect();
+        dupes.sort_by_key(|(id, _)| *id);
+        for (id, count) in dupes {
+            report.errors.push(simple_error(
+                "E010",
+                format!("variant id `{id}` is declared {count} times"),
+                parsed,
+                workspace,
+                Some("duplicate variant ids silently bucket everyone into the first occurrence."),
+            ));
+        }
     }
 }
 
@@ -751,5 +842,118 @@ created: 2026-01-02";
         );
         let report = run(&ws);
         assert!(!report.warnings.iter().any(|d| d.code == "W003"));
+    }
+
+    #[test]
+    fn draft_in_active_emits_w004_only() {
+        let yaml = "id: x
+status: draft
+owner: ada@acme.dev
+surface: home
+hypothesis: h
+variants:
+  - id: control
+    weight: 50
+  - id: variant_a
+    weight: 50
+metrics:
+  primary: m
+created: 2026-01-01";
+        let ws = make_workspace(
+            vec![parse(yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        let report = run(&ws);
+        assert!(
+            report.errors.is_empty(),
+            "expected no errors: {:?}",
+            report.errors
+        );
+        let w004: Vec<_> = report
+            .warnings
+            .iter()
+            .filter(|d| d.code == "W004")
+            .collect();
+        assert_eq!(
+            w004.len(),
+            1,
+            "expected exactly one W004: {:?}",
+            report.warnings
+        );
+        assert!(w004[0].message.contains("draft"));
+    }
+
+    #[test]
+    fn duplicate_experiment_id_emits_e009() {
+        let a = "id: dup
+status: active
+owner: ada@acme.dev
+surface: home
+hypothesis: h
+variants:
+  - id: control
+    weight: 50
+  - id: variant_a
+    weight: 50
+metrics:
+  primary: m
+created: 2026-01-01";
+        let b = "id: dup
+status: active
+owner: ada@acme.dev
+surface: checkout
+hypothesis: h
+variants:
+  - id: control
+    weight: 50
+  - id: variant_a
+    weight: 50
+metrics:
+  primary: m
+created: 2026-01-02";
+        let ws = make_workspace(
+            vec![parse(a, "dup-a"), parse(b, "dup-b")],
+            vec![make_surface("home"), make_surface("checkout")],
+            empty_config(),
+        );
+        let report = run(&ws);
+        let e = report
+            .errors
+            .iter()
+            .find(|d| d.code == "E009")
+            .expect("E009");
+        assert!(e.message.contains("dup"));
+        assert!(e.message.contains("dup-a.md"));
+    }
+
+    #[test]
+    fn duplicate_variant_id_emits_e010() {
+        let yaml = "id: x
+status: active
+owner: ada@acme.dev
+surface: home
+hypothesis: h
+variants:
+  - id: control
+    weight: 50
+  - id: control
+    weight: 50
+metrics:
+  primary: m
+created: 2026-01-01";
+        let ws = make_workspace(
+            vec![parse(yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        let report = run(&ws);
+        let e = report
+            .errors
+            .iter()
+            .find(|d| d.code == "E010")
+            .expect("E010");
+        assert!(e.message.contains("control"));
+        assert!(e.message.contains('2'));
     }
 }
