@@ -31,6 +31,11 @@ export interface ResolvedState {
 
 let state: ResolvedState | null = null;
 
+// One-shot warnings for cloud-mode misconfiguration — fire once per bundle
+// load so a noisy app doesn't spam the console on every re-init/re-render.
+let noKeyWarned = false;
+let noUserIdWarned = false;
+
 // dif.sh Cloud's public ingest host. The SDK posts to `${apiUrl}/v1/*`, which
 // the cloud rewrites to its `/api/v1/*` handlers. (api.dif.sh is not a real
 // host — point at cloud.dif.sh, or your own deployment via `apiUrl`.)
@@ -65,6 +70,28 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
     sinks = publishableKey ? [cloudSink({ apiUrl, publishableKey })] : [];
     trackHandler = cloudTrack({ apiUrl, publishableKey });
+
+    if (merged.enabled !== false) {
+      if (!publishableKey && !noKeyWarned) {
+        noKeyWarned = true;
+        if (typeof console !== "undefined") {
+          console.warn(
+            "[dif] events mode is cloud but no publishableKey is set — exposures and " +
+              "track() will be dropped. Run `dif connect --key <dif_pk_…>` then `dif build`, " +
+              "or set events.mode: custom.",
+          );
+        }
+      }
+      if (merged.userId === undefined && !noUserIdWarned) {
+        noUserIdWarned = true;
+        if (typeof console !== "undefined") {
+          console.warn(
+            "[dif] init was called without a userId — every user gets the control variant " +
+              "and no events are sent. Pass userId: () => currentUser?.id ?? null.",
+          );
+        }
+      }
+    }
   }
 
   state = {
@@ -101,6 +128,8 @@ export function getOverrides(): Record<string, string> {
 /** Test-only. */
 export function resetState(): void {
   state = null;
+  noKeyWarned = false;
+  noUserIdWarned = false;
 }
 
 function stripTrailing(url: string): string {

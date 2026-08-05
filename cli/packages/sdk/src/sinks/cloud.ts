@@ -9,6 +9,27 @@
 
 import type { ExposureEvent, MetricEvent, Sink } from "../types.js";
 
+// Shared across cloudSink + cloudTrack — a bad publishableKey (401) or a dead
+// endpoint (5xx) affects every event the same way, so one warning for the
+// whole module is enough; repeating it per-call would spam the console.
+let non2xxWarned = false;
+
+/** Test-only. */
+export function __resetCloudWarnings(): void {
+  non2xxWarned = false;
+}
+
+function warnOnNon2xx(res: Response): void {
+  if (res.ok || non2xxWarned) return;
+  non2xxWarned = true;
+  if (typeof console !== "undefined") {
+    console.warn(
+      `[dif] cloud rejected an event (HTTP ${res.status}) — check the publishableKey in ` +
+        "dif/config.yaml. Further failures will be silent.",
+    );
+  }
+}
+
 export interface CloudSinkConfig {
   /** Cloud base URL (e.g. https://cloud.dif.sh). Trailing slashes are stripped. */
   apiUrl: string;
@@ -32,9 +53,11 @@ export function cloudSink(cfg: CloudSinkConfig): Sink {
           },
           body,
           keepalive: true,
-        }).catch(() => {
-          // Swallow — analytics must never throw at the call site.
-        });
+        })
+          .then(warnOnNon2xx)
+          .catch(() => {
+            // Swallow — analytics must never throw at the call site.
+          });
       } catch {
         // Synchronous throws (fetch undefined, etc.) are also swallowed.
       }
@@ -74,9 +97,11 @@ export function cloudTrack(cfg: CloudTrackConfig): (event: MetricEvent) => void 
         },
         body,
         keepalive: true,
-      }).catch(() => {
-        // Swallow — analytics must never throw at the call site.
-      });
+      })
+        .then(warnOnNon2xx)
+        .catch(() => {
+          // Swallow — analytics must never throw at the call site.
+        });
     } catch {
       // Synchronous throws (fetch undefined, etc.) are also swallowed.
     }

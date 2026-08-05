@@ -1,8 +1,9 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { dif, __reset, __register, cloudSink } from "./index.js";
+import { dif, __reset, __register, cloudSink, cloudTrack } from "./index.js";
 import type { ExposureEvent } from "./index.js";
+import { __resetCloudWarnings } from "./sinks/cloud.js";
 
 interface FetchCall {
   url: string;
@@ -13,6 +14,8 @@ let fetchCalls: FetchCall[] = [];
 let originalFetch: typeof fetch;
 let expCounter = 0;
 const nextExpId = () => `cloud-test-${++expCounter}`;
+let warnCalls: unknown[][] = [];
+let originalWarn: typeof console.warn;
 
 const SAMPLE_EVENT: ExposureEvent = {
   event: "dif.exposure",
@@ -27,17 +30,25 @@ const SAMPLE_EVENT: ExposureEvent = {
 
 beforeEach(() => {
   __reset();
+  __resetCloudWarnings();
   fetchCalls = [];
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     fetchCalls.push({ url: String(url), init: init ?? {} });
     return new Response(JSON.stringify({ accepted: 1 }), { status: 202 });
   }) as typeof fetch;
+  warnCalls = [];
+  originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnCalls.push(args);
+  };
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  console.warn = originalWarn;
   __reset();
+  __resetCloudWarnings();
 });
 
 describe("cloudSink", () => {
@@ -88,6 +99,32 @@ describe("cloudSink", () => {
     // Give the promise a tick to reject and be swallowed.
     await Promise.resolve();
     await Promise.resolve();
+  });
+
+  it("warns exactly once across two events on a non-2xx response", async () => {
+    globalThis.fetch = (async () => new Response("nope", { status: 401 })) as typeof fetch;
+    const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });
+    sink.emit(SAMPLE_EVENT);
+    await Promise.resolve();
+    await Promise.resolve();
+    sink.emit(SAMPLE_EVENT);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(warnCalls.length, 1, "expected exactly one warning across two failed events");
+    assert.ok(String(warnCalls[0]![0]).includes("HTTP 401"));
+  });
+
+  it("shares its warn-once flag with cloudTrack", async () => {
+    globalThis.fetch = (async () => new Response("nope", { status: 401 })) as typeof fetch;
+    const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });
+    const track = cloudTrack({ apiUrl: "https://x", publishableKey: "k" });
+    sink.emit(SAMPLE_EVENT);
+    await Promise.resolve();
+    await Promise.resolve();
+    track({ metric: "m", user_id: "u-1", fired_at: 1, source: "test" });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(warnCalls.length, 1, "further failures across sinks stay silent");
   });
 });
 
@@ -222,5 +259,28 @@ describe("dif.init exposure delivery", () => {
     assert.equal(posts.length, 1);
     const headers = posts[0]!.init.headers as Record<string, string>;
     assert.equal(headers.authorization, "Bearer dif_pk_live_explicit");
+  });
+});
+
+describe("dif.init loud-failure warnings", () => {
+  it("warns once when cloud mode has no publishableKey", () => {
+    dif.init({ project: "acme", userId: () => "u-1" });
+    dif.init({ project: "acme", userId: () => "u-1" });
+    assert.equal(warnCalls.length, 1, "expected exactly one warning across two inits");
+    assert.ok(String(warnCalls[0]![0]).includes("no publishableKey is set"));
+  });
+
+  it("warns once when init is called without a userId", () => {
+    dif.init({ publishableKey: "dif_pk_live_aaaaaaaa" });
+    dif.init({ publishableKey: "dif_pk_live_aaaaaaaa" });
+    assert.equal(warnCalls.length, 1, "expected exactly one warning across two inits");
+    assert.ok(String(warnCalls[0]![0]).includes("without a userId"));
+  });
+
+  it("custom mode never warns, even without a publishableKey or userId", () => {
+    dif.init({
+      events: { mode: "custom", exposure: () => {}, track: () => {} },
+    });
+    assert.equal(warnCalls.length, 0);
   });
 });
