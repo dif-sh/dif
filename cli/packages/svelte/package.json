@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/svelte",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Svelte 5 adapter for @dif.sh/sdk — SSR-safe assignment, a server load helper, and exposure stores.",
   "license": "MIT",
   "type": "module",
@@ -48,7 +48,7 @@
     "dif.sh"
   ],
   "peerDependencies": {
-    "@dif.sh/sdk": "^0.6.0",
+    "@dif.sh/sdk": "^0.6.1",
     "svelte": "^5.0.0"
   },
   "devDependencies": {
