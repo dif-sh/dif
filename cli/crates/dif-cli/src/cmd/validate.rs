@@ -16,7 +16,7 @@ pub struct Args {
     pub schema_only: bool,
 }
 
-/// Entrypoint. See PLAN.md step 4.
+/// Entrypoint.
 pub fn run(_args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
     let mut workspace = Workspace::load(&cwd)?;

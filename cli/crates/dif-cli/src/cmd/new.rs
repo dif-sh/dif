@@ -11,7 +11,7 @@ use chrono::{NaiveDate, Utc};
 use clap::Args as ClapArgs;
 use console::style;
 use dif_core::{paths, spec::Variant, ParsedExperiment, ParsedSurface, Workspace};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// `dif new` flags.
@@ -21,8 +21,9 @@ pub struct Args {
     pub id: String,
 
     /// Surface this experiment will run on. Must already exist under `dif/surfaces/`.
+    /// Defaults to the workspace's `default_surface` when omitted.
     #[arg(long)]
-    pub surface: String,
+    pub surface: Option<String>,
 
     /// Owner email. Defaults to `git config user.email`.
     #[arg(long)]
@@ -33,20 +34,40 @@ pub struct Args {
     pub from: Option<String>,
 }
 
-/// Entrypoint. See PLAN.md step 11.
+/// Entrypoint.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
-    let workspace = Workspace::load(&cwd)?;
+    run_in(&cwd, args, json)
+}
 
-    // 1. Surface must exist (exit 3).
+/// Test-friendly inner that takes an explicit cwd so the run-side
+/// `current_dir()` side effect can be sidestepped. Mirrors the pattern in
+/// [`super::init`] and [`super::scaffold_audiences`].
+fn run_in(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
+    // 0. Id must be a safe filename component (exit 2). Checked before we even
+    // touch the workspace — an invalid id is a usage error, not a workspace
+    // problem.
+    if !valid_id(&args.id) {
+        report_invalid_id(&args.id, json);
+        return Ok(ExitCode::from(2));
+    }
+
+    let workspace = Workspace::load(cwd)?;
+
+    // 1. Surface must exist (exit 3). Falls back to the workspace's
+    // `default_surface` when `--surface` is omitted.
+    let surface_name = args
+        .surface
+        .clone()
+        .unwrap_or_else(|| workspace.config.default_surface.clone());
     let surface = match workspace
         .surfaces
         .iter()
-        .find(|s| s.surface.id == args.surface)
+        .find(|s| s.surface.id == surface_name)
     {
         Some(s) => s,
         None => {
-            report_missing_surface(&args.surface, &workspace, json);
+            report_missing_surface(&surface_name, &workspace, json);
             return Ok(ExitCode::from(3));
         }
     };
@@ -95,7 +116,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
 
     // 5. Render content.
     let today = Utc::now().date_naive();
-    let content = render_experiment(&args.id, &args.surface, &owner, today, source_exp, surface);
+    let content = render_experiment(&args.id, &surface_name, &owner, today, source_exp, surface);
 
     // 6. Write to dif/experiments/active/<id>.md.
     let path = workspace
@@ -105,7 +126,8 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, &content)?;
+    std::fs::write(&path, &content)
+        .map_err(|e| CmdError::OtherOwned(format!("failed to write {}: {e}", path.display())))?;
 
     // 7. Report.
     let learning_count = surface.surface.learnings.len();
@@ -113,7 +135,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let surface_rel = workspace
         .root
         .join(paths::SURFACES_DIR)
-        .join(format!("{}.md", args.surface));
+        .join(format!("{surface_name}.md"));
     let path_rel = relative(&path, &workspace.root);
     let surface_rel = relative(&surface_rel, &workspace.root);
 
@@ -280,6 +302,16 @@ fn render_recent_learnings(surface_id: &str, surface: &ParsedSurface) -> String 
 
 // -- helpers ------------------------------------------------------------------
 
+/// A safe experiment id: it becomes the filename stem
+/// `dif/experiments/active/<id>.md`, so anything that could escape that
+/// directory (`/`, `..`) or introduce case-sensitivity surprises is rejected.
+/// Same charset as the call-site scanner regex in dif-core's `workspace.rs`,
+/// restricted to lowercase since the canonical id form is kebab/snake case.
+fn valid_id(id: &str) -> bool {
+    let re = regex::Regex::new(r"^[a-z0-9][a-z0-9_-]*$").expect("static regex");
+    re.is_match(id)
+}
+
 fn git_user_email() -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["config", "user.email"])
@@ -303,6 +335,25 @@ fn relative(path: &std::path::Path, root: &std::path::Path) -> PathBuf {
 }
 
 // -- error reporters ----------------------------------------------------------
+
+fn report_invalid_id(id: &str, json: bool) {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "ok": false,
+                "error": "invalid_id",
+                "id": id,
+            }))
+            .unwrap()
+        );
+        return;
+    }
+    eprintln!(
+        "{} invalid experiment id `{id}` — use lowercase letters, digits, `-` and `_` (the id becomes the filename dif/experiments/active/<id>.md)",
+        style("✗").red().bold()
+    );
+}
 
 fn report_missing_surface(name: &str, workspace: &Workspace, json: bool) {
     if json {
@@ -403,6 +454,109 @@ mod tests {
         parse::parse_experiment_str,
         spec::{Learning, Surface},
     };
+
+    /// Minimal on-disk workspace: `dif/config.yaml` (with the given
+    /// `default_surface`) plus one matching surface file. Enough for
+    /// `Workspace::load` to succeed.
+    fn write_minimal_workspace(root: &std::path::Path, default_surface: &str) {
+        let dif_dir = root.join("dif");
+        std::fs::create_dir_all(dif_dir.join("surfaces")).unwrap();
+        std::fs::create_dir_all(dif_dir.join("experiments/active")).unwrap();
+        std::fs::write(
+            dif_dir.join("config.yaml"),
+            format!(
+                "project: test\n\
+                 default_surface: {default_surface}\n\
+                 bucketing:\n  id: user_id\n  fallback: anon_cookie\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dif_dir
+                .join("surfaces")
+                .join(format!("{default_surface}.md")),
+            format!("# Surface: {default_surface}\n\nA test surface.\n"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn valid_id_rejects_unsafe_ids() {
+        assert!(!valid_id("../../evil"));
+        assert!(!valid_id("a/b"));
+        assert!(!valid_id("A-B"));
+        assert!(!valid_id(""));
+    }
+
+    #[test]
+    fn valid_id_accepts_kebab_and_snake_case() {
+        assert!(valid_id("home-hero-cta"));
+        assert!(valid_id("exp_2"));
+        assert!(valid_id("x"));
+    }
+
+    #[test]
+    fn surface_falls_back_to_workspace_default_when_omitted() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_minimal_workspace(tmp.path(), "checkout");
+
+        let args = Args {
+            id: "new-exp".to_string(),
+            surface: None,
+            owner: Some("ada@acme.dev".to_string()),
+            from: None,
+        };
+        let code = run_in(tmp.path(), args, true).expect("run_in");
+        assert_eq!(code, ExitCode::from(0));
+
+        let written =
+            std::fs::read_to_string(tmp.path().join("dif/experiments/active/new-exp.md")).unwrap();
+        assert!(
+            written.contains("surface: checkout"),
+            "experiment should have fallen back to the workspace default_surface:\n{written}"
+        );
+    }
+
+    #[test]
+    fn explicit_surface_flag_overrides_default() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_minimal_workspace(tmp.path(), "home");
+        // Add a second surface that isn't the default.
+        std::fs::write(
+            tmp.path().join("dif/surfaces/checkout.md"),
+            "# Surface: checkout\n\nAnother surface.\n",
+        )
+        .unwrap();
+
+        let args = Args {
+            id: "new-exp".to_string(),
+            surface: Some("checkout".to_string()),
+            owner: Some("ada@acme.dev".to_string()),
+            from: None,
+        };
+        let code = run_in(tmp.path(), args, true).expect("run_in");
+        assert_eq!(code, ExitCode::from(0));
+
+        let written =
+            std::fs::read_to_string(tmp.path().join("dif/experiments/active/new-exp.md")).unwrap();
+        assert!(written.contains("surface: checkout"));
+    }
+
+    #[test]
+    fn invalid_id_short_circuits_before_touching_the_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_minimal_workspace(tmp.path(), "home");
+
+        let args = Args {
+            id: "../../evil".to_string(),
+            surface: None,
+            owner: Some("ada@acme.dev".to_string()),
+            from: None,
+        };
+        let code = run_in(tmp.path(), args, true).expect("run_in");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(!tmp.path().join("dif/experiments/active/evil.md").exists());
+    }
 
     fn make_surface_with_learnings(id: &str, learnings: Vec<Learning>) -> ParsedSurface {
         ParsedSurface {

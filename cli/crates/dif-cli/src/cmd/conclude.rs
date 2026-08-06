@@ -1,4 +1,4 @@
-//! `dif conclude` — atomic archive + Decision + surface-log append.
+//! `dif conclude` — best-effort archive + Decision + surface-log append.
 //!
 //! Reads the active experiment + its surface, computes every update in memory,
 //! then commits to the filesystem in an order that allows best-effort rollback
@@ -16,6 +16,7 @@ use chrono::{NaiveDate, Utc};
 use clap::Args as ClapArgs;
 use console::style;
 use dif_core::{parse, paths, Workspace};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -35,7 +36,7 @@ pub struct Args {
     pub skip_learning: bool,
 }
 
-/// Entrypoint. See PLAN.md step 10.
+/// Entrypoint.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
     let workspace = Workspace::load(&cwd)?;
@@ -57,9 +58,16 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         ))?;
 
     // 2. Get decision text. --decision wins; otherwise $EDITOR; non-empty required.
+    // Agents and CI never have a terminal attached, so opening $EDITOR there
+    // would hang forever instead of failing fast.
     let decision = match args.decision {
         Some(d) if !d.trim().is_empty() => d.trim().to_string(),
         Some(_) => return Err(CmdError::Other("--decision is empty")),
+        None if !std::io::stdin().is_terminal() => {
+            return Err(CmdError::Other(
+                "no --decision given and stdin is not a terminal — pass --decision \"<text>\" (agents and CI must not rely on $EDITOR)",
+            ));
+        }
         None => prompt_editor(&args.id)?,
     };
 
@@ -71,6 +79,16 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         .root
         .join(paths::EXPERIMENTS_CONCLUDED)
         .join(&concluded_filename);
+    // Refuse a duplicate id up front rather than clobbering a prior conclude —
+    // this can only happen if two experiments share an id (one already
+    // concluded this month) or a previous run left a stray copy behind.
+    if concluded_path.exists() {
+        let rel = relative(&concluded_path, &workspace.root);
+        return Err(CmdError::OtherOwned(format!(
+            "refusing to overwrite existing {} — an experiment with this id was already concluded; resolve the duplicate id first",
+            rel.display()
+        )));
+    }
 
     // 4. Compute new contents — all in memory before touching disk.
     let new_experiment = build_experiment_content(parsed, &decision, today);
@@ -142,13 +160,18 @@ fn commit(
     // would be silently wrong.
 
     // Step A: write the concluded copy. If this fails, nothing has changed.
-    std::fs::write(concluded_path, new_experiment).map_err(CmdError::Io)?;
+    std::fs::write(concluded_path, new_experiment).map_err(|e| {
+        CmdError::OtherOwned(format!("failed to write {}: {e}", concluded_path.display()))
+    })?;
 
     // Step B: surface update. If this fails, remove the concluded copy.
     if let Some(content) = new_surface {
         if let Err(e) = std::fs::write(surface_path, content) {
             let _ = std::fs::remove_file(concluded_path);
-            return Err(CmdError::Io(e));
+            return Err(CmdError::OtherOwned(format!(
+                "failed to write {}: {e}",
+                surface_path.display()
+            )));
         }
     }
 
@@ -157,7 +180,10 @@ fn commit(
     if let Err(e) = std::fs::remove_file(active_path) {
         let _ = std::fs::remove_file(concluded_path);
         let _ = std::fs::write(surface_path, original_surface);
-        return Err(CmdError::Io(e));
+        return Err(CmdError::OtherOwned(format!(
+            "failed to remove {}: {e}",
+            active_path.display()
+        )));
     }
 
     Ok(())
@@ -172,7 +198,59 @@ fn build_experiment_content(
 ) -> String {
     let with_status = update_status(&parsed.source);
     let with_date = update_concluded_date(&with_status, today);
-    update_decision_block(&with_date, parsed.body_offset, decision)
+    // `parsed.body_offset` is only valid for `parsed.source` — the two
+    // mutations above can grow or shrink the frontmatter (a status word
+    // changing length, a whole `concluded:` line being inserted), which
+    // shifts where the body actually starts. Re-anchor against the mutated
+    // string rather than reusing the stale offset.
+    let body_offset = body_offset_after_frontmatter(&with_date);
+    update_decision_block(&with_date, body_offset, decision)
+}
+
+/// Re-locate the body start (the byte offset right after the frontmatter's
+/// closing `---` line) in a source string whose frontmatter may have grown or
+/// shrunk. Mirrors the anchor `dif-core::parse::split_frontmatter` computes
+/// for a fresh parse, without needing a full re-parse (and without depending
+/// on a private dif-core helper).
+fn body_offset_after_frontmatter(source: &str) -> usize {
+    let body_after_open = match source
+        .strip_prefix("---\n")
+        .map(|s| source.len() - s.len())
+        .or_else(|| {
+            source
+                .strip_prefix("---\r\n")
+                .map(|s| source.len() - s.len())
+        }) {
+        Some(pos) => pos,
+        None => return 0,
+    };
+
+    let bytes = source.as_bytes();
+    let mut pos = body_after_open;
+    while pos <= source.len() {
+        let line_end = bytes
+            .get(pos..)
+            .and_then(|s| s.iter().position(|&b| b == b'\n'))
+            .map(|i| pos + i)
+            .unwrap_or(source.len());
+
+        let line = &source[pos..line_end];
+        let trimmed = line.trim_end_matches('\r');
+
+        if trimmed == "---" {
+            return if line_end < source.len() {
+                line_end + 1
+            } else {
+                line_end
+            };
+        }
+
+        if line_end >= source.len() {
+            break;
+        }
+        pos = line_end + 1;
+    }
+    source.len()
 }
 
 fn update_status(source: &str) -> String {
@@ -348,10 +426,23 @@ fn first_line(s: &str) -> String {
 
 // -- editor invocation --------------------------------------------------------
 
+/// Split an `$EDITOR`/`$VISUAL` value into a program + argument list.
+/// Multi-word editors like `code --wait` or `emacs -nw` are common; passing
+/// the whole string as the program name to [`std::process::Command::new`]
+/// fails to spawn. Returns `None` for an empty or whitespace-only value.
+fn editor_command(editor: &str) -> Option<(&str, Vec<&str>)> {
+    let mut parts = editor.split_whitespace();
+    let program = parts.next()?;
+    Some((program, parts.collect()))
+}
+
 fn prompt_editor(experiment_id: &str) -> Result<String, CmdError> {
     let editor = std::env::var("EDITOR")
         .or_else(|_| std::env::var("VISUAL"))
         .unwrap_or_else(|_| "vi".to_string());
+    let (program, editor_args) = editor_command(&editor).ok_or(CmdError::Other(
+        "$EDITOR is empty — set $EDITOR (or $VISUAL) to an editor command, or pass --decision",
+    ))?;
     // PID + monotonic nanos make the name unique so two concurrent
     // `dif conclude` runs (same experiment or same machine) can't share a
     // draft file.
@@ -372,10 +463,11 @@ fn prompt_editor(experiment_id: &str) -> Result<String, CmdError> {
     );
     std::fs::write(&tmp, template)?;
 
-    let status = std::process::Command::new(&editor)
+    let status = std::process::Command::new(program)
+        .args(&editor_args)
         .arg(&tmp)
         .status()
-        .map_err(|_| CmdError::Other("failed to spawn $EDITOR"))?;
+        .map_err(|_| CmdError::OtherOwned(format!("failed to spawn $EDITOR ({editor})")))?;
     if !status.success() {
         let _ = std::fs::remove_file(&tmp);
         return Err(CmdError::Other("$EDITOR exited non-zero"));
@@ -585,5 +677,53 @@ A surface.
         let body = parse::parse_body(&reparsed.source, reparsed.body_offset);
         let decision = body.decision.expect("decision section");
         assert!(decision.content.contains("Shipped variant_a."));
+    }
+
+    #[test]
+    fn decision_block_found_when_padded_concluded_line_shrinks_frontmatter() {
+        // Regression test for the stale-offset bug: `build_experiment_content`
+        // used to locate the `## Decision` section using `body_offset` computed
+        // from the ORIGINAL source, even after `update_status` and
+        // `update_concluded_date` had already mutated it. When a mutation
+        // SHRINKS the frontmatter — here, replacing a heavily padded
+        // `concluded:     null    ` line with a short `concluded: <date>` line
+        // — the stale (now too-large) offset lands past the real body start,
+        // so the existing `## Decision` heading is missed entirely and a
+        // duplicate section gets appended instead of the real one being
+        // replaced.
+        let padded = format!("concluded:{}null{}", " ".repeat(40), " ".repeat(40));
+        let src = SAMPLE_EXP.replace(
+            "created: 2026-01-01\n---",
+            &format!("created: 2026-01-01\n{padded}\n---"),
+        );
+        let parsed = parse::parse_experiment_str(&src).expect("parse padded fixture");
+        let today = NaiveDate::from_ymd_opt(2026, 5, 21).unwrap();
+        let out = build_experiment_content(&parsed, "Shipped variant_a.", today);
+
+        assert_eq!(
+            out.matches("## Decision").count(),
+            1,
+            "decision section duplicated instead of replaced:\n{out}"
+        );
+        assert!(out.contains("Shipped variant_a."));
+        assert!(!out.contains("drafted by `dif conclude`"));
+        assert!(out.contains("The brief."), "Brief content lost/corrupted");
+
+        let reparsed = parse::parse_experiment_str(&out).expect("re-parse padded fixture");
+        assert_eq!(reparsed.spec.concluded, Some(today));
+        let body = parse::parse_body(&reparsed.source, reparsed.body_offset);
+        let decision = body.decision.expect("decision section");
+        assert!(decision.content.contains("Shipped variant_a."));
+    }
+
+    #[test]
+    fn editor_command_splits_program_and_args() {
+        assert_eq!(editor_command("vi"), Some(("vi", vec![])));
+        assert_eq!(
+            editor_command("code --wait"),
+            Some(("code", vec!["--wait"]))
+        );
+        assert_eq!(editor_command(""), None);
+        assert_eq!(editor_command("   "), None);
     }
 }

@@ -10,6 +10,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Guards against the class of bug where a version lives in one place (e.g.
+  # Cargo.toml) but not another (e.g. react/svelte's peerDependency on
+  # @dif.sh/sdk, which `npm version` never touches) — see
+  # scripts/check-versions.mjs for the full list of assertions.
+  versions:
+    name: version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: check versions
+        run: node scripts/check-versions.mjs
+
   rust:
     name: rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

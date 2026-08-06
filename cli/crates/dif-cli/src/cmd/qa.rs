@@ -47,7 +47,7 @@ pub struct Args {
     pub preview_url: Option<String>,
 }
 
-/// Entrypoint. See PLAN.md step 9.
+/// Entrypoint.
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
     let workspace = Workspace::load(&cwd)?;

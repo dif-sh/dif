@@ -1,6 +1,6 @@
 # dif validate error codes
 
-`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E008 are errors; W001 / W002 / W003 are warnings.
+`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E010 are errors; W001-W004 are warnings.
 
 (There is intentionally no E002 — it was reserved during design and never used. The gap is preserved so existing codes don't renumber.)
 
@@ -53,6 +53,18 @@ You declared `name: <attr>` in `audience_attributes` but `dif/audiences/<attr>.t
 
 **Fix:** create `dif/audiences/<attr>.ts` exporting a default `resolve()` function returning the user's value (or `null` for fail-closed during SSR). Run `dif scaffold-audiences` to pull in the starter `locale.ts` / `device_type.ts` if those are the ones missing.
 
+### E009 — duplicate experiment id
+
+Two files under `experiments/active/` and/or `experiments/concluded/` declare the same `id:`. The message names the id and the file it was first declared in.
+
+**Fix:** ids must be unique across `active/` and `concluded/`; `dif conclude` archives by id and duplicate ids overwrite each other. Give one of the files a unique `id:` (and rename the file to match, by convention).
+
+### E010 — duplicate variant id
+
+Two variants inside the same experiment declare the same `id:`. The message reports the variant id and how many times it appears.
+
+**Fix:** duplicate variant ids silently bucket everyone into the first occurrence. Give each variant a unique `id:`.
+
 ## Warnings (non-fatal)
 
 ### W001 — orphan ref
@@ -72,3 +84,11 @@ A `dif("<id>", ...)` call site in source code references an experiment that isn'
 `dif/config.yaml` still has an `exposure:` block. Event delivery is configured by `events:` now (`mode: cloud` or `mode: custom`); the old `exposure:` key is ignored and the workspace defaults to cloud.
 
 **Fix:** replace `exposure:` with an `events:` block. See [/docs/events](https://dif.sh/docs/events/).
+
+### W004 — active experiment status isn't `active`
+
+A file under `experiments/active/` has `status:` set to something other than `active`.
+
+**Fix** depends on which status it is:
+- `status: draft` — message: "status is `draft` — `dif build` will skip this experiment." Set `status: active` when it's ready to run.
+- `status: concluded` (or any other non-`active` value) — message: "status is `concluded` but the file is under experiments/active/." Run `dif conclude <id>` to archive it properly.

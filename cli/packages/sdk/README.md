@@ -143,7 +143,13 @@ hook so React apps can call `track` from anywhere in the tree:
 ```tsx
 import { DifProvider, useDif } from "@dif.sh/react";
 
-<DifProvider config={{ project: "acme-shop", publishableKey: "dif_pk_live_…" }}>
+<DifProvider
+  config={{
+    project: "acme-shop",
+    publishableKey: "dif_pk_live_…",
+    userId: () => currentUser?.id ?? null,
+  }}
+>
   <App />
 </DifProvider>;
 

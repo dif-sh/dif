@@ -4,6 +4,20 @@ This project uses [dif.sh](https://dif.sh) — experimentation-as-code. Experime
 
 If you're an agent dropped into this repo to work on experiments, read this file first. The `.claude/skills/dif-*` directories contain deeper workflow detail in Claude Code's skill format; the content there is also useful reading even if you're not Claude.
 
+## Runtime install
+
+The generated `dif/generated/client.ts` imports `@dif.sh/sdk` — install it in the app:
+
+```
+npm install @dif.sh/sdk
+```
+
+`@dif.sh/sdk` has zero dependencies. `@dif.sh/react` and `@dif.sh/svelte` are optional framework adapters; add one only if you use those bindings.
+
+The CLI (`@dif.sh/cli`, or the standalone binary) and the SDK are separate packages — installing one doesn't install the other.
+
+`dif/generated/` is gitignored, so CI and deploy builds must run `dif build` before the app build. The common pattern is a `"prebuild": "dif build"` script in `package.json`.
+
 ## File layout
 
 ```
@@ -41,9 +55,12 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E006** — Audience attribute not declared in `dif/config.yaml`.
 - **E007** — Exclusion conflict: two active experiments on the same surface, no shared `exclusion_group`, audiences not provably disjoint.
 - **E008** — Declared audience attribute missing its `dif/audiences/<name>.ts` resolver.
+- **E009** — Duplicate experiment id across `experiments/active/` and `experiments/concluded/`.
+- **E010** — Duplicate variant id within one experiment.
 - **W001** — Call site references an experiment that isn't active (warning).
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
+- **W004** — Active experiment file's `status:` isn't `active` (warning).
 
 ## Before drafting an experiment
 
@@ -64,4 +81,4 @@ Bad: `"Inconclusive."`
 - `.claude/skills/dif-author-experiment/` — full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
 - `.claude/skills/dif-conclude-experiment/` — pre-conclude checklist + how to write Decisions that become useful Learnings.
 - `.claude/skills/dif-generate-surfaces/` — for fresh repos: read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
-- `cli/PLAN.md` in the dif source repo — the canonical spec for everything above.
+- https://dif.sh/docs — full documentation.
