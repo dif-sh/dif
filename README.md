@@ -47,6 +47,9 @@ npm install -g @dif.sh/cli
 <summary>No Node? Install the standalone binary</summary>
 
 ```sh
+# macOS / Linux: Homebrew
+brew install dif-sh/tap/dif
+
 # macOS / Linux: single static binary, no Node required
 curl -fsSL https://dif.sh/install.sh | sh
 ```
@@ -249,16 +252,28 @@ the same failed idea does not get rebuilt by someone new in two years.
 ## Working with agents
 
 `dif init` merges a managed block into `CLAUDE.md`, `AGENTS.md`, and
-`.cursorrules`, and installs Claude Code skills for authoring experiments,
-concluding them, and generating surfaces. `dif build` writes
+`.github/copilot-instructions.md`, writes a Cursor project rule to
+`.cursor/rules/dif.mdc`, and installs Claude Code skills for authoring
+experiments, concluding them, and generating surfaces. `dif build` writes
 `dif/context.json`: every active experiment, plus the most recent learning on
-each surface.
+each surface. Re-running `dif init` is safe: when the files dif owns already
+match, it exits 0 and only refreshes the managed blocks.
 
 Use `--agents` to scaffold only a subset: a comma-separated list of `claude`
 (`CLAUDE.md` + the `.claude/skills/dif-*` skills), `general` (`AGENTS.md`),
-`cursor` (`.cursorrules`), or `none`. Omit the flag to install all three.
-`--agents none` writes no agent files (the former `--no-agent-files`, now a
-hidden alias).
+`cursor` (`.cursor/rules/dif.mdc`), `copilot`
+(`.github/copilot-instructions.md`), or `none`. Omit the flag to install all
+four. `--agents none` writes no agent files (the former `--no-agent-files`,
+now a hidden alias). A dif block left in `.cursorrules` by an older dif is
+refreshed; a new `.cursorrules` is never created.
+
+The same skills, plus a `dif-docs` reference skill, install into Codex,
+Cursor, Copilot, and the other agents the [skills CLI](https://skills.sh)
+supports, without running `dif init` first:
+
+```sh
+npx skills add dif-sh/dif
+```
 
 This is the part a dashboard cannot do. In dif the flags are
 files, so the agent reads them like any other source and writes them the same

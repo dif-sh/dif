@@ -1,0 +1,67 @@
+{
+  "name": "@flags-sdk/dif",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dif.sh provider for the Flags SDK",
+  "keywords": [
+    "flags-sdk",
+    "dif",
+    "feature flags",
+    "experimentation",
+    "ab testing",
+    "flags as code"
+  ],
+  "homepage": "https://flags-sdk.dev",
+  "bugs": {
+    "url": "https://github.com/vercel/flags/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel/flags.git"
+  },
+  "license": "MIT",
+  "author": "Chris Fowles <chris@niftic.agency>",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.js",
+  "typesVersions": {
+    "*": {
+      ".": [
+        "dist/*.d.ts",
+        "dist/*.d.cts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsup",
+    "dev": "tsup --watch --clean=false",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@dif.sh/sdk": "^0.6.1"
+  },
+  "devDependencies": {
+    "@dif.sh/sdk": "file:../sdk",
+    "@types/node": "22.14.0",
+    "flags": "^4.3.1",
+    "rimraf": "6.1.2",
+    "tsup": "8.5.1",
+    "typescript": "5.6.3",
+    "vitest": "4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

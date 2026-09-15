@@ -1,29 +1,30 @@
-# Homebrew tap template
+# Homebrew formula (source for dif-sh/homebrew-tap)
 
-This directory is a **template** for the separate `dif-sh/homebrew-tap`
-repository. Copy `Formula/dif.rb` into that repo (not this one) once it
-exists.
-
-The structure of a Homebrew tap repo is exactly this: a top-level
-`Formula/` directory with one `.rb` file per formula. Users install via:
+`Formula/dif.rb` in this directory is the source of truth for the public tap
+at [dif-sh/homebrew-tap](https://github.com/dif-sh/homebrew-tap). Users
+install with:
 
 ```sh
 brew install dif-sh/tap/dif
 ```
 
-Behind the scenes, that resolves to `github.com/dif-sh/homebrew-tap` and
-runs `Formula/dif.rb`.
+That resolves to `github.com/dif-sh/homebrew-tap` and runs `Formula/dif.rb`
+there, which downloads the matching release tarball from
+`github.com/dif-sh/dif/releases` (macOS arm64 and x86_64, Linux arm64 and
+x86_64 musl).
 
-## Keeping it in sync with releases
+## On each release
 
-For now the formula's `url` and `sha256` fields are placeholders. Two ways
-to keep them current:
+1. Pushing a `v*` tag runs `.github/workflows/release.yml`. Its
+   `homebrew-formula` job rewrites the `version` line and the four `sha256`
+   lines in `dist/homebrew-tap/Formula/dif.rb` from the release artifacts,
+   then opens a PR against `main` titled
+   `chore: homebrew formula sha256s for vX.Y.Z`.
+2. Merge that PR.
+3. Copy the merged `Formula/dif.rb` into `dif-sh/homebrew-tap` and push. No
+   job does this yet, so until it happens `brew install` keeps serving the
+   previous version.
+4. Check it: `brew update && brew upgrade dif && dif --version`.
 
-1. **Manual**: after every `v*` tag push, copy the new tarball URL + SHA-256
-   from the GitHub release page into the formula, commit + push.
-2. **Automatic**: enable cargo-dist's `tap = "dif-sh/homebrew-tap"`
-   integration (already configured in `cli/Cargo.toml`). cargo-dist will
-   open a PR against the tap repo on every release.
-
-Once cargo-dist is bootstrapped (`cargo dist init` in `cli/`), the
-automation kicks in and this template can be deleted.
+The tap repo's own `README.md` holds the user-facing install instructions;
+this file isn't copied there.
