@@ -328,7 +328,9 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     for dir in &dirs {
         std::fs::create_dir_all(dir)?;
     }
-    for (path, content) in &plain_files {
+    // Skip files that already hold exactly this content, so a re-run really is
+    // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
+    for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -345,6 +347,9 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         }
         let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
         let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
+        if merged == existing && mf.path.exists() {
+            continue;
+        }
         std::fs::write(&mf.path, merged).map_err(|e| {
             CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display()))
         })?;
@@ -1830,6 +1835,37 @@ mod tests {
         let merged = std::fs::read_to_string(&claude).unwrap();
         assert!(merged.contains("My notes."));
         assert_eq!(merged.matches(MD_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn rerun_in_initialized_workspace_leaves_files_untouched() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+
+        // Backdate files dif would otherwise rewrite, so any write shows up as
+        // an mtime change regardless of filesystem timestamp resolution.
+        let watched = [
+            tmp.path().join(paths::CONFIG_FILE),
+            tmp.path().join(CURSOR_MDC_PATH),
+            tmp.path().join("CLAUDE.md"),
+        ];
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        for p in &watched {
+            let f = std::fs::File::options().write(true).open(p).unwrap();
+            f.set_modified(old).unwrap();
+        }
+
+        let code = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("second");
+        assert_eq!(code, ExitCode::from(0));
+        for p in &watched {
+            let mtime = std::fs::metadata(p).unwrap().modified().unwrap();
+            assert_eq!(
+                mtime,
+                old,
+                "{} was rewritten on a no-op re-run",
+                p.display()
+            );
+        }
     }
 
     #[test]
