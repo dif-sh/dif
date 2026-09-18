@@ -24,6 +24,10 @@ jobs:
           node-version: "22"
       - name: check versions
         run: node scripts/check-versions.mjs
+      # skills/ (what `npx skills add dif-sh/dif` installs) mirrors the skills
+      # `dif init` embeds from cli/crates/dif-cli/assets/claude/skills/.
+      - name: check skills/ mirror
+        run: node scripts/sync-skills.mjs --check
 
   rust:
     name: rust (${{ matrix.os }})
@@ -133,6 +137,37 @@ jobs:
         run: npm test
       - name: build
         working-directory: cli/packages/svelte
+        run: npm run build
+
+  # openfeature depends on the sdk via file:../sdk too.
+  openfeature:
+    name: openfeature (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: build sdk
+        working-directory: cli/packages/sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: install
+        working-directory: cli/packages/openfeature
+        run: npm install --no-audit --no-fund
+      - name: lint
+        working-directory: cli/packages/openfeature
+        run: npm run lint
+      - name: test
+        working-directory: cli/packages/openfeature
+        run: npm test
+      - name: build
+        working-directory: cli/packages/openfeature
         run: npm run build
 
   # The npm wrapper (@dif.sh/cli) is where both past production breakages

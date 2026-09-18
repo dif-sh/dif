@@ -1,7 +1,9 @@
 //! `dif init` — scaffold the convention in the current directory.
 //!
-//! Idempotent under `--force`; refuses to clobber otherwise. Everything dif
-//! owns lives under a single `dif/` namespace at the project root:
+//! Idempotent: a re-run whose dif-owned files already match what it would
+//! write succeeds without `--force`; a re-run that would change one refuses
+//! to clobber unless `--force`. Everything dif owns lives under a single
+//! `dif/` namespace at the project root:
 //!
 //! ```text
 //! dif/
@@ -53,8 +55,9 @@ pub struct Args {
 
     /// Which agent-onboarding integrations to scaffold. Comma-separated:
     /// `claude` (CLAUDE.md + .claude/skills/dif-*), `general` (AGENTS.md),
-    /// `cursor` (.cursorrules), or `none`. Omit to scaffold all three — dif's
-    /// product thesis is "primary developer is now an AI agent", so the
+    /// `cursor` (.cursor/rules/dif.mdc), `copilot`
+    /// (.github/copilot-instructions.md), or `none`. Omit to scaffold all four —
+    /// dif's product thesis is "primary developer is now an AI agent", so the
     /// guidance ships unless you opt out. `none` cannot be combined with other
     /// targets.
     #[arg(
@@ -77,8 +80,11 @@ pub enum AgentTarget {
     Claude,
     /// AGENTS.md
     General,
-    /// .cursorrules, plaintext
+    /// .cursor/rules/dif.mdc. A dif block in a legacy .cursorrules is refreshed
+    /// if one exists, but a new .cursorrules is never created.
     Cursor,
+    /// .github/copilot-instructions.md
+    Copilot,
     /// Write no agent files. Not combinable with other targets.
     None,
 }
@@ -157,6 +163,7 @@ struct AgentSelection {
     claude: bool,
     general: bool,
     cursor: bool,
+    copilot: bool,
 }
 
 impl AgentSelection {
@@ -164,11 +171,13 @@ impl AgentSelection {
         claude: true,
         general: true,
         cursor: true,
+        copilot: true,
     };
     const NONE: Self = Self {
         claude: false,
         general: false,
         cursor: false,
+        copilot: false,
     };
 }
 
@@ -205,6 +214,7 @@ fn resolve_agents(
         claude: values.contains(&AgentTarget::Claude),
         general: values.contains(&AgentTarget::General),
         cursor: values.contains(&AgentTarget::Cursor),
+        copilot: values.contains(&AgentTarget::Copilot),
     })
 }
 
@@ -283,18 +293,30 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     if sel.claude {
         plain_files.extend(agent_skill_files(cwd));
     }
+    // Cursor's project rule is dif-namespaced (`.cursor/rules/dif.mdc`), so like
+    // the skills it's written verbatim and collision-guarded.
+    if sel.cursor {
+        plain_files.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
+    }
 
-    // Shared agent files (CLAUDE.md, AGENTS.md, .cursorrules) are co-owned with
-    // the user, so we never clobber them: dif's guidance lives inside a delimited
-    // managed block that we append once and refresh in place. They never trip the
-    // collision guard — appending a block can't destroy anything. Each is gated
-    // on its own target.
+    // Shared agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
+    // and a legacy .cursorrules) are co-owned with the user, so we never clobber
+    // them: dif's guidance lives inside a delimited managed block that we append
+    // once and refresh in place. They never trip the collision guard — appending
+    // a block can't destroy anything. Each is gated on its own target.
     let merge_files: Vec<ManagedFile> = agent_merge_files(cwd, sel);
 
+    // A file that already holds exactly what we'd write isn't a collision: a
+    // re-run in an initialized workspace has nothing to clobber, so it succeeds
+    // (exit 0) rather than refusing (exit 2) and reading as a failure to scripts
+    // and agents. Only a write that would change a file needs `--force`.
+    let already_initialized = plain_files
+        .iter()
+        .all(|(p, content)| file_matches(p, content));
     if !args.force {
         let collisions: Vec<&Path> = plain_files
             .iter()
-            .filter(|(p, _)| p.exists())
+            .filter(|(p, content)| p.exists() && !file_matches(p, content))
             .map(|(p, _)| p.as_path())
             .collect();
         if !collisions.is_empty() {
@@ -306,7 +328,9 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     for dir in &dirs {
         std::fs::create_dir_all(dir)?;
     }
-    for (path, content) in &plain_files {
+    // Skip files that already hold exactly this content, so a re-run really is
+    // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
+    for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -323,12 +347,15 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         }
         let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
         let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
+        if merged == existing && mf.path.exists() {
+            continue;
+        }
         std::fs::write(&mf.path, merged).map_err(|e| {
             CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display()))
         })?;
     }
 
-    report_success(&surface, json, sel, mode);
+    report_success(&surface, json, sel, mode, already_initialized);
     Ok(ExitCode::from(0))
 }
 
@@ -429,6 +456,9 @@ fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<St
     if sel.cursor {
         created.extend(CURSOR_FILE_PATHS.iter().map(|s| (*s).to_string()));
     }
+    if sel.copilot {
+        created.extend(COPILOT_FILE_PATHS.iter().map(|s| (*s).to_string()));
+    }
     created
 }
 
@@ -442,11 +472,18 @@ fn next_steps(surface: &str) -> [String; 3] {
     ]
 }
 
-fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMode) {
+fn report_success(
+    surface: &str,
+    json: bool,
+    sel: AgentSelection,
+    mode: EventsMode,
+    already_initialized: bool,
+) {
     let next = next_steps(surface);
     if json {
         let payload = serde_json::json!({
             "ok": true,
+            "already_initialized": already_initialized,
             "created": created_paths(surface, sel, mode),
             "next": next,
         });
@@ -454,30 +491,42 @@ fn report_success(surface: &str, json: bool, sel: AgentSelection, mode: EventsMo
         return;
     }
     let check = style("✓").green().bold();
-    println!("{check} created dif/experiments/{{active,concluded}}");
-    println!("{check} created dif/surfaces/");
-    println!("{check} created dif/audiences/");
-    println!("{check} wrote dif/config.yaml");
-    println!("{check} wrote dif/.gitignore");
-    println!("{check} wrote dif/surfaces/{surface}.md");
-    println!("{check} wrote dif/audiences/locale.ts");
-    println!("{check} wrote dif/audiences/device_type.ts");
-    if mode == EventsMode::Custom {
-        println!("{check} created dif/events/");
-        println!("{check} wrote dif/events/exposure.ts");
-        println!("{check} wrote dif/events/track.ts");
+    if already_initialized {
+        println!(
+            "{check} already initialized: dif-owned files match dif v{}, nothing overwritten",
+            env!("CARGO_PKG_VERSION")
+        );
+    } else {
+        println!("{check} created dif/experiments/{{active,concluded}}");
+        println!("{check} created dif/surfaces/");
+        println!("{check} created dif/audiences/");
+        println!("{check} wrote dif/config.yaml");
+        println!("{check} wrote dif/.gitignore");
+        println!("{check} wrote dif/surfaces/{surface}.md");
+        println!("{check} wrote dif/audiences/locale.ts");
+        println!("{check} wrote dif/audiences/device_type.ts");
+        if mode == EventsMode::Custom {
+            println!("{check} created dif/events/");
+            println!("{check} wrote dif/events/exposure.ts");
+            println!("{check} wrote dif/events/track.ts");
+        }
+        if sel.claude {
+            println!(
+                "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
+            );
+        }
+        if sel.cursor {
+            println!("{check} wrote {CURSOR_MDC_PATH}");
+        }
     }
     if sel.claude {
         println!("{check} merged dif guidance into CLAUDE.md");
-        println!(
-            "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
-        );
     }
     if sel.general {
         println!("{check} merged dif guidance into AGENTS.md");
     }
-    if sel.cursor {
-        println!("{check} merged dif guidance into .cursorrules");
+    if sel.copilot {
+        println!("{check} merged dif guidance into {COPILOT_INSTRUCTIONS_PATH}");
     }
     println!();
     println!("next steps:");
@@ -674,8 +723,40 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
 /// Path written for the `general` target: the model-agnostic AGENTS.md.
 pub(crate) const GENERAL_FILE_PATHS: &[&str] = &["AGENTS.md"];
 
-/// Path written for the `cursor` target: .cursorrules.
-pub(crate) const CURSOR_FILE_PATHS: &[&str] = &[".cursorrules"];
+/// Path written for the `cursor` target: Cursor's project rule.
+pub(crate) const CURSOR_FILE_PATHS: &[&str] = &[CURSOR_MDC_PATH];
+
+/// Path written for the `copilot` target: GitHub Copilot's repo instructions.
+pub(crate) const COPILOT_FILE_PATHS: &[&str] = &[COPILOT_INSTRUCTIONS_PATH];
+
+/// Cursor project rule. dif-namespaced, so it's written verbatim.
+pub(crate) const CURSOR_MDC_PATH: &str = ".cursor/rules/dif.mdc";
+
+/// GitHub Copilot repository instructions. Co-owned, so dif writes a managed block.
+pub(crate) const COPILOT_INSTRUCTIONS_PATH: &str = ".github/copilot-instructions.md";
+
+/// Cursor's legacy single-file rules. Never created; a dif block already in one
+/// (written by dif ≤ 0.6.1) is refreshed so it doesn't go stale.
+const LEGACY_CURSORRULES_PATH: &str = ".cursorrules";
+
+/// What Cursor's agent reads to decide whether to load the rule on its own.
+const CURSOR_RULE_DESCRIPTION: &str = "Feature flags and A/B experiments in this repo are dif.sh files under dif/. Use when adding, ramping, gating, or removing a feature flag or experiment, or when editing anything under dif/.";
+
+/// The Cursor project rule: MDC frontmatter over the same guidance as the
+/// legacy `.cursorrules` block. `description` with `alwaysApply: false` makes it
+/// agent-requested (pulled in when a task is about flags or experiments), and
+/// `globs` auto-attaches it whenever a file under `dif/` is in context.
+pub(crate) fn cursor_mdc() -> String {
+    let v = env!("CARGO_PKG_VERSION");
+    format!(
+        "---\ndescription: {CURSOR_RULE_DESCRIPTION}\nglobs: dif/**\nalwaysApply: false\n---\n\n<!-- generated by dif v{v}; regenerate with `dif init --force` -->\n\n{CURSORRULES}"
+    )
+}
+
+/// True when `path` exists and already holds exactly `content`.
+fn file_matches(path: &Path, content: &str) -> bool {
+    std::fs::read(path).is_ok_and(|existing| existing == content.as_bytes())
+}
 
 /// Markers that delimit dif's managed block inside a co-owned file. Everything
 /// between them is dif's to rewrite on each `init`; everything outside is the
@@ -734,10 +815,11 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
     out
 }
 
-/// The co-owned agent files (CLAUDE.md, AGENTS.md, .cursorrules), each carrying
-/// dif's guidance inside a managed block stamped with the crate version so a
-/// user can detect drift between their scaffolded files and the binary. Only the
-/// files whose target is selected are returned.
+/// The co-owned agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
+/// and a legacy .cursorrules that already has a dif block), each carrying dif's
+/// guidance inside a managed block stamped with the crate version so a user can
+/// detect drift between their scaffolded files and the binary. Only the files
+/// whose target is selected are returned.
 fn agent_merge_files(cwd: &Path, sel: AgentSelection) -> Vec<ManagedFile> {
     let v = env!("CARGO_PKG_VERSION");
     let md_stamp =
@@ -761,11 +843,27 @@ fn agent_merge_files(cwd: &Path, sel: AgentSelection) -> Vec<ManagedFile> {
         });
     }
     if sel.cursor {
+        // Cursor reads `.cursor/rules/dif.mdc`, written as a plain file. Only
+        // refresh a legacy `.cursorrules` block an older dif already put there,
+        // so it can't go stale; never start a new one.
+        let legacy = cwd.join(LEGACY_CURSORRULES_PATH);
+        let has_dif_block = std::fs::read_to_string(&legacy)
+            .is_ok_and(|existing| existing.contains(HASH_BLOCK_START));
+        if has_dif_block {
+            files.push(ManagedFile {
+                path: legacy,
+                block: format!("{hash_stamp}{CURSORRULES}"),
+                start: HASH_BLOCK_START,
+                end: HASH_BLOCK_END,
+            });
+        }
+    }
+    if sel.copilot {
         files.push(ManagedFile {
-            path: cwd.join(".cursorrules"),
-            block: format!("{hash_stamp}{CURSORRULES}"),
-            start: HASH_BLOCK_START,
-            end: HASH_BLOCK_END,
+            path: cwd.join(COPILOT_INSTRUCTIONS_PATH),
+            block: format!("{md_stamp}{AGENTS_MD}"),
+            start: MD_BLOCK_START,
+            end: MD_BLOCK_END,
         });
     }
     files
@@ -907,6 +1005,7 @@ mod tests {
             .iter()
             .chain(GENERAL_FILE_PATHS)
             .chain(CURSOR_FILE_PATHS)
+            .chain(COPILOT_FILE_PATHS)
         {
             let p = tmp.path().join(rel);
             assert!(p.exists(), "missing scaffolded file: {rel}");
@@ -915,15 +1014,22 @@ mod tests {
         }
         // Top-level files carry the version stamp so users can detect skew.
         let v = env!("CARGO_PKG_VERSION");
-        let claude_md = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        for rel in [
+            "CLAUDE.md",
+            "AGENTS.md",
+            CURSOR_MDC_PATH,
+            COPILOT_INSTRUCTIONS_PATH,
+        ] {
+            let content = std::fs::read_to_string(tmp.path().join(rel)).unwrap();
+            assert!(
+                content.contains(&format!("generated by dif v{v}")),
+                "{rel} missing version stamp"
+            );
+        }
+        // Cursor gets the project rule; the legacy single file is never created.
         assert!(
-            claude_md.contains(&format!("generated by dif v{v}")),
-            "CLAUDE.md missing version stamp"
-        );
-        let cursorrules = std::fs::read_to_string(tmp.path().join(".cursorrules")).unwrap();
-        assert!(
-            cursorrules.contains(&format!("generated by dif v{v}")),
-            ".cursorrules missing version stamp"
+            !tmp.path().join(LEGACY_CURSORRULES_PATH).exists(),
+            "a new .cursorrules should never be created"
         );
     }
 
@@ -1330,7 +1436,8 @@ mod tests {
             AgentSelection {
                 claude: true,
                 general: false,
-                cursor: false
+                cursor: false,
+                copilot: false,
             }
         );
         assert_eq!(
@@ -1338,7 +1445,17 @@ mod tests {
             AgentSelection {
                 claude: false,
                 general: true,
-                cursor: true
+                cursor: true,
+                copilot: false,
+            }
+        );
+        assert_eq!(
+            resolve_agents(Some(vec![AgentTarget::Copilot]), false).unwrap(),
+            AgentSelection {
+                claude: false,
+                general: false,
+                cursor: false,
+                copilot: true,
             }
         );
     }
@@ -1397,7 +1514,9 @@ mod tests {
         )
         .expect("init");
         assert!(tmp.path().join("AGENTS.md").exists());
-        assert!(tmp.path().join(".cursorrules").exists());
+        assert!(tmp.path().join(CURSOR_MDC_PATH).exists());
+        assert!(!tmp.path().join(LEGACY_CURSORRULES_PATH).exists());
+        assert!(!tmp.path().join(COPILOT_INSTRUCTIONS_PATH).exists());
         assert!(!tmp.path().join("CLAUDE.md").exists());
         assert!(!tmp
             .path()
@@ -1472,7 +1591,8 @@ mod tests {
             AgentSelection {
                 claude: true,
                 general: false,
-                cursor: false
+                cursor: false,
+                copilot: false,
             }
         );
     }
@@ -1485,25 +1605,29 @@ mod tests {
         assert!(all.contains(&"dif/config.yaml".to_string()));
         assert!(all.contains(&"CLAUDE.md".to_string()));
         assert!(all.contains(&"AGENTS.md".to_string()));
-        assert!(all.contains(&".cursorrules".to_string()));
+        assert!(all.contains(&CURSOR_MDC_PATH.to_string()));
+        assert!(all.contains(&COPILOT_INSTRUCTIONS_PATH.to_string()));
+        assert!(!all.contains(&LEGACY_CURSORRULES_PATH.to_string()));
         assert!(all
             .iter()
             .any(|p| p.starts_with(".claude/skills/dif-author-experiment")));
         assert!(!all.iter().any(|p| p.contains("events/")));
 
-        // Claude-only: no AGENTS.md / .cursorrules; skills present.
+        // Claude-only: no AGENTS.md / Cursor rule / Copilot file; skills present.
         let claude = created_paths(
             "home",
             AgentSelection {
                 claude: true,
                 general: false,
                 cursor: false,
+                copilot: false,
             },
             EventsMode::Cloud,
         );
         assert!(claude.contains(&"CLAUDE.md".to_string()));
         assert!(!claude.contains(&"AGENTS.md".to_string()));
-        assert!(!claude.contains(&".cursorrules".to_string()));
+        assert!(!claude.contains(&CURSOR_MDC_PATH.to_string()));
+        assert!(!claude.contains(&COPILOT_INSTRUCTIONS_PATH.to_string()));
 
         // general + cursor with custom events: those two agent files, the event
         // handlers, and no Claude files.
@@ -1513,11 +1637,12 @@ mod tests {
                 claude: false,
                 general: true,
                 cursor: true,
+                copilot: false,
             },
             EventsMode::Custom,
         );
         assert!(gc.contains(&"AGENTS.md".to_string()));
-        assert!(gc.contains(&".cursorrules".to_string()));
+        assert!(gc.contains(&CURSOR_MDC_PATH.to_string()));
         assert!(!gc.contains(&"CLAUDE.md".to_string()));
         assert!(!gc
             .iter()
@@ -1560,6 +1685,13 @@ mod tests {
         assert_eq!(
             cli.args.agents,
             Some(vec![AgentTarget::Claude, AgentTarget::General])
+        );
+
+        // `copilot` is a valid enum value.
+        let cli = TestCli::try_parse_from(["dif", "--agents", "copilot,cursor"]).unwrap();
+        assert_eq!(
+            cli.args.agents,
+            Some(vec![AgentTarget::Copilot, AgentTarget::Cursor])
         );
 
         // `none` is a valid enum value.
@@ -1668,6 +1800,167 @@ mod tests {
                  add a section for it, or remove `{code}` from `dif-core::validate` if obsolete."
             );
         }
+    }
+
+    // -- re-runs + Cursor / Copilot targets ----------------------------------
+
+    fn default_args() -> Args {
+        Args {
+            surface: None,
+            events: None,
+            agents: None,
+            key: None,
+            force: false,
+            no_agent_files: false,
+        }
+    }
+
+    #[test]
+    fn rerun_in_initialized_workspace_exits_zero() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let first = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+        assert_eq!(first, ExitCode::from(0));
+
+        // The user adds their own notes around dif's block between runs.
+        let claude = tmp.path().join("CLAUDE.md");
+        let existing = std::fs::read_to_string(&claude).unwrap();
+        std::fs::write(&claude, format!("My notes.\n\n{existing}")).unwrap();
+
+        let second = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("second");
+        assert_eq!(
+            second,
+            ExitCode::from(0),
+            "re-running init over unchanged dif-owned files must succeed"
+        );
+        let merged = std::fs::read_to_string(&claude).unwrap();
+        assert!(merged.contains("My notes."));
+        assert_eq!(merged.matches(MD_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn rerun_in_initialized_workspace_leaves_files_untouched() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+
+        // Backdate files dif would otherwise rewrite, so any write shows up as
+        // an mtime change regardless of filesystem timestamp resolution.
+        let watched = [
+            tmp.path().join(paths::CONFIG_FILE),
+            tmp.path().join(CURSOR_MDC_PATH),
+            tmp.path().join("CLAUDE.md"),
+        ];
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        for p in &watched {
+            let f = std::fs::File::options().write(true).open(p).unwrap();
+            f.set_modified(old).unwrap();
+        }
+
+        let code = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("second");
+        assert_eq!(code, ExitCode::from(0));
+        for p in &watched {
+            let mtime = std::fs::metadata(p).unwrap().modified().unwrap();
+            assert_eq!(
+                mtime,
+                old,
+                "{} was rewritten on a no-op re-run",
+                p.display()
+            );
+        }
+    }
+
+    #[test]
+    fn rerun_with_edited_owned_file_still_refuses() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+
+        let surface = tmp.path().join("dif/surfaces/home.md");
+        std::fs::write(&surface, "# Surface: home\n\nHand-written description.\n").unwrap();
+
+        let code = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("second");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(
+            std::fs::read_to_string(&surface)
+                .unwrap()
+                .contains("Hand-written description."),
+            "an edited dif-owned file was clobbered without --force"
+        );
+    }
+
+    #[test]
+    fn legacy_cursorrules_block_is_refreshed_not_recreated() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let legacy = tmp.path().join(LEGACY_CURSORRULES_PATH);
+        std::fs::write(
+            &legacy,
+            format!("team rules\n\n{HASH_BLOCK_START}\nOLD DIF RULES\n{HASH_BLOCK_END}\n"),
+        )
+        .unwrap();
+
+        run_in(
+            tmp.path(),
+            Args {
+                agents: Some(vec![AgentTarget::Cursor]),
+                ..default_args()
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+
+        let merged = std::fs::read_to_string(&legacy).unwrap();
+        assert!(merged.contains("team rules"), "user rules were lost");
+        assert!(
+            !merged.contains("OLD DIF RULES"),
+            "stale block not refreshed"
+        );
+        assert!(merged.contains("generated by dif v"));
+        assert!(tmp.path().join(CURSOR_MDC_PATH).exists());
+    }
+
+    #[test]
+    fn cursor_mdc_has_rule_frontmatter() {
+        let mdc = cursor_mdc();
+        let frontmatter = extract_frontmatter(&mdc).expect("dif.mdc has frontmatter");
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(frontmatter).expect("frontmatter parses as YAML");
+        let map = parsed.as_mapping().expect("frontmatter is a mapping");
+        let field = |k: &str| map.get(serde_yaml::Value::String(k.into()));
+        assert!(field("description")
+            .and_then(|v| v.as_str())
+            .is_some_and(|d| d.contains("feature flag")));
+        assert_eq!(field("globs").and_then(|v| v.as_str()), Some("dif/**"));
+        assert_eq!(field("alwaysApply").and_then(|v| v.as_bool()), Some(false));
+        assert!(
+            mdc.contains(CURSORRULES),
+            "rule body drifted from .cursorrules"
+        );
+    }
+
+    #[test]
+    fn copilot_instructions_merge_preserves_existing_content() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join(COPILOT_INSTRUCTIONS_PATH);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "Use pnpm, not npm.\n").unwrap();
+
+        run_in(
+            tmp.path(),
+            Args {
+                agents: Some(vec![AgentTarget::Copilot]),
+                ..default_args()
+            },
+            EventsMode::Cloud,
+            true,
+        )
+        .expect("init");
+
+        let merged = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            merged.contains("Use pnpm, not npm."),
+            "user instructions lost"
+        );
+        assert!(merged.contains(MD_BLOCK_START) && merged.contains("dif/experiments/"));
+        assert!(!tmp.path().join("CLAUDE.md").exists());
     }
 
     /// Extract the YAML frontmatter slice from a SKILL.md source string.

@@ -1,0 +1,274 @@
+---
+title: 'dif.sh'
+---
+
+The `@flags-sdk/dif` package provides a [dif.sh](https://www.dif.sh/docs/) provider for the Flags SDK.
+
+dif.sh stores each feature flag and A/B experiment as a Markdown file in your repository. `dif build` compiles the active files into `dif/generated/client.ts`, and the adapter assigns variants from that file inside your app. No request leaves your server to evaluate a flag.
+
+The `@flags-sdk/dif` package exports
+
+- `difAdapter` and `createDifAdapter`, the [provider instance](#provider-instance).
+- `getProviderData`, for the [Flags Explorer](#flags-explorer).
+
+<LearnMore icon="arrow" href="/providers">
+  Learn more about Adapters
+</LearnMore>
+
+## Getting started
+
+Install the required dependencies:
+
+```bash
+pnpm i flags @flags-sdk/dif @dif.sh/sdk
+pnpm i -D @dif.sh/cli
+```
+
+`@dif.sh/sdk` is a peer dependency of `@flags-sdk/dif`. Keep one copy of it in your install: the generated client registers experiments into a module-level registry inside `@dif.sh/sdk`, and the adapter reads that same registry.
+
+Scaffold the `dif/` directory and draft a flag:
+
+```bash
+npx dif init
+npx dif new new-checkout --surface checkout
+```
+
+`dif new` writes `dif/experiments/active/new-checkout.md`. Declare the variants and set `status: active`:
+
+```md title="dif/experiments/active/new-checkout.md"
+---
+id: new-checkout
+status: active
+owner: ada@acme.dev
+surface: checkout
+hypothesis: >
+  A one-page checkout lifts completed-checkout rate.
+variants:
+  - id: "off"
+    weight: 90
+  - id: "on"
+    weight: 10
+metrics:
+  primary: completed_checkout
+created: 2026-09-15
+---
+```
+
+The first variant in `variants` is the fallback. Requests without a user id, requests outside the experiment's `audience`, and requests that lose an `exclusion_group` all get it. Raise the second variant's `weight` toward `100` to roll the flag out. An experiment uses the same shape with `control` and `variant_a`.
+
+Run `npx dif validate`, then generate the client. `dif init` gitignores `dif/generated/`, so add a `prebuild` script to regenerate it before every build:
+
+```json title="package.json"
+{
+  "scripts": {
+    "prebuild": "dif build"
+  }
+}
+```
+
+Import the generated client once in `flags.ts` and declare your flags. The flag `key` is the experiment `id`:
+
+```ts title="flags.ts"
+import './dif/generated/client'
+import { flag } from 'flags/next'
+import { difAdapter } from '@flags-sdk/dif'
+
+export const newCheckoutFlag = flag<boolean>({
+  key: 'new-checkout',
+  defaultValue: false,
+  adapter: difAdapter.isEnabled(),
+})
+
+export const heroCtaFlag = flag<string>({
+  key: 'home-hero-cta',
+  defaultValue: 'control',
+  adapter: difAdapter.variant(),
+})
+```
+
+Then use it in your framework:
+
+```tsx title="app/page.tsx"
+import { newCheckoutFlag } from '@/flags'
+
+export default async function Page() {
+  const newCheckout = await newCheckoutFlag()
+
+  return newCheckout ? <OnePageCheckout /> : <Checkout />
+}
+```
+
+## Provider instance
+
+Import the default adapter instance `difAdapter` from `@flags-sdk/dif`:
+
+```ts
+import { difAdapter } from '@flags-sdk/dif'
+```
+
+- `difAdapter.variant()` resolves to the assigned variant id, such as `'control'` or `'variant_a'`.
+- `difAdapter.isEnabled()` resolves to `true` when the assigned variant is not the first declared variant. `difAdapter.isEnabled({ on: 'variant_b' })` resolves to `true` only for `variant_b`.
+- `difAdapter.identify` returns `{ userId, attributes: {} }` with `userId` read from the `dif_uid` cookie.
+
+Use `createDifAdapter` to change the defaults:
+
+```ts title="flags.ts"
+import { createDifAdapter } from '@flags-sdk/dif'
+
+const difAdapter = createDifAdapter({
+  cookieName: 'dif_uid',
+  overrides: process.env.VERCEL_ENV !== 'production',
+  origin: (key) =>
+    `https://github.com/acme/app/blob/main/dif/experiments/active/${key}.md`,
+})
+```
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `cookieName` | `'dif_uid'` | Cookie `identify` reads `userId` from. |
+| `overrides` | `true` | Honor the `_dif` cookie. `dif qa --force new-checkout=on` prints a `?_dif=new-checkout=on` preview link; the middleware below turns it into that cookie. |
+| `onExposure` | none | Called with `{ key, variant, bucket, userId }` when a request is bucketed. See [Exposures](#exposures). |
+| `origin` | none | URL the Flags Explorer links each flag to. |
+
+## Identify users
+
+`identify` runs during rendering and cannot set cookies, so mint the `dif_uid` cookie in middleware. Setting it on the forwarded request lets the first render read it; setting it on the response persists it.
+
+```ts title="middleware.ts"
+import { type NextRequest, NextResponse } from 'next/server'
+import { DIF_OVERRIDES_COOKIE, DIF_UID_COOKIE } from '@flags-sdk/dif'
+
+export function middleware(request: NextRequest) {
+  const uid =
+    request.cookies.get(DIF_UID_COOKIE)?.value ?? crypto.randomUUID()
+  const force = request.nextUrl.searchParams.get(DIF_OVERRIDES_COOKIE)
+
+  // Forward on the request so identify() sees them during this render
+  request.cookies.set(DIF_UID_COOKIE, uid)
+  if (force !== null) request.cookies.set(DIF_OVERRIDES_COOKIE, force)
+
+  const response = NextResponse.next({
+    request: { headers: request.headers },
+  })
+  response.cookies.set(DIF_UID_COOKIE, uid, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  })
+  if (force !== null) {
+    // Session cookie; `?_dif=off` clears the force
+    response.cookies.set(DIF_OVERRIDES_COOKIE, force, {
+      path: '/',
+      sameSite: 'lax',
+    })
+  }
+  return response
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+On Next.js 16, name the file `proxy.ts` and export the function as `proxy`.
+
+To bucket signed-in users on their account id, or to pass the attributes an experiment's `audience` block checks, provide your own `identify`:
+
+```ts title="flags.ts"
+import type { Identify } from 'flags'
+import { dedupe, flag } from 'flags/next'
+import {
+  DIF_UID_COOKIE,
+  difAdapter,
+  type DifEntities,
+} from '@flags-sdk/dif'
+
+const identify = dedupe((async ({ headers, cookies }) => {
+  const session = await getSession(cookies)
+
+  return {
+    userId: session?.userId ?? cookies.get(DIF_UID_COOKIE)?.value ?? null,
+    attributes: {
+      plan: session?.plan ?? 'free',
+      locale: headers.get('accept-language')?.split(',')[0] ?? null,
+    },
+  }
+}) satisfies Identify<DifEntities>)
+
+export const newCheckoutFlag = flag<boolean, DifEntities>({
+  key: 'new-checkout',
+  defaultValue: false,
+  identify,
+  adapter: difAdapter.isEnabled(),
+})
+```
+
+<LearnMore icon="arrow" href="/principles/evaluation-context">
+  Learn more about `identify`
+</LearnMore>
+
+## Fallbacks
+
+For a flag with variants `off`, `on`:
+
+| Request | `variant()` | `isEnabled()` | `onExposure` |
+| --- | --- | --- | --- |
+| `userId` set, audience matches | bucketed variant | `variant !== 'off'` | called |
+| `userId` is `null` | `'off'` | `false` | not called |
+| audience miss or exclusion-group loss | `'off'` | `false` | not called |
+| `_dif=new-checkout=on` cookie | `'on'` | `true` | not called |
+| Flags Explorer override | override value | override value | not called |
+| `new-checkout` missing from `dif/generated/client.ts` | `decide` throws | `decide` throws | not called |
+
+When `decide` throws, the Flags SDK returns the flag's `defaultValue` and logs the error with `console.warn` (`console.info` in development). A flag without `defaultValue` rejects. The error names the fix: import `./dif/generated/client` in `flags.ts`, run `dif build`, and check the file has `status: active`.
+
+## Exposures
+
+dif.sh analyses an experiment from exposure events: one per user bucketed into a variant. Pass `onExposure` to record them on the server:
+
+```ts title="flags.ts"
+import { waitUntil } from '@vercel/functions'
+import { createDifAdapter } from '@flags-sdk/dif'
+
+const difAdapter = createDifAdapter({
+  onExposure: (exposure) => {
+    waitUntil(sendToAnalytics('dif.exposure', exposure))
+  },
+})
+```
+
+- `onExposure` runs once per flag per request. Deduplicate on `(key, userId)` in your pipeline; the adapter keeps no state across requests.
+- It is not awaited. Errors and rejections are logged with `console.error` and never change the flag value, so use `waitUntil` for network calls.
+- Next.js evaluates server components and middleware for prefetched routes, so an exposure can fire for a page the user never opens.
+
+## Flags Explorer
+
+You can inform the Flags Explorer about your dif.sh flags with a `.well-known/vercel/flags` route. Importing `flags.ts` also imports the generated client, which fills the registry `getProviderData` reads. Passing the `flags` exports gives `isEnabled()` flags `false`/`true` options instead of variant ids.
+
+```ts title="app/.well-known/vercel/flags/route.ts#next"
+import { createFlagsDiscoveryEndpoint } from 'flags/next'
+import { getProviderData } from '@flags-sdk/dif'
+import * as flags from '../../../../flags'
+
+export const GET = createFlagsDiscoveryEndpoint(() =>
+  getProviderData({
+    flags,
+    origin: (key) =>
+      `https://github.com/acme/app/blob/main/dif/experiments/active/${key}.md`,
+  })
+)
+```
+
+Each definition's `description` lists the experiment's surface, variant weights, fallback variant, and exclusion group.
+
+<LearnMore icon="arrow" href="https://vercel.com/docs/flags/flags-explorer" target="_blank">
+  Learn more about the Flags Explorer
+</LearnMore>
+
+## More resources
+
+- [Adapter source code](https://github.com/vercel/flags/tree/main/packages/adapter-dif)
+- [dif.sh documentation](https://www.dif.sh/docs/)
+- [dif CLI reference](https://www.dif.sh/docs/cli/)
+- [`@dif.sh/sdk` on npm](https://www.npmjs.com/package/@dif.sh/sdk)
+- [Flags Explorer](https://vercel.com/docs/flags/flags-explorer)

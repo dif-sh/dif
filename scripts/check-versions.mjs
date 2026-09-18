@@ -47,14 +47,16 @@ if (!versionMatch) {
 const V = versionMatch[1];
 
 // --- package.json versions -------------------------------------------------
-for (const pkg of ["cli", "sdk", "react", "svelte"]) {
+// (cli/packages/flags-sdk is versioned independently: it's staged for the
+// vercel/flags monorepo as @flags-sdk/dif and isn't published from here.)
+for (const pkg of ["cli", "sdk", "react", "svelte", "openfeature"]) {
   const pkgPath = join(root, "cli", "packages", pkg, "package.json");
   const pkgJson = readJson(pkgPath);
   check(`cli/packages/${pkg}/package.json .version`, pkgJson.version, V);
 }
 
-// --- peerDependencies on @dif.sh/sdk (react + svelte) ----------------------
-for (const pkg of ["react", "svelte"]) {
+// --- peerDependencies on @dif.sh/sdk (react + svelte + openfeature) --------
+for (const pkg of ["react", "svelte", "openfeature"]) {
   const pkgPath = join(root, "cli", "packages", pkg, "package.json");
   const pkgJson = readJson(pkgPath);
   const actual = pkgJson.peerDependencies?.["@dif.sh/sdk"];

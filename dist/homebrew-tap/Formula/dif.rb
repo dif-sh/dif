@@ -10,7 +10,7 @@
 # and note the formula only updates once the auto-opened PR is merged.
 
 class Dif < Formula
-  desc "Experimentation-as-code for AI-native teams"
+  desc "Feature flags and A/B tests as Markdown files in your repo"
   homepage "https://dif.sh"
   version "0.6.1"
   license "MIT"
