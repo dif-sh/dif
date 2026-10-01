@@ -35,8 +35,8 @@ cargo_toml="$root/cli/Cargo.toml"
 VERSION="$version" perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/m' "$cargo_toml"
 VERSION="$version" perl -0pi -e 's/(path = "crates\/dif-core", version = ")[^"]*"/$1$ENV{VERSION}"/' "$cargo_toml"
 
-# 2. npm package versions (wrapper, sdk, react, svelte).
-for pkg in cli sdk react svelte; do
+# 2. npm package versions (wrapper, sdk, react, svelte, openfeature, flags-sdk).
+for pkg in cli sdk react svelte openfeature flags-sdk; do
   ( cd "$root/cli/packages/$pkg" && npm version "$version" --no-git-tag-version --allow-same-version >/dev/null )
 done
 
@@ -46,7 +46,7 @@ done
 #     0.6.0 release and causing ERESOLVE errors (or silent downgrades) on
 #     install. Keep this pinned to the same `version` so the three always move
 #     in lockstep.
-for pkg in react svelte; do
+for pkg in react svelte openfeature flags-sdk; do
   node -e '
     const fs = require("fs");
     const [file, version] = process.argv.slice(1);
@@ -59,7 +59,7 @@ done
 
 # 2c. Refresh each package's lockfile (if one is checked in) so it reflects
 #     the bumped version + peerDependency ranges above.
-for pkg in cli sdk react svelte; do
+for pkg in cli sdk react svelte openfeature flags-sdk; do
   if [ -f "$root/cli/packages/$pkg/package-lock.json" ]; then
     ( cd "$root/cli/packages/$pkg" && npm install --package-lock-only --no-audit --no-fund >/dev/null )
   fi
