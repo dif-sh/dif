@@ -79,7 +79,7 @@ export type DifAdapter = {
   identify: Identify<DifEntities>;
 };
 
-const PACKAGE = '@flags-sdk/dif';
+const PACKAGE = '@dif.sh/flags-sdk';
 
 function readCookie(
   cookies: ReadonlyRequestCookies | undefined,
@@ -117,7 +117,7 @@ function unknownKeyError(key: string): Error {
  * // flags.ts
  * import './dif/generated/client';
  * import { flag } from 'flags/next';
- * import { createDifAdapter } from '@flags-sdk/dif';
+ * import { createDifAdapter } from '@dif.sh/flags-sdk';
  *
  * const dif = createDifAdapter({
  *   onExposure: ({ key, variant, userId }) => track('dif.exposure', { key, variant, userId }),
@@ -248,7 +248,7 @@ function getOrCreateDefaultAdapter(): DifAdapter {
  * // flags.ts
  * import './dif/generated/client';
  * import { flag } from 'flags/next';
- * import { difAdapter } from '@flags-sdk/dif';
+ * import { difAdapter } from '@dif.sh/flags-sdk';
  *
  * export const heroCta = flag<string>({
  *   key: 'home-hero-cta',
@@ -299,7 +299,7 @@ function isDeclaredFlag(value: unknown): value is DeclaredFlag {
  * ```ts
  * // app/.well-known/vercel/flags/route.ts
  * import { createFlagsDiscoveryEndpoint } from 'flags/next';
- * import { getProviderData } from '@flags-sdk/dif';
+ * import { getProviderData } from '@dif.sh/flags-sdk';
  * import * as flags from '../../../../flags';
  *
  * export const GET = createFlagsDiscoveryEndpoint(() => getProviderData({ flags }));

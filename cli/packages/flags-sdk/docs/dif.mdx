@@ -2,11 +2,11 @@
 title: 'dif.sh'
 ---
 
-The `@flags-sdk/dif` package provides a [dif.sh](https://www.dif.sh/docs/) provider for the Flags SDK.
+The `@dif.sh/flags-sdk` package provides a [dif.sh](https://www.dif.sh/docs/) provider for the Flags SDK.
 
 dif.sh stores each feature flag and A/B experiment as a Markdown file in your repository. `dif build` compiles the active files into `dif/generated/client.ts`, and the adapter assigns variants from that file inside your app. No request leaves your server to evaluate a flag.
 
-The `@flags-sdk/dif` package exports
+The `@dif.sh/flags-sdk` package exports
 
 - `difAdapter` and `createDifAdapter`, the [provider instance](#provider-instance).
 - `getProviderData`, for the [Flags Explorer](#flags-explorer).
@@ -20,11 +20,11 @@ The `@flags-sdk/dif` package exports
 Install the required dependencies:
 
 ```bash
-pnpm i flags @flags-sdk/dif @dif.sh/sdk
+pnpm i flags @dif.sh/flags-sdk @dif.sh/sdk
 pnpm i -D @dif.sh/cli
 ```
 
-`@dif.sh/sdk` is a peer dependency of `@flags-sdk/dif`. Keep one copy of it in your install: the generated client registers experiments into a module-level registry inside `@dif.sh/sdk`, and the adapter reads that same registry.
+`@dif.sh/sdk` is a peer dependency of `@dif.sh/flags-sdk`. Keep one copy of it in your install: the generated client registers experiments into a module-level registry inside `@dif.sh/sdk`, and the adapter reads that same registry.
 
 Scaffold the `dif/` directory and draft a flag:
 
@@ -71,7 +71,7 @@ Import the generated client once in `flags.ts` and declare your flags. The flag 
 ```ts title="flags.ts"
 import './dif/generated/client'
 import { flag } from 'flags/next'
-import { difAdapter } from '@flags-sdk/dif'
+import { difAdapter } from '@dif.sh/flags-sdk'
 
 export const newCheckoutFlag = flag<boolean>({
   key: 'new-checkout',
@@ -100,10 +100,10 @@ export default async function Page() {
 
 ## Provider instance
 
-Import the default adapter instance `difAdapter` from `@flags-sdk/dif`:
+Import the default adapter instance `difAdapter` from `@dif.sh/flags-sdk`:
 
 ```ts
-import { difAdapter } from '@flags-sdk/dif'
+import { difAdapter } from '@dif.sh/flags-sdk'
 ```
 
 - `difAdapter.variant()` resolves to the assigned variant id, such as `'control'` or `'variant_a'`.
@@ -113,7 +113,7 @@ import { difAdapter } from '@flags-sdk/dif'
 Use `createDifAdapter` to change the defaults:
 
 ```ts title="flags.ts"
-import { createDifAdapter } from '@flags-sdk/dif'
+import { createDifAdapter } from '@dif.sh/flags-sdk'
 
 const difAdapter = createDifAdapter({
   cookieName: 'dif_uid',
@@ -136,7 +136,7 @@ const difAdapter = createDifAdapter({
 
 ```ts title="middleware.ts"
 import { type NextRequest, NextResponse } from 'next/server'
-import { DIF_OVERRIDES_COOKIE, DIF_UID_COOKIE } from '@flags-sdk/dif'
+import { DIF_OVERRIDES_COOKIE, DIF_UID_COOKIE } from '@dif.sh/flags-sdk'
 
 export function middleware(request: NextRequest) {
   const uid =
@@ -181,7 +181,7 @@ import {
   DIF_UID_COOKIE,
   difAdapter,
   type DifEntities,
-} from '@flags-sdk/dif'
+} from '@dif.sh/flags-sdk'
 
 const identify = dedupe((async ({ headers, cookies }) => {
   const session = await getSession(cookies)
@@ -228,7 +228,7 @@ dif.sh analyses an experiment from exposure events: one per user bucketed into a
 
 ```ts title="flags.ts"
 import { waitUntil } from '@vercel/functions'
-import { createDifAdapter } from '@flags-sdk/dif'
+import { createDifAdapter } from '@dif.sh/flags-sdk'
 
 const difAdapter = createDifAdapter({
   onExposure: (exposure) => {
@@ -247,7 +247,7 @@ You can inform the Flags Explorer about your dif.sh flags with a `.well-known/ve
 
 ```ts title="app/.well-known/vercel/flags/route.ts#next"
 import { createFlagsDiscoveryEndpoint } from 'flags/next'
-import { getProviderData } from '@flags-sdk/dif'
+import { getProviderData } from '@dif.sh/flags-sdk'
 import * as flags from '../../../../flags'
 
 export const GET = createFlagsDiscoveryEndpoint(() =>
@@ -267,7 +267,7 @@ Each definition's `description` lists the experiment's surface, variant weights,
 
 ## More resources
 
-- [Adapter source code](https://github.com/vercel/flags/tree/main/packages/adapter-dif)
+- [Adapter source code](https://github.com/dif-sh/dif/tree/main/cli/packages/flags-sdk)
 - [dif.sh documentation](https://www.dif.sh/docs/)
 - [dif CLI reference](https://www.dif.sh/docs/cli/)
 - [`@dif.sh/sdk` on npm](https://www.npmjs.com/package/@dif.sh/sdk)
