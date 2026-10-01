@@ -1,7 +1,7 @@
 {
   "name": "@dif.sh/flags-sdk",
   "version": "0.6.1",
-  "description": "Vercel Flags SDK adapter for dif.sh \u2014 assigns variants from dif/generated/client.ts.",
+  "description": "Vercel Flags SDK adapter for dif.sh — assigns variants from dif/generated/client.ts.",
   "keywords": [
     "flags-sdk",
     "vercel",
@@ -41,8 +41,7 @@
   },
   "files": [
     "dist",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "scripts": {
     "build": "rimraf dist && tsup",
@@ -63,7 +62,7 @@
     "rimraf": "6.1.2",
     "tsup": "8.5.1",
     "typescript": "5.6.3",
-    "vitest": "4.1.11"
+    "vitest": "^3.2.7"
   },
   "publishConfig": {
     "access": "public"

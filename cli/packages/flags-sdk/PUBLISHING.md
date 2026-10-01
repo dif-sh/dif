@@ -30,8 +30,12 @@ Locally:
 npm install && npm run lint && npm test && npm run build
 ```
 
-`.npmrc` sets `legacy-peer-deps=true` to dodge an npm 10 resolver crash on the
-vitest 4 → vite 8 optional-peer chain. It affects this package's install only.
+Tests run on `vitest` 3, deliberately. Vitest 4 bundles with `rolldown`, whose
+platform-native binary npm drops from a lockfile generated on another OS
+(npm/cli#4828), so CI died at vitest startup with "Cannot find native binding".
+Vitest 3 is rollup-based and records every platform's optional binding in the
+lockfile. Pinning it also removed the npm 10 resolver crash on the vitest 4 →
+vite 8 peer chain, so the `legacy-peer-deps` `.npmrc` is gone.
 
 ## Asking Vercel for a listing
 
@@ -56,14 +60,15 @@ To upstream it as `packages/adapter-dif` (`@flags-sdk/dif`):
 
 1. Fork vercel/flags, `corepack enable`, `pnpm install`, branch.
 2. Copy `src/`, `package.json`, `tsup.config.js`, `vitest.config.ts`,
-   `README.md`. Leave `.npmrc`, `dist/`, `package-lock.json`, and this file.
+   `README.md`. Leave `dist/`, `package-lock.json`, and this file.
 3. `package.json`: name `@flags-sdk/dif`, `version` `0.0.0`, drop `engines` and
    `prepublishOnly`, `homepage` `https://flags-sdk.dev`, `bugs`/`repository`
    back to vercel/flags, `devDependencies.flags` → `workspace:*`,
    `@dif.sh/sdk` → `^0.6.1` (keep the peer), add `"check": "biome check"`, and
    match the pins in `packages/adapter-reflag` (`vite` 8.1.5, `typescript`
    `^5.9.3`, `vitest` 4.1.10, `@types/node` 22.14.0, `rimraf` 6.1.2, `tsup`
-   8.5.1).
+   8.5.1). Upstream runs pnpm, which installs rolldown's native binding
+   correctly, so their vitest 4 pin is fine there.
 4. `tsconfig.json` → `{ "extends": "../../tsconfig-base.json", "include": ["src"] }`.
 5. Flip `PACKAGE` in `src/index.ts` back to `@flags-sdk/dif`.
 6. Docs: `docs/dif.mdx` → `apps/docs/content/docs/providers/dif.mdx`, add
