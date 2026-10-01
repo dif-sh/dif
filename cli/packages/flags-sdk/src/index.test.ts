@@ -244,11 +244,11 @@ describe('variant()', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(errors).toHaveBeenCalledWith(
-      '@flags-sdk/dif: onExposure threw',
+      '@dif.sh/flags-sdk: onExposure threw',
       expect.any(Error),
     );
     expect(errors).toHaveBeenCalledWith(
-      '@flags-sdk/dif: onExposure rejected',
+      '@dif.sh/flags-sdk: onExposure rejected',
       expect.any(Error),
     );
   });

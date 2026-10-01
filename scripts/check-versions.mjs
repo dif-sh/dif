@@ -47,16 +47,16 @@ if (!versionMatch) {
 const V = versionMatch[1];
 
 // --- package.json versions -------------------------------------------------
-// (cli/packages/flags-sdk is versioned independently: it's staged for the
-// vercel/flags monorepo as @flags-sdk/dif and isn't published from here.)
-for (const pkg of ["cli", "sdk", "react", "svelte", "openfeature"]) {
+for (const pkg of ["cli", "sdk", "react", "svelte", "openfeature", "flags-sdk"]) {
   const pkgPath = join(root, "cli", "packages", pkg, "package.json");
   const pkgJson = readJson(pkgPath);
   check(`cli/packages/${pkg}/package.json .version`, pkgJson.version, V);
 }
 
-// --- peerDependencies on @dif.sh/sdk (react + svelte + openfeature) --------
-for (const pkg of ["react", "svelte", "openfeature"]) {
+// --- peerDependencies on @dif.sh/sdk (every package that wraps the SDK) ----
+// These must stay peers: the SDK holds the experiment registry in a
+// module-level Map, so a nested second copy would resolve to an empty one.
+for (const pkg of ["react", "svelte", "openfeature", "flags-sdk"]) {
   const pkgPath = join(root, "cli", "packages", pkg, "package.json");
   const pkgJson = readJson(pkgPath);
   const actual = pkgJson.peerDependencies?.["@dif.sh/sdk"];

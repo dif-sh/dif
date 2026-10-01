@@ -1,23 +1,24 @@
 {
-  "name": "@flags-sdk/dif",
-  "version": "0.1.0",
-  "private": true,
-  "description": "dif.sh provider for the Flags SDK",
+  "name": "@dif.sh/flags-sdk",
+  "version": "0.6.1",
+  "description": "Vercel Flags SDK adapter for dif.sh \u2014 assigns variants from dif/generated/client.ts.",
   "keywords": [
     "flags-sdk",
-    "dif",
-    "feature flags",
+    "vercel",
+    "dif.sh",
+    "feature-flags",
+    "ab-testing",
     "experimentation",
-    "ab testing",
-    "flags as code"
+    "flags-as-code"
   ],
-  "homepage": "https://flags-sdk.dev",
+  "homepage": "https://www.dif.sh/docs/",
   "bugs": {
-    "url": "https://github.com/vercel/flags/issues"
+    "url": "https://github.com/dif-sh/dif/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vercel/flags.git"
+    "url": "git+https://github.com/dif-sh/dif.git",
+    "directory": "cli/packages/flags-sdk"
   },
   "license": "MIT",
   "author": "Chris Fowles <chris@dif.sh>",
@@ -40,6 +41,7 @@
   },
   "files": [
     "dist",
+    "README.md",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -47,7 +49,9 @@
     "dev": "tsup --watch --clean=false",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "peerDependencies": {
     "@dif.sh/sdk": "^0.6.1"
@@ -63,5 +67,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }

@@ -170,6 +170,38 @@ jobs:
         working-directory: cli/packages/openfeature
         run: npm run build
 
+  # flags-sdk is the Vercel Flags SDK adapter. It depends on the sdk via
+  # file:../sdk, and its tests drive a real flag() from the `flags` package.
+  flags-sdk:
+    name: flags-sdk (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: build sdk
+        working-directory: cli/packages/sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: install
+        working-directory: cli/packages/flags-sdk
+        run: npm install --no-audit --no-fund
+      - name: lint
+        working-directory: cli/packages/flags-sdk
+        run: npm run lint
+      - name: test
+        working-directory: cli/packages/flags-sdk
+        run: npm test
+      - name: build
+        working-directory: cli/packages/flags-sdk
+        run: npm run build
+
   # The npm wrapper (@dif.sh/cli) is where both past production breakages
   # shipped (the 0.4.0 wrapping-dir crash, the musl glibc failure) — and it had
   # no CI coverage. Build a real binary, stage it where the postinstall expects

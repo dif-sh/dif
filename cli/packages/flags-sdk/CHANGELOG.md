@@ -1,4 +1,4 @@
-# @flags-sdk/dif
+# @dif.sh/flags-sdk
 
 ## 0.1.0
 

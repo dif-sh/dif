@@ -1,15 +1,15 @@
 # Flags SDK - dif.sh Provider
 
-The [dif.sh provider](https://flags-sdk.dev/providers/dif) for the [Flags SDK](https://flags-sdk.dev/) assigns feature flags and A/B experiments that [dif.sh](https://www.dif.sh/docs/) keeps as Markdown files in your repository.
+The dif.sh adapter for the [Flags SDK](https://flags-sdk.dev/) assigns feature flags and A/B experiments that [dif.sh](https://www.dif.sh/docs/) keeps as Markdown files in your repository.
 
 `dif build` compiles every `dif/experiments/active/*.md` file into `dif/generated/client.ts`. The adapter calls `assign()` from `@dif.sh/sdk` against that file on each `decide`. No network request is made.
 
 ## Setup
 
-The dif.sh provider is available in the `@flags-sdk/dif` module. Install it with `@dif.sh/sdk`, which is a peer dependency:
+The dif.sh provider is available in the `@dif.sh/flags-sdk` module. Install it with `@dif.sh/sdk`, which is a peer dependency:
 
 ```bash
-pnpm i @flags-sdk/dif @dif.sh/sdk
+pnpm i @dif.sh/flags-sdk @dif.sh/sdk
 ```
 
 Keep exactly one copy of `@dif.sh/sdk` in your install. The generated client registers experiments into a module-level registry inside `@dif.sh/sdk`, and the adapter reads from that same registry. A second copy would be empty and every flag would fall back to its `defaultValue`.
@@ -26,10 +26,10 @@ Keep exactly one copy of `@dif.sh/sdk` in your install. The generated client reg
 
 ## Provider Instance
 
-You can import the default adapter instance `difAdapter` from `@flags-sdk/dif`:
+You can import the default adapter instance `difAdapter` from `@dif.sh/flags-sdk`:
 
 ```ts
-import { difAdapter } from "@flags-sdk/dif";
+import { difAdapter } from "@dif.sh/flags-sdk";
 ```
 
 `difAdapter` exposes:
@@ -41,7 +41,7 @@ import { difAdapter } from "@flags-sdk/dif";
 Use `createDifAdapter` to change the defaults:
 
 ```ts
-import { createDifAdapter } from "@flags-sdk/dif";
+import { createDifAdapter } from "@dif.sh/flags-sdk";
 
 const dif = createDifAdapter({
   cookieName: "dif_uid",
@@ -69,7 +69,7 @@ The flag `key` is the experiment id, which is the `.md` filename stem.
 // flags.ts
 import "./dif/generated/client";
 import { flag } from "flags/next";
-import { difAdapter } from "@flags-sdk/dif";
+import { difAdapter } from "@dif.sh/flags-sdk";
 
 export const newCheckoutFlag = flag<boolean>({
   key: "new-checkout",
@@ -94,7 +94,7 @@ What `decide` returns for a flag whose variants are `control`, `variant_a`:
 | `_dif=new-checkout=variant_a` cookie | `"variant_a"` | `true` | not called |
 | key missing from `dif/generated/client.ts` | throws, flag returns `defaultValue` | throws, flag returns `defaultValue` | not called |
 
-`identify` cannot set cookies. Mint `dif_uid` in `middleware.ts` so the first request is bucketed; see the [provider documentation](https://flags-sdk.dev/providers/dif) for the snippet.
+`identify` cannot set cookies. Mint `dif_uid` in `middleware.ts` so the first request is bucketed; see [`proxy.ts` in the example app](https://github.com/dif-sh/nextjs-feature-flags) for a working version.
 
 ## Flags Explorer
 
@@ -103,7 +103,7 @@ Emit your dif experiments from the `.well-known/vercel/flags` route with `getPro
 ```ts
 // app/.well-known/vercel/flags/route.ts
 import { createFlagsDiscoveryEndpoint } from "flags/next";
-import { getProviderData } from "@flags-sdk/dif";
+import { getProviderData } from "@dif.sh/flags-sdk";
 import * as flags from "../../../../flags";
 
 export const GET = createFlagsDiscoveryEndpoint(() => getProviderData({ flags }));
@@ -111,4 +111,4 @@ export const GET = createFlagsDiscoveryEndpoint(() => getProviderData({ flags })
 
 ## Documentation
 
-Please check out the [dif.sh provider documentation](https://flags-sdk.dev/providers/dif) and the [dif.sh docs](https://www.dif.sh/docs/) for more information.
+The [dif.sh docs](https://www.dif.sh/docs/) cover the file format, the CLI, and the SDK. [dif-sh/nextjs-feature-flags](https://github.com/dif-sh/nextjs-feature-flags) is a runnable Next.js app using one flag.

@@ -255,6 +255,38 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: sync version (openfeature)
+        working-directory: cli/packages/openfeature
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: build openfeature
+        working-directory: cli/packages/openfeature
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: publish openfeature
+        working-directory: cli/packages/openfeature
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: sync version (flags-sdk)
+        working-directory: cli/packages/flags-sdk
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: build flags-sdk
+        working-directory: cli/packages/flags-sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: publish flags-sdk
+        working-directory: cli/packages/flags-sdk
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   # -------------------------------------------------------------------------
   # Patch dist/homebrew-tap/Formula/dif.rb with the real SHA-256 of each
   # tarball we just released, then open a PR against main. main is a
