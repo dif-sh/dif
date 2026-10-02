@@ -68,7 +68,8 @@ export function experiment<V extends string, R>(
   });
 }
 
-function decide(id: string, data: DifData | undefined, fallback: string): Decision {
+/** @internal Exported for tests; not part of the package's public API. */
+export function decide(id: string, data: DifData | undefined, fallback: string): Decision {
   const server = data?.assignments[id];
   if (server) {
     return { variant: server.variant, bucket: server.bucket, exposed: server.exposed };
@@ -77,8 +78,10 @@ function decide(id: string, data: DifData | undefined, fallback: string): Decisi
   // assign on the client using the cookie-stable user id. Pass the active QA
   // forces so a `?_dif=` preview wins here too (and fires no exposure).
   // `data.cookieName` keeps a custom `difLoad({ cookieName })` working here.
+  // Under the server's kill switch there's no user, so assign() returns
+  // control unless a force applies.
   const userId =
-    typeof document !== "undefined"
+    typeof document !== "undefined" && data?.enabled !== false
       ? (data?.difUid ?? readCookie(data?.cookieName ?? "dif_uid"))
       : null;
   const a = assign(id, {

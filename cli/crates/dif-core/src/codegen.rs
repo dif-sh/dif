@@ -336,7 +336,7 @@ fn render_audience(audience: &Audience) -> String {
                 Value::Sequence(seq) => {
                     let items: Vec<String> = seq.iter().map(render_js_value).collect();
                     body.push_str(&format!(
-                        "    if (![{}].includes(attrs[\"{}\"])) return false;\n",
+                        "    if (!([{}] as readonly unknown[]).includes(attrs[\"{}\"])) return false;\n",
                         items.join(", "),
                         js_escape(name)
                     ));
@@ -358,7 +358,7 @@ fn render_audience(audience: &Audience) -> String {
                 Value::Sequence(seq) => {
                     let items: Vec<String> = seq.iter().map(render_js_value).collect();
                     body.push_str(&format!(
-                        "    if ([{}].includes(attrs[\"{}\"])) return false;\n",
+                        "    if (([{}] as readonly unknown[]).includes(attrs[\"{}\"])) return false;\n",
                         items.join(", "),
                         js_escape(name)
                     ));
@@ -536,7 +536,22 @@ created: 2026-01-01";
             "{SIMPLE_EXP}\naudience:\n  include:\n    - country: [US, CA]"
         ));
         let s = render_audience(&exp.audience);
-        assert!(s.contains("[\"US\", \"CA\"].includes(attrs[\"country\"])"));
+        // `attrs` values are `unknown`, so a bare `["US"].includes(...)` fails
+        // strict type-checking in the app. The cast keeps it type-safe.
+        assert!(s.contains(
+            "if (!([\"US\", \"CA\"] as readonly unknown[]).includes(attrs[\"country\"])) return false;"
+        ));
+    }
+
+    #[test]
+    fn exclude_sequence_renders_includes_check() {
+        let exp = parse(&format!(
+            "{SIMPLE_EXP}\naudience:\n  exclude:\n    - plan: [free, trial]"
+        ));
+        let s = render_audience(&exp.audience);
+        assert!(s.contains(
+            "if (([\"free\", \"trial\"] as readonly unknown[]).includes(attrs[\"plan\"])) return false;"
+        ));
     }
 
     #[test]
