@@ -144,11 +144,15 @@ describe("difLoad", () => {
     assert.equal(miss.assignments.gated!.exposed, false);
   });
 
-  it("returns no assignments when disabled", () => {
+  it("kill switch assigns control to every experiment, with no exposure", () => {
+    // An absent assignment makes the client bucket on its own, so the kill
+    // switch must pin every experiment to control explicitly.
     register("a");
+    register("b");
     const data = difLoad(fakeEvent({ cookie: "u-1" }).event, { enabled: false });
-    assert.deepEqual(data.assignments, {});
-    assert.ok(data.difUid);
+    const control = { variant: "control", bucket: null, exposed: false };
+    assert.deepEqual(data.assignments, { a: control, b: control });
+    assert.equal(data.enabled, false, "the client needs the flag for ids the server didn't register");
   });
 });
 
@@ -187,6 +191,24 @@ describe("difLoad overrides", () => {
     assert.deepEqual(data.overrides, { a: "variant_a" });
     assert.equal(data.assignments.a!.variant, "variant_a");
     assert.equal(data.assignments.a!.exposed, false);
+  });
+
+  it("a valid force still wins over the kill switch, with no exposure", () => {
+    register("a");
+    register("b");
+    const { event } = fakeEvent({ cookie: "u-1", dif: "a=variant_a" });
+    const data = difLoad(event, { enabled: false });
+    assert.deepEqual(data.assignments.a, { variant: "variant_a", bucket: null, exposed: false });
+    assert.deepEqual(data.assignments.b, { variant: "control", bucket: null, exposed: false });
+  });
+
+  it("kill switch with allowOverrides:false ignores ?_dif and sets no _dif cookie", () => {
+    register("a");
+    const { event, setCalls } = fakeEvent({ cookie: "u-1", dif: "a=variant_a" });
+    const data = difLoad(event, { enabled: false, allowOverrides: false });
+    assert.deepEqual(data.overrides, {});
+    assert.deepEqual(data.assignments.a, { variant: "control", bucket: null, exposed: false });
+    assert.equal(setCalls.find((s) => s.name === "_dif"), undefined);
   });
 
   it("allowOverrides:false ignores ?_dif entirely", () => {

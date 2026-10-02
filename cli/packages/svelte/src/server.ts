@@ -55,7 +55,9 @@ export interface DifLoadOptions {
   cookieName?: string;
   /** Custom attribute derivation. Defaults to {@link attributesFromHeaders}. */
   deriveAttributes?: (headers: DifHeaders) => AttributeBag;
-  /** Kill switch — when `false`, returns no assignments (client shows control everywhere). */
+  /** Kill switch. When `false`, every experiment renders control with no
+   *  exposure, on the server and the client. A valid QA force still wins;
+   *  pair with `allowOverrides: false` to turn forces off too. */
   enabled?: boolean;
   /** Cookie `SameSite` (default `"lax"`). Use `"none"` for cross-site flows. */
   sameSite?: "lax" | "strict" | "none";
@@ -105,17 +107,19 @@ export function difLoad(event: DifRequestEventLike, opts: DifLoadOptions = {}): 
 
   const overrides = opts.allowOverrides === false ? {} : resolveOverrides(event);
 
+  // Kill switch: assigning with no user pins every experiment to control with
+  // no exposure, except a valid QA force, which still wins (same rule as
+  // `dif()`). Every id gets an entry so the client never buckets on its own.
+  const enabled = opts.enabled !== false;
   const assignments: Record<string, SerializedAssignment> = {};
-  if (opts.enabled !== false) {
-    for (const spec of registered()) {
-      const a = assign(spec.id, { userId: difUid, attributes, overrides });
-      if (a) {
-        assignments[spec.id] = { variant: a.variant, bucket: a.bucket, exposed: a.exposed };
-      }
+  for (const spec of registered()) {
+    const a = assign(spec.id, { userId: enabled ? difUid : null, attributes, overrides });
+    if (a) {
+      assignments[spec.id] = { variant: a.variant, bucket: a.bucket, exposed: a.exposed };
     }
   }
 
-  return { difUid, cookieName: name, assignments, attributes, overrides };
+  return { difUid, cookieName: name, assignments, attributes, overrides, enabled };
 }
 
 /**

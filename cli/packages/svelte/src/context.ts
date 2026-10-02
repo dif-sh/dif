@@ -26,6 +26,9 @@ export interface DifData {
   attributes: AttributeBag;
   /** Active QA/preview forces (id → variant), from `?_dif=` / the `_dif` cookie. */
   overrides: Record<string, string>;
+  /** `false` when `difLoad` ran with the kill switch on; the client then never
+   *  buckets. Optional so `DifData` serialized by older versions keeps working. */
+  enabled?: boolean;
 }
 
 /** Svelte context key under which the root layout stashes {@link DifData}. */
