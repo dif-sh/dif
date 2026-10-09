@@ -1802,6 +1802,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cloud_api_reference_is_identical_in_both_skills() {
+        const CONCLUDE: &str = include_str!(
+            "../../assets/claude/skills/dif-conclude-experiment/references/cloud-api.md"
+        );
+        const TRIAGE: &str = include_str!(
+            "../../assets/claude/skills/dif-triage-experiments/references/cloud-api.md"
+        );
+        assert!(!CONCLUDE.trim().is_empty(), "cloud-api.md is empty");
+        assert_eq!(
+            CONCLUDE, TRIAGE,
+            "the two cloud-api.md copies differ; make them byte-identical"
+        );
+    }
+
     // -- re-runs + Cursor / Copilot targets ----------------------------------
 
     fn default_args() -> Args {
