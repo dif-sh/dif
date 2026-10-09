@@ -129,7 +129,11 @@ If a step fails, `dif conclude` tries to undo the earlier steps. This is best ef
 4. If Step 5, item 1 found a status other than `status: active`, open the `moved_to` file and set `status: concluded`.
 5. Commit the `dif/` folder (with `dif/context.json`) and the call-site change: `git add dif/ <changed source files>`, then `git commit`.
 
-When `dif-triage-experiments` sent you here in autonomous mode, do items 1, 2 and 4 only. Do not edit app code and do not commit. Give the triage skill the `moved_to` path and every `W001` file and line.
+When `dif-triage-experiments` sent you here, never commit. Skip item 5. The triage skill makes the commit, in autonomous mode and in interactive mode.
+
+When `dif-triage-experiments` sent you here for a PR (autonomous mode, or interactive mode with a PR), do items 1, 2 and 4 only. Do not edit app code. Give the triage skill the `moved_to` path and every `W001` file and line.
+
+When `dif-triage-experiments` sent you here in interactive mode with no PR, do items 1 to 4. Leave the changes uncommitted.
 
 ## Without dif cloud
 
