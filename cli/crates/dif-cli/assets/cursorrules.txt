@@ -74,6 +74,8 @@ Bad: "Inconclusive."
 Skills, by name. `dif init` installs them under .claude/skills/<name>/; a plugin install provides them under the same names.
 
 dif-author-experiment      full authoring workflow + references
-dif-conclude-experiment    pre-conclude checklist + Decision writing
+dif-conclude-experiment    get dif cloud results, check the verdict, write the Decision
+dif-triage-experiments     act on every experiment the dif cloud overview flags (ramp, turn off, conclude)
 dif-generate-surfaces      for fresh repos: propose the initial set of surfaces from app context
-https://www.dif.sh/docs/   full documentation
+https://www.dif.sh/docs/mcp/   connect dif cloud over MCP or a read token (DIF_TOKEN)
+https://www.dif.sh/docs/       full documentation
