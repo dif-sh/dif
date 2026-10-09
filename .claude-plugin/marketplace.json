@@ -1,0 +1,15 @@
+{
+  "name": "dif-sh",
+  "description": "The dif plugin: skills for feature flags and A/B tests kept as Markdown files in your repo.",
+  "owner": {
+    "name": "Chris Fowles",
+    "email": "chris@dif.sh"
+  },
+  "plugins": [
+    {
+      "name": "dif",
+      "source": "./",
+      "description": "Skills for authoring, validating and concluding feature flags and A/B tests kept as Markdown files with the dif CLI."
+    }
+  ]
+}

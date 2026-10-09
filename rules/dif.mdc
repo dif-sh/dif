@@ -1,3 +1,9 @@
+---
+description: Feature flags and A/B experiments in this repo are dif.sh files under dif/. Use when adding, ramping, gating, or removing a feature flag or experiment, or when editing anything under dif/.
+globs: dif/**
+alwaysApply: false
+---
+
 # Working with dif.sh in this repo
 
 This project uses dif.sh (https://www.dif.sh) — experimentation-as-code. Experiments live as .md files under dif/experiments/, and a Rust CLI compiles them into a typed TypeScript artifact (dif/generated/client.ts) the app imports at render time.

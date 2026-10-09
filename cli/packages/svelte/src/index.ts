@@ -1,9 +1,16 @@
 // @dif.sh/svelte — Svelte 5 adapter for @dif.sh/sdk.
 //
-//   • Server:    difLoad() in +layout.server.ts  (import from "@dif.sh/svelte/server")
-//   • Client:    initDif() once in the root +layout.svelte, then
-//                setContext(DIF_CONTEXT_KEY, data.dif)
+//   • Server:    difLoad() in +layout.server.ts  (import from "@dif.sh/svelte/server"),
+//                after importing dif/generated/client to register experiments
+//   • Client:    in the root +layout.svelte, import dif/generated/client again
+//                (the browser bundle has its own registry), then
+//                setContext(DIF_CONTEXT_KEY, data.dif) and call
+//                initDif({ data: data.dif, events }) once, with `events` from
+//                dif/generated/events
 //   • Component: experiment(id, branches) → a store of the assigned branch value
+//
+// `dif build` writes dif/generated/ at the project root, so from src/routes/
+// the imports are "../../dif/generated/client" and "../../dif/generated/events".
 //
 // The server helper lives at the "@dif.sh/svelte/server" subpath so importing it
 // from +*.server.ts never pulls client code into the server bundle.
