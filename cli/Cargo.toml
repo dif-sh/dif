@@ -10,6 +10,7 @@ version = "0.6.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/dif-sh/dif"
+homepage = "https://www.dif.sh"
 rust-version = "1.78"
 
 [workspace.dependencies]

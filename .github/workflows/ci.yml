@@ -25,8 +25,9 @@ jobs:
       - name: check versions
         run: node scripts/check-versions.mjs
       # skills/ (what `npx skills add dif-sh/dif` installs) mirrors the skills
-      # `dif init` embeds from cli/crates/dif-cli/assets/claude/skills/.
-      - name: check skills/ mirror
+      # `dif init` embeds from cli/crates/dif-cli/assets/claude/skills/, and
+      # rules/dif.mdc mirrors the Cursor rule `dif init` writes.
+      - name: check skills/ and rules/ mirrors
         run: node scripts/sync-skills.mjs --check
 
   rust:

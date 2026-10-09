@@ -73,10 +73,14 @@ export interface DifLoadOptions {
  * every registered experiment, and returns a serializable blob for the client.
  *
  * ```ts
- * import "$lib/dif/generated/client";          // populate the registry (side effect)
+ * // src/routes/+layout.server.ts; dif/generated/ is at the project root
+ * import "../../dif/generated/client"; // side effect: registers active experiments
  * import { difLoad } from "@dif.sh/svelte/server";
  * export const load = (event) => ({ dif: difLoad(event) });
  * ```
+ *
+ * This import registers experiments on the server only. `+layout.svelte` needs
+ * its own `dif/generated/client` import for the browser bundle.
  *
  * Note: on an ISR-cached route the server `load` won't re-run per visitor, so
  * the client falls back to assigning from the cookie. Don't server-assign on

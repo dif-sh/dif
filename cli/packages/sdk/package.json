@@ -1,7 +1,7 @@
 {
   "name": "@dif.sh/sdk",
   "version": "0.6.3",
-  "description": "Client SDK for dif.sh — experiment assignment + metric tracking.",
+  "description": "Zero-dependency runtime for dif feature flags and A/B tests. Assigns variants locally by hashing the user ID, and records exposures and metric events.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -39,13 +39,18 @@
     "url": "git+https://github.com/dif-sh/dif.git",
     "directory": "cli/packages/sdk"
   },
+  "homepage": "https://www.dif.sh/docs/",
   "keywords": [
     "experimentation",
     "ab-testing",
     "feature-flags",
     "analytics",
     "metrics",
-    "dif.sh"
+    "dif.sh",
+    "feature-toggles",
+    "feature-management",
+    "flags-as-code",
+    "typescript"
   ],
   "devDependencies": {
     "typescript": "^5.4.0",

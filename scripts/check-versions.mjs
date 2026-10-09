@@ -67,6 +67,12 @@ for (const pkg of ["react", "svelte", "openfeature", "flags-sdk"]) {
   );
 }
 
+// --- Claude Code plugin manifest ---------------------------------------------
+// .claude-plugin/plugin.json pins plugin installs to its `version`, so a stale
+// value here keeps plugin users on the old skills after a release.
+const pluginJson = readJson(join(root, ".claude-plugin", "plugin.json"));
+check(".claude-plugin/plugin.json .version", pluginJson.version, V);
+
 // --- sdk's generated version stamp -----------------------------------------
 const versionTsPath = join(root, "cli", "packages", "sdk", "src", "version.ts");
 const versionTs = readFileSync(versionTsPath, "utf8");

@@ -21,15 +21,24 @@ export interface InitDifOptions extends Omit<DifInitConfig, "userId" | "attribut
  * server's header-derived bag so audience predicates can't diverge across the
  * hydration boundary.
  *
+ * In `src/routes/+layout.svelte` (`dif build` writes `dif/generated/` at the
+ * project root, so the paths are relative to `src/routes/`):
+ *
  * ```svelte
  * <script lang="ts">
- *   import { initDif, DIF_CONTEXT_KEY } from "@dif.sh/svelte";
+ *   import "../../dif/generated/client"; // the browser bundle has its own registry
  *   import { setContext } from "svelte";
+ *   import { initDif, DIF_CONTEXT_KEY } from "@dif.sh/svelte";
+ *   import { events } from "../../dif/generated/events"; // cloud config + publishable key
+ *
  *   let { data, children } = $props();
  *   setContext(DIF_CONTEXT_KEY, data.dif);
- *   initDif({ data: data.dif, publishableKey: PUBLIC_DIF_PUBLISHABLE_KEY });
+ *   initDif({ data: data.dif, events });
  * </script>
  * ```
+ *
+ * Keep the `dif/generated/client` import here. Without it the browser's
+ * registry is empty and `experiment()` drops the exposure with no warning.
  */
 export function initDif(opts: InitDifOptions): void {
   // Cookie-name precedence: explicit option, then the name the server's

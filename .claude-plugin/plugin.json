@@ -1,0 +1,14 @@
+{
+  "name": "dif",
+  "displayName": "dif",
+  "version": "0.6.3",
+  "description": "Skills for authoring, validating and concluding feature flags and A/B tests kept as Markdown files with the dif CLI.",
+  "author": {
+    "name": "Chris Fowles",
+    "email": "chris@dif.sh"
+  },
+  "homepage": "https://www.dif.sh/docs/",
+  "repository": "https://github.com/dif-sh/dif",
+  "license": "MIT",
+  "keywords": ["feature-flags", "ab-testing", "experimentation", "typescript"]
+}

@@ -21,7 +21,7 @@ npm i @dif.sh/sdk @dif.sh/svelte
 **`src/routes/+layout.server.ts`** (assign on the server):
 
 ```ts
-import "$lib/dif/generated/client"; // side effect: registers active experiments
+import "../../dif/generated/client"; // side effect: registers active experiments
 import { difLoad } from "@dif.sh/svelte/server";
 
 export const load = (event) => ({ dif: difLoad(event) });
@@ -31,9 +31,10 @@ export const load = (event) => ({ dif: difLoad(event) });
 
 ```svelte
 <script lang="ts">
+  import "../../dif/generated/client"; // the browser bundle has its own registry
   import { setContext } from "svelte";
   import { initDif, DIF_CONTEXT_KEY } from "@dif.sh/svelte";
-  import { events } from "$lib/dif/generated/events"; // cloud config + publishable key
+  import { events } from "../../dif/generated/events"; // cloud config + publishable key
 
   let { data, children } = $props();
   setContext(DIF_CONTEXT_KEY, data.dif);
@@ -45,6 +46,15 @@ export const load = (event) => ({ dif: difLoad(event) });
 
 {@render children()}
 ```
+
+Keep the `dif/generated/client` import in `+layout.svelte`. The import in
+`+layout.server.ts` registers experiments on the server only. Without the
+browser import the page still renders the right variant, but the browser's
+registry is empty and `experiment()` drops the exposure with no warning.
+
+`dif build` writes both files to `dif/generated/` at the project root (the
+`build.out` setting in `dif/config.yaml`), so the paths above are relative to
+`src/routes/`.
 
 Connect the project once with `dif connect --key dif_pk_live_…` (or `dif init
 --key …`; add `--url` for a self-hosted deployment). The key and cloud URL live
