@@ -511,9 +511,7 @@ fn report_success(
             println!("{check} wrote dif/events/track.ts");
         }
         if sel.claude {
-            println!(
-                "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
-            );
+            println!("{check} {CLAUDE_SKILLS_LINE}");
         }
         if sel.cursor {
             println!("{check} wrote {CURSOR_MDC_PATH}");
@@ -704,8 +702,14 @@ pub(crate) const SKILL_AUTHOR_AUDIENCES: &str =
     include_str!("../../assets/claude/skills/dif-author-experiment/references/audiences.md");
 pub(crate) const SKILL_CONCLUDE: &str =
     include_str!("../../assets/claude/skills/dif-conclude-experiment/SKILL.md");
+pub(crate) const SKILL_CONCLUDE_CLOUD_API: &str =
+    include_str!("../../assets/claude/skills/dif-conclude-experiment/references/cloud-api.md");
 pub(crate) const SKILL_GENERATE_SURFACES: &str =
     include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
+pub(crate) const SKILL_TRIAGE: &str =
+    include_str!("../../assets/claude/skills/dif-triage-experiments/SKILL.md");
+pub(crate) const SKILL_TRIAGE_CLOUD_API: &str =
+    include_str!("../../assets/claude/skills/dif-triage-experiments/references/cloud-api.md");
 
 /// Paths (relative to the workspace root) written for the `claude` target:
 /// the CLAUDE.md orientation file plus the `.claude/skills/dif-*` directories.
@@ -717,8 +721,17 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-author-experiment/references/validation-errors.md",
     ".claude/skills/dif-author-experiment/references/audiences.md",
     ".claude/skills/dif-conclude-experiment/SKILL.md",
+    ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
     ".claude/skills/dif-generate-surfaces/SKILL.md",
+    ".claude/skills/dif-triage-experiments/SKILL.md",
+    ".claude/skills/dif-triage-experiments/references/cloud-api.md",
 ];
+
+/// Success line text for the Claude Code skills.
+const CLAUDE_SKILLS_LINE: &str = concat!(
+    "wrote .claude/skills/ (dif-author-experiment, dif-conclude-experiment, ",
+    "dif-generate-surfaces, dif-triage-experiments)"
+);
 
 /// Path written for the `general` target: the model-agnostic AGENTS.md.
 pub(crate) const GENERAL_FILE_PATHS: &[&str] = &["AGENTS.md"];
@@ -885,6 +898,10 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .join(".claude")
         .join("skills")
         .join("dif-generate-surfaces");
+    let triage = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-triage-experiments");
 
     vec![
         (author.join("SKILL.md"), SKILL_AUTHOR.to_string()),
@@ -902,8 +919,17 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         ),
         (conclude.join("SKILL.md"), SKILL_CONCLUDE.to_string()),
         (
+            conclude.join("references").join("cloud-api.md"),
+            SKILL_CONCLUDE_CLOUD_API.to_string(),
+        ),
+        (
             generate.join("SKILL.md"),
             SKILL_GENERATE_SURFACES.to_string(),
+        ),
+        (triage.join("SKILL.md"), SKILL_TRIAGE.to_string()),
+        (
+            triage.join("references").join("cloud-api.md"),
+            SKILL_TRIAGE_CLOUD_API.to_string(),
         ),
     ]
 }
@@ -1728,6 +1754,7 @@ mod tests {
             ("dif-author-experiment", SKILL_AUTHOR),
             ("dif-conclude-experiment", SKILL_CONCLUDE),
             ("dif-generate-surfaces", SKILL_GENERATE_SURFACES),
+            ("dif-triage-experiments", SKILL_TRIAGE),
         ] {
             let frontmatter = extract_frontmatter(content)
                 .unwrap_or_else(|| panic!("SKILL.md for {name} has no YAML frontmatter"));
@@ -1804,17 +1831,54 @@ mod tests {
 
     #[test]
     fn cloud_api_reference_is_identical_in_both_skills() {
-        const CONCLUDE: &str = include_str!(
-            "../../assets/claude/skills/dif-conclude-experiment/references/cloud-api.md"
+        assert!(
+            !SKILL_CONCLUDE_CLOUD_API.trim().is_empty(),
+            "cloud-api.md is empty"
         );
-        const TRIAGE: &str = include_str!(
-            "../../assets/claude/skills/dif-triage-experiments/references/cloud-api.md"
-        );
-        assert!(!CONCLUDE.trim().is_empty(), "cloud-api.md is empty");
         assert_eq!(
-            CONCLUDE, TRIAGE,
+            SKILL_CONCLUDE_CLOUD_API, SKILL_TRIAGE_CLOUD_API,
             "the two cloud-api.md copies differ; make them byte-identical"
         );
+    }
+
+    #[test]
+    fn claude_target_writes_triage_skill_and_cloud_references() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        for rel in [
+            ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
+            ".claude/skills/dif-triage-experiments/SKILL.md",
+            ".claude/skills/dif-triage-experiments/references/cloud-api.md",
+        ] {
+            assert!(
+                tmp.path().join(rel).exists(),
+                "missing scaffolded skill file: {rel}"
+            );
+            assert!(
+                CLAUDE_FILE_PATHS.contains(&rel),
+                "{rel} is missing from CLAUDE_FILE_PATHS"
+            );
+        }
+    }
+
+    #[test]
+    fn success_line_names_every_written_skill() {
+        let root = Path::new("repo");
+        let skills = root.join(".claude").join("skills");
+        for (path, _) in agent_skill_files(root) {
+            let rel = path
+                .strip_prefix(&skills)
+                .expect("skill file under .claude/skills");
+            let dir = rel
+                .iter()
+                .next()
+                .and_then(|d| d.to_str())
+                .expect("skill dir name");
+            assert!(
+                CLAUDE_SKILLS_LINE.contains(dir),
+                "success line does not name {dir}"
+            );
+        }
     }
 
     // -- re-runs + Cursor / Copilot targets ----------------------------------
