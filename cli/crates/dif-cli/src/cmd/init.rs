@@ -71,6 +71,11 @@ pub struct Args {
     /// Deprecated alias for `--agents none`. Hidden; kept for back-compat.
     #[arg(long, hide = true, conflicts_with = "agents")]
     pub no_agent_files: bool,
+
+    /// Refresh agent files only: skills and managed blocks.
+    /// Never changes dif/ content. Needs an existing workspace.
+    #[arg(long, conflicts_with_all = ["surface", "events", "key", "force"])]
+    pub agents_only: bool,
 }
 
 /// `--agents` targets. Each maps to a set of scaffolded files;
@@ -110,6 +115,10 @@ impl From<EventsModeArg> for EventsMode {
 /// Entrypoint.
 pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
+    // No events prompt and no dif/ writes here.
+    if args.agents_only {
+        return run_agents_only(&cwd, args, json);
+    }
     // Validate + normalise a pasted key up front so a bad paste fails before we
     // scaffold anything.
     if let Some(raw) = &args.key {
@@ -342,17 +351,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     // under `--force`. Force re-scaffolds the structural files, but must never
     // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
     for mf in &merge_files {
-        if let Some(parent) = mf.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
-        let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
-        if merged == existing && mf.path.exists() {
-            continue;
-        }
-        std::fs::write(&mf.path, merged).map_err(|e| {
-            CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display()))
-        })?;
+        write_managed(mf)?;
     }
 
     report_success(&surface, json, sel, mode, already_initialized);
@@ -424,6 +423,99 @@ fn report_usage_error(msg: &str, json: bool) {
         return;
     }
     eprintln!("{} {msg}", style("✗").red().bold());
+}
+
+/// Refresh agent files only. Never touch dif/ content.
+/// Skills and dif.mdc are dif-owned, so no --force.
+fn run_agents_only(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
+    if is_home_dir(cwd) {
+        report_home_dir_refusal(json);
+        return Ok(ExitCode::from(2));
+    }
+    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+        Ok(sel) if sel != AgentSelection::NONE => sel,
+        Ok(_) => {
+            report_usage_error("--agents-only needs at least one agent target", json);
+            return Ok(ExitCode::from(2));
+        }
+        Err(msg) => {
+            report_usage_error(msg, json);
+            return Ok(ExitCode::from(2));
+        }
+    };
+    if !cwd.join(paths::CONFIG_FILE).exists() {
+        report_not_initialized(json);
+        return Ok(ExitCode::from(2));
+    }
+
+    let mut owned: Vec<(PathBuf, String)> = Vec::new();
+    if sel.claude {
+        owned.extend(agent_skill_files(cwd));
+    }
+    if sel.cursor {
+        owned.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
+    }
+
+    let mut updated: Vec<String> = Vec::new();
+    for (path, content) in owned.iter().filter(|(p, c)| !file_matches(p, c)) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content).map_err(|e| {
+            CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
+        })?;
+        updated.push(relative(cwd, path));
+    }
+    for mf in agent_merge_files(cwd, sel) {
+        if write_managed(&mf)? {
+            updated.push(relative(cwd, &mf.path));
+        }
+    }
+
+    report_agents_refresh(&updated, json);
+    Ok(ExitCode::from(0))
+}
+
+/// Forward slashes keep JSON the same on Windows.
+fn relative(cwd: &Path, path: &Path) -> String {
+    path.strip_prefix(cwd)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn report_not_initialized(json: bool) {
+    if json {
+        let payload = serde_json::json!({ "ok": false, "error": "not_initialized" });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    eprintln!(
+        "{} no dif/config.yaml here; run `dif init` first",
+        style("✗").red().bold()
+    );
+}
+
+fn report_agents_refresh(updated: &[String], json: bool) {
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "mode": "agents_only",
+            "updated": updated,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    let check = style("✓").green().bold();
+    if updated.is_empty() {
+        println!(
+            "{check} agent files already match dif v{}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+    for path in updated {
+        println!("{check} refreshed {path}");
+    }
 }
 
 /// The relative paths `dif init` writes for a given surface, events mode, and
@@ -828,6 +920,22 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
     out
 }
 
+/// Merge dif's block into one co-owned file.
+/// Returns true when the file changed.
+fn write_managed(mf: &ManagedFile) -> Result<bool, CmdError> {
+    if let Some(parent) = mf.path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
+    let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
+    if merged == existing && mf.path.exists() {
+        return Ok(false);
+    }
+    std::fs::write(&mf.path, merged)
+        .map_err(|e| CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display())))?;
+    Ok(true)
+}
+
 /// The co-owned agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
 /// and a legacy .cursorrules that already has a dif block), each carrying dif's
 /// guidance inside a managed block stamped with the crate version so a user can
@@ -1022,6 +1130,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1071,6 +1180,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1102,6 +1212,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1125,6 +1236,7 @@ mod tests {
                 agents: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1175,6 +1287,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Custom,
             true,
@@ -1216,6 +1329,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1247,6 +1361,7 @@ mod tests {
             key: None,
             force: true,
             no_agent_files: false,
+            agents_only: false,
         };
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
@@ -1318,6 +1433,7 @@ mod tests {
                 key: None,
                 force: true,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1357,6 +1473,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1388,6 +1505,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1421,6 +1539,7 @@ mod tests {
                 key: None,
                 force: true,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1508,6 +1627,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1534,6 +1654,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::General, AgentTarget::Cursor]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1562,6 +1683,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::None]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1591,6 +1713,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::None, AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1891,6 +2014,7 @@ mod tests {
             key: None,
             force: false,
             no_agent_files: false,
+            agents_only: false,
         }
     }
 
@@ -2059,5 +2183,115 @@ mod tests {
             .filter_map(|marker| after_open.find(marker))
             .min()
             .map(|end| &after_open[..end])
+    }
+
+    // -- --agents-only refresh ---------------------------------------------
+
+    fn agents_only_args() -> Args {
+        Args {
+            agents_only: true,
+            ..default_args()
+        }
+    }
+
+    fn init_workspace() -> tempfile::TempDir {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        tmp
+    }
+
+    #[test]
+    fn agents_only_refreshes_skills_and_keeps_workspace() {
+        let tmp = init_workspace();
+        let skill = tmp
+            .path()
+            .join(".claude/skills/dif-conclude-experiment/SKILL.md");
+        std::fs::write(&skill, "old skill").unwrap();
+        let config = tmp.path().join(paths::CONFIG_FILE);
+        std::fs::write(&config, "project: mine\n").unwrap();
+        let surface = tmp.path().join(paths::SURFACES_DIR).join("home.md");
+        std::fs::write(&surface, "## Learnings\n\n- 2026-10-01 - x: kept\n").unwrap();
+
+        let code = run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
+
+        assert_eq!(code, ExitCode::from(0));
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), SKILL_CONCLUDE);
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "project: mine\n");
+        assert!(std::fs::read_to_string(&surface)
+            .unwrap()
+            .contains("x: kept"));
+    }
+
+    #[test]
+    fn agents_only_keeps_user_text_around_the_block() {
+        let tmp = init_workspace();
+        let claude = tmp.path().join("CLAUDE.md");
+        let existing = std::fs::read_to_string(&claude).unwrap();
+        std::fs::write(&claude, format!("My notes.\n\n{existing}")).unwrap();
+
+        run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
+
+        let after = std::fs::read_to_string(&claude).unwrap();
+        assert!(after.starts_with("My notes."));
+        assert_eq!(after.matches(MD_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn agents_only_needs_an_initialized_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let code = run_agents_only(tmp.path(), agents_only_args(), true).expect("run");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(!tmp.path().join("CLAUDE.md").exists());
+        assert!(!tmp.path().join(".claude").exists());
+    }
+
+    #[test]
+    fn agents_only_honours_the_agent_selection() {
+        let tmp = init_workspace();
+        let skill = tmp
+            .path()
+            .join(".claude/skills/dif-conclude-experiment/SKILL.md");
+        std::fs::write(&skill, "old skill").unwrap();
+        std::fs::remove_file(tmp.path().join("AGENTS.md")).unwrap();
+        let args = Args {
+            agents: Some(vec![AgentTarget::General]),
+            ..agents_only_args()
+        };
+
+        run_agents_only(tmp.path(), args, true).expect("refresh");
+
+        assert!(tmp.path().join("AGENTS.md").exists());
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), "old skill");
+    }
+
+    #[test]
+    fn agents_only_rejects_agents_none() {
+        let tmp = init_workspace();
+        let args = Args {
+            agents: Some(vec![AgentTarget::None]),
+            ..agents_only_args()
+        };
+        let code = run_agents_only(tmp.path(), args, true).expect("run");
+        assert_eq!(code, ExitCode::from(2));
+    }
+
+    #[test]
+    fn agents_only_conflicts_with_workspace_flags() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        for flag in ["--force", "--surface=x", "--events=cloud", "--key=dif_pk_x"] {
+            let err = Cli::try_parse_from(["dif-init", "--agents-only", flag])
+                .err()
+                .unwrap_or_else(|| panic!("{flag} should conflict"));
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{flag}"
+            );
+        }
     }
 }

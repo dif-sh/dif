@@ -267,6 +267,12 @@ four. `--agents none` writes no agent files (the former `--no-agent-files`,
 now a hidden alias). A dif block left in `.cursorrules` by an older dif is
 refreshed; a new `.cursorrules` is never created.
 
+After you upgrade dif, run `dif init --agents-only` to get the new skills and
+agent guidance. It rewrites the `.claude/skills/dif-*` skills and
+`.cursor/rules/dif.mdc`, and refreshes the managed blocks. It never touches
+`dif/`, so your config, surfaces and learnings stay as they are. Combine it
+with `--agents` to refresh a subset.
+
 The same skills, plus a `dif-docs` reference skill, install into Codex,
 Cursor, Copilot, and the other agents the [skills CLI](https://skills.sh)
 supports, without running `dif init` first:
