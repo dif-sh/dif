@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation = "https://www.dif.sh/docs/"
+readme = "../../../README.md"
+keywords = ["feature-flags", "ab-testing", "experimentation", "cli", "git"]
+categories = ["command-line-utilities", "development-tools"]
 rust-version.workspace = true
 description = "The dif.sh CLI — experiments live in the repo."
 

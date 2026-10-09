@@ -1,7 +1,7 @@
 {
   "name": "@dif.sh/flags-sdk",
   "version": "0.6.3",
-  "description": "Vercel Flags SDK adapter for dif.sh — assigns variants from dif/generated/client.ts.",
+  "description": "Vercel Flags SDK adapter for dif feature flags and A/B tests. Assigns variants from dif/generated/client.ts.",
   "keywords": [
     "flags-sdk",
     "vercel",
@@ -9,7 +9,11 @@
     "feature-flags",
     "ab-testing",
     "experimentation",
-    "flags-as-code"
+    "flags-as-code",
+    "feature-toggles",
+    "feature-management",
+    "nextjs",
+    "typescript"
   ],
   "homepage": "https://www.dif.sh/docs/",
   "bugs": {

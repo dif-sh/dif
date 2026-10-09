@@ -21,6 +21,10 @@
   <img alt="signup" src="https://img.shields.io/badge/signup-not%20required-CBF56C?style=for-the-badge&labelColor=0F2E29">
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Terminal recording: dif init scaffolds dif/, dif new drafts two experiments on the home surface, dif build exits 1 with error E007 because they collide, and passes once both files share an exclusion_group" width="900">
+</p>
+
 ---
 
 ## Contents
@@ -284,8 +288,9 @@ gate the code path, and run `dif validate` to check its own work.
 
 You can run dif with no analytics at all. Assignment is local, so flags and
 ramps work with nothing configured. Cloud mode is opt-in too: without a
-publishable key, dif records nothing to Cloud until you run `dif connect` —
-no warning, just silence.
+publishable key, dif records nothing to Cloud until you run `dif connect`.
+The SDK logs one console warning that exposures and `track()` will be dropped,
+and flags still evaluate.
 
 When you want more analysis, connect to dif.sh Cloud. Copy the command from
 cloud onboarding and run it in your repo:
