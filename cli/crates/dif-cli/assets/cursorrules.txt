@@ -72,6 +72,8 @@ Bad: "Inconclusive."
 # Where to go deeper
 
 .claude/skills/dif-author-experiment/   full authoring workflow + references
-.claude/skills/dif-conclude-experiment/ pre-conclude checklist + Decision writing
+.claude/skills/dif-conclude-experiment/ get dif cloud results, check the verdict, write the Decision
+.claude/skills/dif-triage-experiments/  act on every experiment the dif cloud overview flags (ramp, turn off, conclude)
 .claude/skills/dif-generate-surfaces/   for fresh repos: propose the initial set of surfaces from app context
+https://dif.sh/docs/mcp/                connect dif cloud over MCP or a read token (DIF_TOKEN)
 https://dif.sh/docs                     full documentation

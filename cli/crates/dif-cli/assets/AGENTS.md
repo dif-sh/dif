@@ -78,7 +78,9 @@ Bad: `"Inconclusive."`
 
 ## Where to go deeper
 
-- `.claude/skills/dif-author-experiment/` — full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
-- `.claude/skills/dif-conclude-experiment/` — pre-conclude checklist + how to write Decisions that become useful Learnings.
-- `.claude/skills/dif-generate-surfaces/` — for fresh repos: read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
-- https://dif.sh/docs — full documentation.
+- `.claude/skills/dif-author-experiment/`: full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
+- `.claude/skills/dif-conclude-experiment/`: get the result from dif cloud, check the verdict, and write a Decision that becomes a useful Learning.
+- `.claude/skills/dif-triage-experiments/`: review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR per experiment in autonomous mode.
+- `.claude/skills/dif-generate-surfaces/`: for fresh repos, read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
+- https://dif.sh/docs/mcp/: connect dif cloud over MCP or with a read token in `DIF_TOKEN`. The conclude and triage skills need one of them.
+- https://dif.sh/docs: full documentation.

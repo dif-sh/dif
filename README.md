@@ -71,11 +71,12 @@ dif build                               # generate the TS client + context.json
 `.claude/skills/`, so you can drive the same loop in plain English and let the
 agent run the commands:
 
-| Skill | Ask for |
-| --- | --- |
-| `dif-generate-surfaces` | *"Set up dif surfaces for this app"* — reads your routes and pages, proposes the surface set, writes the files |
-| `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* — drafts the frontmatter, picks weights, runs `dif validate` |
-| `dif-conclude-experiment` | *"Conclude checkout-cta-v2, variant won, ship it"* — writes the decision, archives the file, logs the learning |
+| Skill | Ask for | What it does |
+| --- | --- | --- |
+| `dif-generate-surfaces` | *"Set up dif surfaces for this app"* | Reads your routes and pages, proposes the surface set, writes the files |
+| `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* | Drafts the frontmatter, picks weights, runs `dif validate` |
+| `dif-conclude-experiment` | *"Conclude checkout-cta-v2"* | Gets the result from dif.sh Cloud, writes the decision from its numbers, archives the file, logs the learning |
+| `dif-triage-experiments` | *"Triage my experiments"* | Reads the dif.sh Cloud overview, then ramps, turns off or concludes each experiment that needs action, one PR each |
 
 `dif new` drafts the file with your git email as owner. Open it, write the
 hypothesis, set `status: active`, and run `dif build`. Then install the
@@ -254,7 +255,8 @@ the same failed idea does not get rebuilt by someone new in two years.
 `dif init` merges a managed block into `CLAUDE.md`, `AGENTS.md`, and
 `.github/copilot-instructions.md`, writes a Cursor project rule to
 `.cursor/rules/dif.mdc`, and installs Claude Code skills for authoring
-experiments, concluding them, and generating surfaces. `dif build` writes
+experiments, concluding them, triaging them from dif.sh Cloud results, and
+generating surfaces. `dif build` writes
 `dif/context.json`: every active experiment, plus the most recent learning on
 each surface. Re-running `dif init` is safe: when the files dif owns already
 match, it exits 0 and only refreshes the managed blocks.
@@ -280,6 +282,11 @@ supports, without running `dif init` first:
 ```sh
 npx skills add dif-sh/dif
 ```
+
+The conclude and triage skills read results from dif.sh Cloud, through its
+MCP server at `https://cloud.dif.sh/mcp` or a read token in the `DIF_TOKEN`
+environment variable. The `dif` CLI itself makes no network calls. See
+[MCP and API](https://dif.sh/docs/mcp/).
 
 This is the part a dashboard cannot do. In dif the flags are
 files, so the agent reads them like any other source and writes them the same
