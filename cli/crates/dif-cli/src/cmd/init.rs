@@ -407,6 +407,10 @@ fn report_collisions(paths: &[&Path], json: bool) {
         eprintln!("    {}", path.display());
     }
     eprintln!();
+    eprintln!(
+        "to refresh only skills and agent files, run {}.",
+        style("dif init --agents-only").bold()
+    );
     eprintln!("re-run with {} to overwrite.", style("--force").bold());
 }
 
