@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/sdk",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Zero-dependency runtime for dif feature flags and A/B tests. Assigns variants locally by hashing the user ID, and records exposures and metric events.",
   "license": "MIT",
   "type": "module",
