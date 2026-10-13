@@ -40,7 +40,7 @@ dif/context.json                            agent-facing summary of active exper
 | `dif validate` | Schema, weights, audience, exclusion checks. Exit 1 on any error. |
 | `dif build` | Compile to `dif/generated/client.ts` + `dif/context.json`. Runs validate first. |
 | `dif qa --user <id>` | Trace a user's assignment chain (debugging). |
-| `dif conclude <id> --decision "<text>"` | Atomic: move to `concluded/`, fill the Decision block, append one line to the surface's Learnings log. |
+| `dif conclude <id> --decision "<text>"` | One step: move to `concluded/`, fill the Decision block, append one line to the surface's Learnings log. |
 
 Plus `dif scaffold-audiences` to pull in starter audience resolvers into an existing project.
 
