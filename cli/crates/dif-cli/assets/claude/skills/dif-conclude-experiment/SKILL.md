@@ -19,7 +19,7 @@ Do the steps in order. Do not skip a step.
 4. Get the results for this id from dif cloud:
    - MCP: call `get_experiment_results` with `repo` and `experiment: "<id>"`.
    - REST: run the results `curl` line in `references/cloud-api.md`, section 4.
-5. Note these fields: `verdict`, `reasons`, `decision_draft`, `caveats`, `next_action`, `primary`, `days_live` and `meta.analysis_computed_at`.
+5. Note these fields: `verdict`, `reasons`, `decision_draft`, `caveats`, `next_action`, `primary`, `days_live`, `window_days` and `meta.analysis_computed_at`.
 6. If the call fails, follow the error table in `references/cloud-api.md`, section 9. If you still have no results, ask the user for access or for the numbers from the dif cloud UI. If they give you numbers, follow "Without dif cloud". Never invent numbers.
 
 ## Step 2. Check the verdict
@@ -60,13 +60,13 @@ If `caveats` has a line that starts with `Analysis is`, the analysis is old. Tel
 1. If `decision_draft` is not `null`, start from it. Copy it exactly. Keep every number, sign, interval, p-value, day count and the guardrail text.
 2. You can add context at the end of the same line, for example what ships or what to test next.
 3. Do not round, remove or change a number. Do not write "Guardrails clean" unless the draft says it.
-4. If `decision_draft` is `null` (an override, or no dif cloud), write one line in this shape: `<outcome>. <variant> <lift>% <metric> (95% CI <low>% to <high>%) over <days>d. Next: <next move>.` Take every number from `primary` and `days_live`, or from the user. Put a sign on each number, for example `+0.9%` or `-0.6%`.
+4. If `decision_draft` is `null` (an override, or no dif cloud), write one line in this shape: `<outcome>. <variant> <lift>% <metric> (95% CI <low>% to <high>%) over <days>d. Next: <next move>.` Take every number from `primary` and `window_days` (the days since the last weight change), or from the user. Put a sign on each number, for example `+0.9%` or `-0.6%`.
 5. Keep the Decision to one line. Its first line becomes the Learning.
 
 Good Decisions:
 
 - `Shipped variant_a. +2.1% completed_checkout (95% CI +0.8% to +3.4%), p=0.004 over 14d. Guardrails: refund_rate clean.`
-- `Killed. variant_a regressed refund_rate +4.2% (99% CI +1.1% to +7.3%) over 3d.`
+- `Killed. variant_a regressed refund_rate +4.2% (p<0.001) over 3d.`
 - `Inconclusive after 42d. variant_a +0.4% completed_checkout (95% CI -1.2% to +2.0%). No effect larger than ±2.0% likely. Next: re-run on a higher-traffic surface or abandon.`
 - `Concluded early by owner request; not significant. variant_a +0.9% completed_checkout (95% CI -0.6% to +2.4%) over 6d. Next: re-test the copy with dif new --from checkout-cta-v2.`
 
