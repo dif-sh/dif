@@ -89,7 +89,7 @@ Bad Decisions:
    dif conclude <id> --decision '<Decision>' --json
    ```
 
-   If `dif` is not on the PATH, use `npx dif` in place of `dif`.
+   If `dif` is not on the PATH, use `npx @dif.sh/cli` in place of `dif`. Never use `npx dif`: it can run a different npm package.
 
 5. Always pass `--decision`. Without it, `dif conclude` tries to open `$EDITOR`. An agent has no terminal, so the command fails with `no --decision given and stdin is not a terminal`.
 6. Read the JSON output. Example:

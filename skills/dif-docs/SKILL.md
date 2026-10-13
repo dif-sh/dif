@@ -12,11 +12,11 @@ dif keeps each feature flag or A/B experiment as one `.md` file under `dif/exper
 ```sh
 npm install -D @dif.sh/cli          # or: curl -fsSL https://dif.sh/install.sh | sh
 npm install @dif.sh/sdk
-npx dif init                        # scaffolds dif/, config, agent files
-npx dif new new-checkout --surface home
+npx @dif.sh/cli init                        # scaffolds dif/, config, agent files
+npx @dif.sh/cli new new-checkout --surface home
 # edit dif/experiments/active/new-checkout.md: variants, weights, status: active
-npx dif validate
-npx dif build
+npx @dif.sh/cli validate
+npx @dif.sh/cli build
 ```
 
 `dif/generated/` is gitignored, so add `"prebuild": "dif build"` (and `"predev": "dif build"`) to `package.json`, or CI and deploys ship without a client.
@@ -76,4 +76,4 @@ const checkout = dif("new-checkout", {
 
 ## Workflow skills
 
-Install the workflow skills with `npx skills add dif-sh/dif`: `dif-author-experiment` (draft and validate a flag or experiment), `dif-conclude-experiment` (get the result from dif cloud, check the verdict, record the decision and archive), `dif-triage-experiments` (review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR each in autonomous mode), `dif-generate-surfaces` (propose `dif/surfaces/` from the app's routes). `dif init` also writes them into `.claude/skills/`. The conclude and triage skills read dif cloud through its MCP server at `https://cloud.dif.sh/mcp` or a read token in `DIF_TOKEN`. Setup: https://dif.sh/docs/mcp.md
+Install the workflow skills with `npx skills add dif-sh/dif`: `dif-author-experiment` (draft and validate a flag or experiment), `dif-conclude-experiment` (get the result from dif cloud, check the verdict, record the decision and archive), `dif-triage-experiments` (review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR each in autonomous mode), `dif-generate-surfaces` (propose `dif/surfaces/` from the app's routes). `dif init` also writes them into `.claude/skills/`. The conclude and triage skills read dif cloud through its MCP server at `https://cloud.dif.sh/mcp` (set up with a read token) or a read token in `DIF_TOKEN`. Setup: https://dif.sh/docs/mcp.md
