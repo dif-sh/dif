@@ -12,28 +12,28 @@
 class Dif < Formula
   desc "Feature flags and A/B tests as Markdown files in your repo"
   homepage "https://dif.sh"
-  version "0.6.3"
+  version "0.7.0"
   license "MIT"
 
   on_macos do
     on_arm do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-apple-darwin.tar.gz"
-      sha256 "8388886b966bb6f34392f4eae00d4958dc5c5c19bbb6598605e89f6db2227af2"
+      sha256 "ff1a2a2f771f062c06dd7895e83ecc924ab631587678e169a242f6cc53340158"
     end
     on_intel do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-apple-darwin.tar.gz"
-      sha256 "2420b2fd875b0b56e256006ba2a2c6687bd6715b3537cfbf643cb9fe05b0f010"
+      sha256 "dd2835637937247a98dcbd2ad8ed4019c7f9f34e81defb539d49d3baa0666616"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-x86_64-unknown-linux-musl.tar.gz"
-      sha256 "2da4721676b6d284187c78811f9fef00530d3cc97895ebd57d061bd458a9cab3"
+      sha256 "d925bd88238171cdc59e26d8650852714dd84439fe00c869f8e5aea99f28b857"
     end
     on_arm do
       url "https://github.com/dif-sh/dif/releases/download/v#{version}/dif-aarch64-unknown-linux-musl.tar.gz"
-      sha256 "48538134d98921b79b6031b6f53448c31edf73a197d3dd61bbfa38d6f58e818a"
+      sha256 "350b4819f251238250a04c2a34604ba0aa0feff550c4462190c4dccf96714159"
     end
   end
 
