@@ -288,8 +288,8 @@ npx skills add dif-sh/dif
 ```
 
 The conclude and triage skills read results from dif.sh Cloud, through its
-MCP server at `https://cloud.dif.sh/mcp` or a read token in the `DIF_TOKEN`
-environment variable. The `dif` CLI itself makes no network calls. See
+MCP server at `https://cloud.dif.sh/mcp` (set up with a read token) or a read
+token in the `DIF_TOKEN` environment variable. The `dif` CLI itself makes no network calls. See
 [MCP and API](https://dif.sh/docs/mcp/).
 
 This is the part a dashboard cannot do. In dif the flags are

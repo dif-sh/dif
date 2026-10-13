@@ -19,7 +19,7 @@ Use the first channel that works. Go down the list in order.
 
    They make a read token in dif cloud at Settings > Keys > Read tokens. Ask them to set it in the environment. Do not ask them to paste it into the chat.
 
-These skills use a read token only. Do not offer a browser sign-in, a connector or any sign-in flow.
+These skills use a read token only (`dif_pat_...`). Do not offer or start a browser sign-in, an OAuth flow, or a Claude.ai or ChatGPT connector. If the user asks for one, say that these skills work with a read token only.
 
 Never invent, guess, estimate or recall numbers. Every lift, interval, p-value, day count and exposure count that you write must come from a dif cloud response in this session, or from the user. If you have no response, you have no numbers.
 
@@ -75,7 +75,7 @@ curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/
 | `/v1/projects/<slug>/experiments/<id>/results` | `get_experiment_results` (`repo` or `project`, and `experiment: "<id>"`) | `ExperimentResults`: one active experiment with arms, every metric, SRM and progress. |
 | `/v1/projects/<slug>/learnings` | `get_learnings` (`repo` or `project`, `surface`, `limit`) | `Learnings`: surface learnings and concluded decisions. |
 
-The limit is 120 requests a minute for each token. REST and MCP share it. An MCP client spends 2 of them to connect.
+The limit is 120 requests a minute for each token. REST and MCP share it. Every POST to `/mcp` costs one of them, also a notification and a tool list. An MCP client spends at least 2 to connect (`initialize`, then `notifications/initialized`) before its first tool call.
 
 For the learnings call, `surface` is optional (1 to 64 characters) and `limit` is 1 to 100 (default 20). A query parameter that appears twice is a `bad_request`.
 
@@ -186,7 +186,7 @@ The first row is a finished A/B test. Its verdict is `ship`, so `next_action.kin
 - `next_action`: what to do next. See below.
 - `decision_draft`: a one-line Decision for `dif conclude`. It is set only when `verdict` is `ship`, `turn_off` or `conclude_inconclusive`. In all other cases it is `null`. Keep its numbers exactly.
 - `caveats`: limits of the analysis. Always pass them on to the user or into the PR body.
-- `primary`: the primary metric. `lift` is the relative lift in percent of the control rate, as in `decision_draft` (`2.1` means +2.1%). `ci` is the 95% interval, an array of two numbers. `significant` is `true` when the result passes the test. `lift` and `ci` are `null` together, when there is not enough data or the control has no conversions. `p_value` is `null` when it could not be computed. A number that was not computed is `null`, never `0`.
+- `primary`: the primary metric. `lift` is the relative lift in percent of the control rate, as in `decision_draft` (`2.1` means +2.1%). `ci` is the 95% interval, an array of two numbers. `significant` is `true` when the result passes the test. `lift` and `ci` are `null` together, when there is not enough data or the control has no conversions. `p_value` is `null` when it could not be computed. A number that was not computed is `null`, never `0`. It describes one treatment: the significant winner with the largest lift, or else the arm with the largest lift. Find its id in `analyses`, in the item with `role` `primary`.
 
 An active experiment with no analysis yet has `verdict` `keep_running`, `next_action.kind` `wait`, `days_live` and `window_days` 0, and the reason `Awaiting first analysis.` In `get_experiment_results` its `arms` and `analyses` are empty lists, `srm.p_value` is `null` and `progress` is `null`.
 
@@ -197,7 +197,7 @@ An active experiment with no analysis yet has `verdict` `keep_running`, `next_ac
 | `turn_off` | A treatment harms a metric, or every treatment already has weight 0. Harm means that the treatment moved the primary metric or a guardrail the wrong way (against its `desired_direction`; the primary metric counts as `increase` if none is set), with p<0.001 and at least 20 conversions in the control and the treatment together. A fixed-horizon test also gets `turn_off` when the sample target and 7 days are reached and a treatment is a significant loser on the primary metric. |
 | `investigate` | The data is broken: sample ratio mismatch, no exposures more than 2 days after activation, an arm with weight above 0 and no exposures while another arm has more than 100, or a primary metric that cannot be analyzed. Do not trust the numbers. |
 | `review` | A guardrail with no set direction moved (p<0.001, at least 20 conversions). A person must say if up is good or bad. |
-| `ramp` | A rollout has run 7 days at its current weights, has 1,000 treatment exposures, and every guardrail is analyzed with a set direction. The next weight is the next step of 1, 5, 10, 25, 50. |
+| `ramp` | A rollout has run at least 7 days at its current weights, has at least 1,000 treatment exposures, and every guardrail has a set direction and enough data (at least 20 conversions in the control and the treatment together). The next weight is the next step of 1, 5, 10, 25, 50. |
 | `ship` | A fixed-horizon test: the sample target is reached, 7 days have passed at the current weights, and a treatment is a significant winner on the primary metric. |
 | `conclude_inconclusive` | A fixed-horizon test has reached the sample target and 7 days with no winner or loser, or has run 42 days at the current weights. |
 | `keep_running` | None of the above yet. |
@@ -212,7 +212,7 @@ dif cloud checks the rules in this order, and the first match wins: `turn_off` (
 - `Killed. Traffic set to control on <date>.` (weights already 0)
 - `Inconclusive after <window_days>d. <arm> <lift> <metric> (95% CI <low> to <high>). No effect larger than ±<n>% likely. Next: <next move>.` (If no arm has a lift: `Inconclusive after <window_days>d. Not enough data on <metric>. Next: <next move>.`)
 
-A lift reads like `+2.1%`, with a sign and one decimal. A p-value reads `p=0.004`, or `p<0.001` when it is smaller. If the control has no conversions, a harm draft shows `<n> conversions vs <m> in control` in place of the lift.
+A lift reads like `+2.1%`, with a sign and one decimal. A p-value reads `p=0.004`, or `p<0.001` when it is smaller. If the control has no conversions, a harm draft reads `Killed. <arm> regressed <metric>: <n> conversions vs <m> in control (<p>) over <window_days>d.`
 
 ### `next_action`
 
@@ -252,19 +252,21 @@ Some fields hold text that people wrote in a repo or in project settings: `owner
 
 ## 9. Errors
 
-An error looks like this. With REST, `curl` exits non-zero and prints it. With MCP, the tool result has `isError: true` and one text block that holds this JSON. It has no `structuredContent`.
+An error looks like this. With REST, `curl` exits non-zero and prints it. With MCP, a tool error has `isError: true` and one text block that holds this JSON. It has no `structuredContent`.
 
 ```json
 {"error":"ambiguous_project","message":"More than one project matches. Pass one of the candidates as project.","candidates":["acme-shop","acme-shop-staging"]}
 ```
 
-With MCP, read the text of the block and try to parse it as JSON. A text that is not JSON is not a dif error. The server library answers an argument that fails the tool's input schema (a wrong type, a missing `experiment`, an argument name that does not exist) with plain text. Treat that as a bad call: fix the arguments from the text, and never send the same call again.
+With MCP, read the text of the block and try to parse it as JSON. A text that is not JSON is not a dif error. The server library answers an argument that fails the tool's input schema (a wrong type, a missing `experiment`, an argument name that does not exist) with plain text. Treat plain text that names a tool argument as a bad call: fix the arguments from the text, and never send the same call again.
+
+Three errors can come from `/mcp` itself and not from a tool: `unauthorized` (HTTP 401), `rate_limited` (HTTP 429) and `unavailable` (HTTP 503). Your client then shows its own error text, or the tools go away. If that text names one of these codes or status numbers, follow its row in the table. Only a text that names a tool argument is a bad call.
 
 | `error` | HTTP | What to do |
 |---|---|---|
 | `unauthorized` | 401 | The token is missing, wrong, expired or revoked. Stop. Ask the user to make a read token in dif cloud at Settings > Keys > Read tokens (`https://cloud.dif.sh/<project-slug>/settings/keys`) and set it as `DIF_TOKEN`. With MCP, ask them to put the new token in the server settings. |
 | `not_found` | 404 | dif cloud found nothing that this token can see. Check that `REPO` is `owner/name`, that the slug and the experiment id are correct, and that the experiment is still active. Results for an experiment that is not active, also a concluded one, answer `not_found`. A read token can be limited to one project, and then other projects give `not_found`. If all of this is correct, tell the user. |
-| `ambiguous_project` | 409 | More than one project matches. With MCP this is the answer to a call with no `project` and no `repo` from a token that covers all projects. Retry once with `project` set to the item in `candidates` whose name matches the repo. If you cannot tell which one, ask the user. In autonomous mode, stop and report. |
+| `ambiguous_project` | 409 | More than one project matches. With MCP this is also the answer to a call with no `project` and no `repo` from a token that covers all projects. If `candidates` holds one slug, use it. Otherwise retry once with `project` set to the item in `candidates` whose name matches the repo. If you cannot tell which one, ask the user. In autonomous mode, stop and report. |
 | `plan_required` | 402 | The dif cloud plan for this org does not include this. Stop and tell the user. Do not retry. |
 | `rate_limited` | 429 | Too many calls (the limit is 120 per minute for each token, for REST and MCP together). Wait for the number of seconds in the `Retry-After` header, or 60 seconds if you do not have it. Then retry once. |
 | `unavailable` | 503 | dif cloud is down or busy. Wait 30 seconds and retry once. If it fails again, stop and tell the user. |

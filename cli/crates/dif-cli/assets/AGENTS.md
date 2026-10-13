@@ -73,7 +73,7 @@ A good experiment has: a one-sentence falsifiable hypothesis, named variants wit
 
 The `--decision` you pass to `dif conclude` becomes the next line in the surface's `## Learnings` log, which `dif new` embeds into every future draft on the same surface. Write it like the next person reads it cold: one signed-and-dated outcome line.
 
-Good: `"Shipped variant_a. +2.1% checkout conversion, p<0.01 over 14d."`
+Good: `"Shipped variant_a. +2.1% completed_checkout (95% CI +0.8% to +3.4%), p=0.004 over 14d. Guardrails: refund_rate clean."`
 Bad: `"Inconclusive."`
 
 ## Where to go deeper
@@ -82,5 +82,5 @@ Bad: `"Inconclusive."`
 - `.claude/skills/dif-conclude-experiment/`: get the result from dif cloud, check the verdict, and write a Decision that becomes a useful Learning.
 - `.claude/skills/dif-triage-experiments/`: review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR per experiment in autonomous mode.
 - `.claude/skills/dif-generate-surfaces/`: for fresh repos, read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
-- https://dif.sh/docs/mcp/: connect dif cloud over MCP or with a read token in `DIF_TOKEN`. The conclude and triage skills need one of them.
+- https://dif.sh/docs/mcp/: connect dif cloud with a read token, over MCP or as `DIF_TOKEN` for REST. The conclude and triage skills need one of them.
 - https://dif.sh/docs: full documentation.
