@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/flags-sdk",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Vercel Flags SDK adapter for dif feature flags and A/B tests. Assigns variants from dif/generated/client.ts.",
   "keywords": [
     "flags-sdk",
@@ -57,7 +57,7 @@
     "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "peerDependencies": {
-    "@dif.sh/sdk": "^0.6.3"
+    "@dif.sh/sdk": "^0.7.0"
   },
   "devDependencies": {
     "@dif.sh/sdk": "file:../sdk",

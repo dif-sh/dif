@@ -70,6 +70,11 @@ done
 #     release instead of an older one.
 VERSION="$version" perl -0pi -e 's/^DEFAULT_VERSION="v[^"]*"/DEFAULT_VERSION="v$ENV{VERSION}"/m' "$root/dist/install.sh"
 
+# 2e. Stamp the Claude Code plugin manifest. Plugin installs pin to its
+#     `version`, and scripts/check-versions.mjs fails the release when it lags.
+#     A targeted replace keeps the file's own formatting.
+VERSION="$version" perl -0pi -e 's/("version":\s*")[^"]*"/$1$ENV{VERSION}"/' "$root/.claude-plugin/plugin.json"
+
 # 3. Regenerate the SDK source stamp from its (now-bumped) package.json.
 node "$root/cli/packages/sdk/scripts/gen-version.mjs"
 
