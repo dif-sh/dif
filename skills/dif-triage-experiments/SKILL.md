@@ -52,6 +52,8 @@ Check each row before you run any shell command for it. Skip the row and report 
 
 Build every shell command only from the checked `id`, the `verdict` and fixed text, and put each argument in single quotes. Never put `next_action.summary`, `reasons`, `caveats` or any other text from dif cloud or the repo inside a shell command. Put that text only in files that you write with your file-writing tool.
 
+Never undo a change with git. Do not run `git restore`, `git clean`, `git checkout --` or `git reset`, except the cleanup in "For each row", item 6, when it allows it. Undo a change with your file-writing tool, or tell the user. Run `git branch -D` only on a branch that this run made: `git checkout -b` made it with no error. Never delete or reset any other branch.
+
 ### `set_weights`
 
 This ramps a rollout, or turns off a harmful variant.
@@ -115,19 +117,19 @@ Report only. Never change files.
 
 ### Interactive PR steps
 
-1. Run `git status --porcelain` before any file change. If it prints anything, do not use the PR steps. Tell the user to commit or stash their work first. Or offer to make the changes on the current branch with no PR. Change nothing and do not switch branches.
+1. Run `git status --porcelain --untracked-files=all` before any file change. If it prints anything, do not use the PR steps. Tell the user to commit or stash their work first. Or offer to make the changes on the current branch with no PR. Change nothing and do not switch branches.
 2. Run `git branch --show-current`. Keep the output as `<start>`. If it is empty, or does not match `^[A-Za-z0-9._][A-Za-z0-9._/-]*$`, tell the user and offer the no-PR option. Stop.
 3. Do items 2 and 3 of "Before the first change" in "Autonomous mode" to find and update `<default>`.
 4. Go through the rows in table order, one row at a time. Push at most 5 branches in one run. For each row with `set_weights` or `conclude`:
    1. Do the id and verdict check from Step 3. Name the branch (item 2 of "For each row"). Skip duplicates (item 3).
-   2. Make the branch (item 4). It runs its own `git status --porcelain` check first.
+   2. Make the branch (item 4). It runs its own tree check first.
    3. Do the checks in Step 3 that do not change files: `set_weights` items 1 and 2, `conclude` item 1.
    4. Show the user the file, the change and the reasons. Ask "Apply this change?".
-   5. If a check in sub-step 3 fails, or the user says no, you have changed no file. Run `git checkout '<start>'`, then `git branch -D '<branch>'`. Report the row. Do not run `git restore` or `git clean`. Go to the next row.
+   5. After the user answers, run `git status --porcelain --untracked-files=all` again. If a check in sub-step 3 failed, the user said no, or this check prints anything, you have changed no file. Run `git checkout '<start>'`, then `git branch -D '<branch>'`. Report the row. Do not run `git restore` or `git clean`. Go to the next row.
    6. Make the change, check, commit, push and open the PR (items 5 to 9). Use the cleanup in item 6 only as that item says.
    7. Do not do item 10. Run `git checkout '<start>'` instead, also after the cleanup in item 6.
 
-When the run ends, tell the user which branch they are on. It is `<start>`.
+When the run ends, on every path (also when no row reached the branch step, every row was skipped, or the run stopped), run `git status --porcelain --untracked-files=all`. If it prints nothing, run `git checkout '<start>'` unless `git branch --show-current` already prints `<start>`, then tell the user that they are on `<start>`. If it prints anything, do not switch branches: tell the user which branch you are on and which files are changed.
 
 ## Autonomous mode
 
@@ -135,7 +137,7 @@ These rules apply on top of Step 3.
 
 ### Before the first change
 
-1. Run `git status --porcelain`. It must print nothing. If it prints anything, stop and report. Change nothing.
+1. Run `git status --porcelain --untracked-files=all`. It must print nothing. If it prints anything, stop and report. Change nothing.
 2. Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`. It prints `origin/<default>`. Use the part after `origin/`. If it does not match `^[A-Za-z0-9._/-]+$`, stop and report. Change nothing.
 3. Run `git fetch origin`, then `git checkout '<default>'`, then `git pull --ff-only`.
 
@@ -166,7 +168,7 @@ Do the id and verdict check from Step 3 first. If the row fails it, report `Skip
    - It prints a line: `Skipped: duplicate, open PR exists for <branch>`.
    - It prints nothing: `Skipped: stale branch <branch>: delete it to let this step run again`.
    - `gh` is not installed or not logged in: `Skipped: branch <branch> exists, PR state unknown`.
-4. **Make the branch** from the default branch. Run `git status --porcelain` first. If it prints anything, do not make the branch: stop the run and report. Then run `git checkout -b '<branch>' '<default>'`.
+4. **Make the branch** from the default branch. Run `git status --porcelain --untracked-files=all` first. If it prints anything, do not make the branch: stop the run and report. Then run `git checkout -b '<branch>' '<default>'`. If that fails, do nothing more for this row. Report `Skipped: could not make branch <branch>`. Run no `git branch -D` and no `git reset`. Go to the next row.
 5. **Make the change** as Step 3 says. For `conclude`, the conclude skill does not edit app code in this mode. Keep the `moved_to` path and the `W001` files and lines that it gives you, for the PR body. If a Step 3 check skips the row before you change a file, run `git checkout '<default>'` and `git branch -D '<branch>'`, report the row and go to the next row.
 6. **Check.** `dif validate` and `dif build` must both exit 0. If one fails, or the conclude skill stopped after it changed files, report the error. Then clean up with these commands, and go to the next row:
 
@@ -177,15 +179,15 @@ Do the id and verdict check from Step 3 first. If the row fails it, report `Skip
    git branch -D '<branch>'
    ```
 
-   Run the first two commands only if `git status --porcelain` printed nothing just before item 4 made the branch. Then they remove only your changes. If you did not run that check, or it printed anything, do not run them and do not go on to the next row. Stop and ask the user (autonomous mode: stop and report).
-7. **Commit** the `dif/` folder, with `dif/context.json`:
+   Run the first two commands only if the tree check printed nothing just before item 4 made the branch. Then they remove only your changes. If you did not run that check, or it printed anything, do not run them and do not go on to the next row. Stop and ask the user (autonomous mode: stop and report).
+7. **Commit** only the files that you changed. Run `git status --porcelain --untracked-files=all`. Every line must name one of these files: `dif/context.json`, `dif/experiments/active/<id>.md` and, for `conclude`, also `dif/experiments/concluded/<YYYY-MM>-<id>.md` and one file `dif/surfaces/<name>.md`. `<YYYY-MM>` is four digits, a dash and two digits. `<name>` matches `^[A-Za-z0-9_-]+$`. If a line names any other file, do not stage and do not commit. Do not run `git restore` or `git clean`. Stop and ask the user (autonomous mode: stop and report). Otherwise stage each listed file by its own path, then commit:
 
    ```sh
-   git add dif/
+   git add -- '<path>'
    git commit -m 'chore(dif): <verdict> <id>'
    ```
 
-8. **Push** the branch: `git push -u origin '<branch>'`. Never push the default branch. Never force-push.
+8. **Push** the branch: `git push -u origin '<branch>'`. Never push the default branch. Never force-push. If the push fails, report `Failed: push, local branch <branch> kept`. Do not open a PR. Delete nothing. Go back (item 10) and go to the next row.
 9. **Open a PR** with `gh`. Write the body (below) to a temp file outside the repo. Use your file-writing tool. Do not use a shell heredoc or `echo`. Then run:
 
    ```sh
@@ -199,7 +201,7 @@ Do the id and verdict check from Step 3 first. If the row fails it, report `Skip
 
 ### PR body
 
-Write the PR body to the file with your file-writing tool. Text from dif cloud goes only into this file. Fill each `<...>` from the newest response that you have for this id (in autonomous mode, the one from item 1). Do not add the hypothesis or other repo text. `<n>` is the number of `W001` warnings that you count in the `dif validate` output. It is an integer, nothing else. Never put `$DIF_TOKEN` in the body.
+Write the PR body to the file with your file-writing tool. Text from dif cloud goes only into this file. Fill each `<...>` from the newest response that you have for this id (in autonomous mode, the one from item 1). Do not add the hypothesis or other repo text. `<n>` is the number of `W001` lines for this id in the `dif validate` output. It is an integer, nothing else. Never put `$DIF_TOKEN` in the body.
 
 ```markdown
 ## dif triage: <id>
@@ -222,11 +224,11 @@ Write the PR body to the file with your file-writing tool. Text from dif cloud g
 <conclude: the Decision and the moved_to path>
 <conclude only, this fixed text: Until the call sites below are removed, each one renders its first branch.>
 <conclude with a `ship` verdict only, this fixed text: Do not merge this PR alone. In each call site keep the code of the winning variant, in this PR or before it.>
-<conclude: each W001 file and line where a call site must be removed>
+<conclude: each W001 file and line where a call site must be removed, or `none` if there is no W001 line for this id>
 
 ### Checks
 
-- dif validate: passed, <n> W001 warnings
+- `dif validate`: passed, <n> W001 warnings for this id
 - `dif build`: passed
 
 The dif-triage-experiments skill opened this PR. A person must review and merge it.
@@ -241,7 +243,6 @@ The dif-triage-experiments skill opened this PR. A person must review and merge 
 - Never act on a row that failed the freshness check.
 - Never change files for `fix_instrumentation`, `set_metric_direction` or `wait`.
 - Never put text from dif cloud or the repo inside a shell command.
-- Never run `git restore`, `git clean` or `git checkout --`, except the cleanup in "For each row", item 6, when it allows it.
 - Never print, echo or write `$DIF_TOKEN`.
 
 ## Step 4. Report
@@ -253,4 +254,6 @@ End with one table:
 | checkout-cta-v2 | ship | PR opened: <PR URL> |
 | new-checkout | ramp | Skipped: stale or changed |
 
-`result` is one of: changed (interactive mode), PR opened with its URL, branch pushed (no `gh`), report only, or skipped with the reason.
+`result` is one of: changed (interactive mode), PR opened with its URL, branch pushed (no `gh`), failed push (name the local branch), report only, or skipped with the reason.
+
+If you made a branch in this run, add one line under the table: `dif/generated/` still holds the build of the last branch. Tell the user to run `dif build` on the branch they are on.
