@@ -29,8 +29,8 @@ pnpm i -D @dif.sh/cli
 Scaffold the `dif/` directory and draft a flag:
 
 ```bash
-npx dif init
-npx dif new new-checkout --surface checkout
+npx @dif.sh/cli init
+npx @dif.sh/cli new new-checkout --surface checkout
 ```
 
 `dif new` writes `dif/experiments/active/new-checkout.md`. Declare the variants and set `status: active`:
@@ -56,7 +56,7 @@ created: 2026-09-15
 
 The first variant in `variants` is the fallback. Requests without a user id, requests outside the experiment's `audience`, and requests that lose an `exclusion_group` all get it. Raise the second variant's `weight` toward `100` to roll the flag out. An experiment uses the same shape with `control` and `variant_a`.
 
-Run `npx dif validate`, then generate the client. `dif init` gitignores `dif/generated/`, so add a `prebuild` script to regenerate it before every build:
+Run `npx @dif.sh/cli validate`, then generate the client. `dif init` gitignores `dif/generated/`, so add a `prebuild` script to regenerate it before every build:
 
 ```json title="package.json"
 {

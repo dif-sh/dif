@@ -125,11 +125,11 @@ Report only. Never change files.
    2. Make the branch (item 4). It runs its own tree check first.
    3. Do the checks in Step 3 that do not change files: `set_weights` items 1 and 2, `conclude` item 1.
    4. If a check in sub-step 3 failed, do not ask. Go to sub-step 5. Otherwise show the user the file, the change and the reasons. Ask "Apply this change?".
-   5. After the user answers, run `git status --porcelain --untracked-files=all` again. If a check in sub-step 3 failed, the user said no, or this check prints anything, you have changed no file. Run `git checkout '<start>'`, then `git branch -D '<branch>'`. Report the row. Do not run `git restore` or `git clean`. If this check printed anything, stop the run after that. Otherwise go to the next row.
+   5. After the user answers, run `git status --porcelain --untracked-files=all` again. If no check in sub-step 3 failed, the user said yes and this check prints nothing, go to sub-step 6. In every other case you have changed no file: run `git checkout '<start>'`, then `git branch -D '<branch>'`, and report the row. Do not run `git restore` or `git clean`. Then, if this check printed anything, stop the run. If not, go to the next row.
    6. Make the change, check, commit, push and open the PR (items 5 to 9). Use the cleanup in item 6 only as that item says.
    7. Do not do item 10. Run `git checkout '<start>'` instead, also after the cleanup in item 6.
 
-When the run ends, on every path (also when no row reached the branch step, every row was skipped, or the run stopped), run `git status --porcelain --untracked-files=all`. If it prints nothing, run `git checkout '<start>'` unless `git branch --show-current` already prints `<start>`, then tell the user that they are on `<start>`. If it prints anything, do not switch branches: tell the user which branch you are on, which files are changed and, if `<start>` is set, that they started on `<start>`.
+When the run ends, on every path (also when no row reached the branch step, every row was skipped, or the run stopped), run `git status --porcelain --untracked-files=all`. If it prints nothing and `<start>` is set, run `git checkout '<start>'` unless `git branch --show-current` already prints `<start>`, then tell the user that they are on `<start>`. If it prints anything, do not switch branches: tell the user which branch you are on, which files are changed and, if `<start>` is set, that they started on `<start>`.
 
 ## Autonomous mode
 
@@ -138,10 +138,8 @@ These rules apply on top of Step 3.
 ### Before the first change
 
 1. Run `git status --porcelain --untracked-files=all`. It must print nothing. If it prints anything, stop and report. Change nothing. Otherwise run `git branch --show-current` and keep the output as `<start>`. It is empty on a detached HEAD.
-2. Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`. It prints `origin/<default>`. Use the part after `origin/`. If the command fails, run `git remote set-head origin --auto` once and try it again. If it still fails, or the part does not match `^[A-Za-z0-9._/-]+$`, stop and report. Change nothing.
-3. Run `git fetch origin`. Do not check out or pull the default branch. Item 4 of "For each row" cuts every branch from `origin/<default>`.
-
-If a command in items 2 and 3 fails, stop and report. Change nothing.
+2. Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`. It prints `origin/<default>`. Use the part after `origin/`. If the command fails, run `git fetch origin`, then `git remote set-head origin --auto`, once, and try it again. If it still fails, or the part does not match `^[A-Za-z0-9._/-]+$`, stop and report. Change nothing.
+3. Run `git fetch origin`. Do not pull or change the local default branch. Item 4 of "For each row" cuts every branch from `origin/<default>`. If `git fetch origin` fails, stop and report. Change nothing.
 
 ### For each row with `set_weights` or `conclude`
 
@@ -181,7 +179,7 @@ Do the id and verdict check from Step 3 first. If the row fails it, report `Skip
    git branch -D '<branch>'
    ```
 
-   Run the first two commands only if both of these are true: the tree check printed nothing just before item 4 made the branch, and a new `git status --porcelain --untracked-files=all` just before the commands names only files from the list in item 7. Then they remove only your changes. If you did not run the first check, or one of the two is not true, do not run them and do not go on to the next row. Stop and ask the user (autonomous mode: stop and report).
+   Run the first two commands only if both of these are true: the tree check printed nothing just before item 4 made the branch, and a new `git status --porcelain --untracked-files=all` just before the commands names only files from the list in item 7. Then they remove only your changes. If you did not run the first check, or one of the two is not true, run none of the four commands (also not `git checkout` and `git branch -D`) and do not go on to the next row. Stop and ask the user (autonomous mode: stop and report).
 7. **Commit** only the files that you changed. Run `git status --porcelain --untracked-files=all`. Every line must name one of these files: `dif/context.json`, `dif/experiments/active/<id>.md` and, for `conclude`, also `dif/experiments/concluded/<YYYY-MM>-<id>.md` and one file `dif/surfaces/<name>.md`. `<YYYY-MM>` is four digits, a dash and two digits. `<name>` matches `^[A-Za-z0-9_][A-Za-z0-9._-]*$`. If a line names any other file, do not stage and do not commit. Do not run `git restore` or `git clean`. Stop and ask the user (autonomous mode: stop and report). Otherwise stage each file that the status output names, one `git add` for each path, then commit:
 
    ```sh
@@ -259,6 +257,6 @@ End with one table:
 | checkout-cta-v2 | ship | PR opened: <PR URL> |
 | new-checkout | ramp | Skipped: stale or changed |
 
-`result` is one of: changed (interactive mode), PR opened with its URL, branch pushed (no `gh`), failed push (name the local branch), report only, or skipped with the reason.
+`result` is one of: changed (interactive mode), PR opened with its URL, branch pushed (no `gh`), branch pushed but PR not opened, stopped at a failed commit, failed push (name the local branch), report only, or skipped with the reason.
 
 If you made a branch in this run, add one line under the table: `dif/generated/` still holds the build of the last branch. Tell the user to run `dif build` on the branch they are on.
