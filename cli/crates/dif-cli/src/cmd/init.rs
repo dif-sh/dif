@@ -71,6 +71,11 @@ pub struct Args {
     /// Deprecated alias for `--agents none`. Hidden; kept for back-compat.
     #[arg(long, hide = true, conflicts_with = "agents")]
     pub no_agent_files: bool,
+
+    /// Refresh agent files only: skills and managed blocks.
+    /// Never changes dif/ content. Needs an existing workspace.
+    #[arg(long, conflicts_with_all = ["surface", "events", "key", "force"])]
+    pub agents_only: bool,
 }
 
 /// `--agents` targets. Each maps to a set of scaffolded files;
@@ -110,6 +115,10 @@ impl From<EventsModeArg> for EventsMode {
 /// Entrypoint.
 pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
+    // No events prompt and no dif/ writes here.
+    if args.agents_only {
+        return run_agents_only(&cwd, args, json);
+    }
     // Validate + normalise a pasted key up front so a bad paste fails before we
     // scaffold anything.
     if let Some(raw) = &args.key {
@@ -342,17 +351,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     // under `--force`. Force re-scaffolds the structural files, but must never
     // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
     for mf in &merge_files {
-        if let Some(parent) = mf.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
-        let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
-        if merged == existing && mf.path.exists() {
-            continue;
-        }
-        std::fs::write(&mf.path, merged).map_err(|e| {
-            CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display()))
-        })?;
+        write_managed(mf)?;
     }
 
     report_success(&surface, json, sel, mode, already_initialized);
@@ -408,6 +407,10 @@ fn report_collisions(paths: &[&Path], json: bool) {
         eprintln!("    {}", path.display());
     }
     eprintln!();
+    eprintln!(
+        "to refresh only skills and agent files, run {}.",
+        style("dif init --agents-only").bold()
+    );
     eprintln!("re-run with {} to overwrite.", style("--force").bold());
 }
 
@@ -424,6 +427,99 @@ fn report_usage_error(msg: &str, json: bool) {
         return;
     }
     eprintln!("{} {msg}", style("✗").red().bold());
+}
+
+/// Refresh agent files only. Never touch dif/ content.
+/// Skills and dif.mdc are dif-owned, so no --force.
+fn run_agents_only(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdError> {
+    if is_home_dir(cwd) {
+        report_home_dir_refusal(json);
+        return Ok(ExitCode::from(2));
+    }
+    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+        Ok(sel) if sel != AgentSelection::NONE => sel,
+        Ok(_) => {
+            report_usage_error("--agents-only needs at least one agent target", json);
+            return Ok(ExitCode::from(2));
+        }
+        Err(msg) => {
+            report_usage_error(msg, json);
+            return Ok(ExitCode::from(2));
+        }
+    };
+    if !cwd.join(paths::CONFIG_FILE).exists() {
+        report_not_initialized(json);
+        return Ok(ExitCode::from(2));
+    }
+
+    let mut owned: Vec<(PathBuf, String)> = Vec::new();
+    if sel.claude {
+        owned.extend(agent_skill_files(cwd));
+    }
+    if sel.cursor {
+        owned.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
+    }
+
+    let mut updated: Vec<String> = Vec::new();
+    for (path, content) in owned.iter().filter(|(p, c)| !file_matches(p, c)) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content).map_err(|e| {
+            CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
+        })?;
+        updated.push(relative(cwd, path));
+    }
+    for mf in agent_merge_files(cwd, sel) {
+        if write_managed(&mf)? {
+            updated.push(relative(cwd, &mf.path));
+        }
+    }
+
+    report_agents_refresh(&updated, json);
+    Ok(ExitCode::from(0))
+}
+
+/// Forward slashes keep JSON the same on Windows.
+fn relative(cwd: &Path, path: &Path) -> String {
+    path.strip_prefix(cwd)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn report_not_initialized(json: bool) {
+    if json {
+        let payload = serde_json::json!({ "ok": false, "error": "not_initialized" });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    eprintln!(
+        "{} no dif/config.yaml here; run `dif init` first",
+        style("✗").red().bold()
+    );
+}
+
+fn report_agents_refresh(updated: &[String], json: bool) {
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "mode": "agents_only",
+            "updated": updated,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+        return;
+    }
+    let check = style("✓").green().bold();
+    if updated.is_empty() {
+        println!(
+            "{check} agent files already match dif v{}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+    for path in updated {
+        println!("{check} refreshed {path}");
+    }
 }
 
 /// The relative paths `dif init` writes for a given surface, events mode, and
@@ -511,9 +607,7 @@ fn report_success(
             println!("{check} wrote dif/events/track.ts");
         }
         if sel.claude {
-            println!(
-                "{check} wrote .claude/skills/dif-{{author,conclude}}-experiment, dif-generate-surfaces/"
-            );
+            println!("{check} {CLAUDE_SKILLS_LINE}");
         }
         if sel.cursor {
             println!("{check} wrote {CURSOR_MDC_PATH}");
@@ -704,8 +798,14 @@ pub(crate) const SKILL_AUTHOR_AUDIENCES: &str =
     include_str!("../../assets/claude/skills/dif-author-experiment/references/audiences.md");
 pub(crate) const SKILL_CONCLUDE: &str =
     include_str!("../../assets/claude/skills/dif-conclude-experiment/SKILL.md");
+pub(crate) const SKILL_CONCLUDE_CLOUD_API: &str =
+    include_str!("../../assets/claude/skills/dif-conclude-experiment/references/cloud-api.md");
 pub(crate) const SKILL_GENERATE_SURFACES: &str =
     include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
+pub(crate) const SKILL_TRIAGE: &str =
+    include_str!("../../assets/claude/skills/dif-triage-experiments/SKILL.md");
+pub(crate) const SKILL_TRIAGE_CLOUD_API: &str =
+    include_str!("../../assets/claude/skills/dif-triage-experiments/references/cloud-api.md");
 
 /// Paths (relative to the workspace root) written for the `claude` target:
 /// the CLAUDE.md orientation file plus the `.claude/skills/dif-*` directories.
@@ -717,8 +817,17 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-author-experiment/references/validation-errors.md",
     ".claude/skills/dif-author-experiment/references/audiences.md",
     ".claude/skills/dif-conclude-experiment/SKILL.md",
+    ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
     ".claude/skills/dif-generate-surfaces/SKILL.md",
+    ".claude/skills/dif-triage-experiments/SKILL.md",
+    ".claude/skills/dif-triage-experiments/references/cloud-api.md",
 ];
+
+/// Success line text for the Claude Code skills.
+const CLAUDE_SKILLS_LINE: &str = concat!(
+    "wrote .claude/skills/ (dif-author-experiment, dif-conclude-experiment, ",
+    "dif-generate-surfaces, dif-triage-experiments)"
+);
 
 /// Path written for the `general` target: the model-agnostic AGENTS.md.
 pub(crate) const GENERAL_FILE_PATHS: &[&str] = &["AGENTS.md"];
@@ -749,7 +858,7 @@ const CURSOR_RULE_DESCRIPTION: &str = "Feature flags and A/B experiments in this
 pub(crate) fn cursor_mdc() -> String {
     let v = env!("CARGO_PKG_VERSION");
     format!(
-        "---\ndescription: {CURSOR_RULE_DESCRIPTION}\nglobs: dif/**\nalwaysApply: false\n---\n\n<!-- generated by dif v{v}; regenerate with `dif init --force` -->\n\n{CURSORRULES}"
+        "---\ndescription: {CURSOR_RULE_DESCRIPTION}\nglobs: dif/**\nalwaysApply: false\n---\n\n<!-- generated by dif v{v}; regenerate with `dif init --agents-only` -->\n\n{CURSORRULES}"
     )
 }
 
@@ -813,6 +922,22 @@ fn merge_managed_block(existing: &str, block: &str, start: &str, end: &str) -> S
     out.push('\n');
     out.push_str(&region);
     out
+}
+
+/// Merge dif's block into one co-owned file.
+/// Returns true when the file changed.
+fn write_managed(mf: &ManagedFile) -> Result<bool, CmdError> {
+    if let Some(parent) = mf.path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let existing = std::fs::read_to_string(&mf.path).unwrap_or_default();
+    let merged = merge_managed_block(&existing, &mf.block, mf.start, mf.end);
+    if merged == existing && mf.path.exists() {
+        return Ok(false);
+    }
+    std::fs::write(&mf.path, merged)
+        .map_err(|e| CmdError::OtherOwned(format!("failed to write {}: {e}", mf.path.display())))?;
+    Ok(true)
 }
 
 /// The co-owned agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
@@ -885,6 +1010,10 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .join(".claude")
         .join("skills")
         .join("dif-generate-surfaces");
+    let triage = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-triage-experiments");
 
     vec![
         (author.join("SKILL.md"), SKILL_AUTHOR.to_string()),
@@ -902,8 +1031,17 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         ),
         (conclude.join("SKILL.md"), SKILL_CONCLUDE.to_string()),
         (
+            conclude.join("references").join("cloud-api.md"),
+            SKILL_CONCLUDE_CLOUD_API.to_string(),
+        ),
+        (
             generate.join("SKILL.md"),
             SKILL_GENERATE_SURFACES.to_string(),
+        ),
+        (triage.join("SKILL.md"), SKILL_TRIAGE.to_string()),
+        (
+            triage.join("references").join("cloud-api.md"),
+            SKILL_TRIAGE_CLOUD_API.to_string(),
         ),
     ]
 }
@@ -996,6 +1134,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1045,6 +1184,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1076,6 +1216,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1099,6 +1240,7 @@ mod tests {
                 agents: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1149,6 +1291,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Custom,
             true,
@@ -1190,6 +1333,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1221,6 +1365,7 @@ mod tests {
             key: None,
             force: true,
             no_agent_files: false,
+            agents_only: false,
         };
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
@@ -1292,6 +1437,7 @@ mod tests {
                 key: None,
                 force: true,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1331,6 +1477,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1362,6 +1509,7 @@ mod tests {
                 key: None,
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1395,6 +1543,7 @@ mod tests {
                 key: None,
                 force: true,
                 no_agent_files: true,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1482,6 +1631,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1508,6 +1658,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::General, AgentTarget::Cursor]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1536,6 +1687,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::None]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1565,6 +1717,7 @@ mod tests {
                 agents: Some(vec![AgentTarget::None, AgentTarget::Claude]),
                 force: false,
                 no_agent_files: false,
+                agents_only: false,
             },
             EventsMode::Cloud,
             true,
@@ -1728,6 +1881,7 @@ mod tests {
             ("dif-author-experiment", SKILL_AUTHOR),
             ("dif-conclude-experiment", SKILL_CONCLUDE),
             ("dif-generate-surfaces", SKILL_GENERATE_SURFACES),
+            ("dif-triage-experiments", SKILL_TRIAGE),
         ] {
             let frontmatter = extract_frontmatter(content)
                 .unwrap_or_else(|| panic!("SKILL.md for {name} has no YAML frontmatter"));
@@ -1802,6 +1956,58 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cloud_api_reference_is_identical_in_both_skills() {
+        assert!(
+            !SKILL_CONCLUDE_CLOUD_API.trim().is_empty(),
+            "cloud-api.md is empty"
+        );
+        assert_eq!(
+            SKILL_CONCLUDE_CLOUD_API, SKILL_TRIAGE_CLOUD_API,
+            "the two cloud-api.md copies differ; make them byte-identical"
+        );
+    }
+
+    #[test]
+    fn claude_target_writes_triage_skill_and_cloud_references() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        for rel in [
+            ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
+            ".claude/skills/dif-triage-experiments/SKILL.md",
+            ".claude/skills/dif-triage-experiments/references/cloud-api.md",
+        ] {
+            assert!(
+                tmp.path().join(rel).exists(),
+                "missing scaffolded skill file: {rel}"
+            );
+            assert!(
+                CLAUDE_FILE_PATHS.contains(&rel),
+                "{rel} is missing from CLAUDE_FILE_PATHS"
+            );
+        }
+    }
+
+    #[test]
+    fn success_line_names_every_written_skill() {
+        let root = Path::new("repo");
+        let skills = root.join(".claude").join("skills");
+        for (path, _) in agent_skill_files(root) {
+            let rel = path
+                .strip_prefix(&skills)
+                .expect("skill file under .claude/skills");
+            let dir = rel
+                .iter()
+                .next()
+                .and_then(|d| d.to_str())
+                .expect("skill dir name");
+            assert!(
+                CLAUDE_SKILLS_LINE.contains(dir),
+                "success line does not name {dir}"
+            );
+        }
+    }
+
     // -- re-runs + Cursor / Copilot targets ----------------------------------
 
     fn default_args() -> Args {
@@ -1812,6 +2018,7 @@ mod tests {
             key: None,
             force: false,
             no_agent_files: false,
+            agents_only: false,
         }
     }
 
@@ -1943,7 +2150,7 @@ mod tests {
     fn repo_cursor_rule_matches_template() {
         let v = env!("CARGO_PKG_VERSION");
         let stamp =
-            format!("<!-- generated by dif v{v}; regenerate with `dif init --force` -->\n\n");
+            format!("<!-- generated by dif v{v}; regenerate with `dif init --agents-only` -->\n\n");
         let generated = cursor_mdc();
         assert!(generated.contains(&stamp), "stamp line changed shape");
         let expected = generated.replacen(&stamp, "", 1);
@@ -2022,5 +2229,115 @@ mod tests {
             .filter_map(|marker| after_open.find(marker))
             .min()
             .map(|end| &after_open[..end])
+    }
+
+    // -- --agents-only refresh ---------------------------------------------
+
+    fn agents_only_args() -> Args {
+        Args {
+            agents_only: true,
+            ..default_args()
+        }
+    }
+
+    fn init_workspace() -> tempfile::TempDir {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        tmp
+    }
+
+    #[test]
+    fn agents_only_refreshes_skills_and_keeps_workspace() {
+        let tmp = init_workspace();
+        let skill = tmp
+            .path()
+            .join(".claude/skills/dif-conclude-experiment/SKILL.md");
+        std::fs::write(&skill, "old skill").unwrap();
+        let config = tmp.path().join(paths::CONFIG_FILE);
+        std::fs::write(&config, "project: mine\n").unwrap();
+        let surface = tmp.path().join(paths::SURFACES_DIR).join("home.md");
+        std::fs::write(&surface, "## Learnings\n\n- 2026-10-01 - x: kept\n").unwrap();
+
+        let code = run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
+
+        assert_eq!(code, ExitCode::from(0));
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), SKILL_CONCLUDE);
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "project: mine\n");
+        assert!(std::fs::read_to_string(&surface)
+            .unwrap()
+            .contains("x: kept"));
+    }
+
+    #[test]
+    fn agents_only_keeps_user_text_around_the_block() {
+        let tmp = init_workspace();
+        let claude = tmp.path().join("CLAUDE.md");
+        let existing = std::fs::read_to_string(&claude).unwrap();
+        std::fs::write(&claude, format!("My notes.\n\n{existing}")).unwrap();
+
+        run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
+
+        let after = std::fs::read_to_string(&claude).unwrap();
+        assert!(after.starts_with("My notes."));
+        assert_eq!(after.matches(MD_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn agents_only_needs_an_initialized_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let code = run_agents_only(tmp.path(), agents_only_args(), true).expect("run");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(!tmp.path().join("CLAUDE.md").exists());
+        assert!(!tmp.path().join(".claude").exists());
+    }
+
+    #[test]
+    fn agents_only_honours_the_agent_selection() {
+        let tmp = init_workspace();
+        let skill = tmp
+            .path()
+            .join(".claude/skills/dif-conclude-experiment/SKILL.md");
+        std::fs::write(&skill, "old skill").unwrap();
+        std::fs::remove_file(tmp.path().join("AGENTS.md")).unwrap();
+        let args = Args {
+            agents: Some(vec![AgentTarget::General]),
+            ..agents_only_args()
+        };
+
+        run_agents_only(tmp.path(), args, true).expect("refresh");
+
+        assert!(tmp.path().join("AGENTS.md").exists());
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), "old skill");
+    }
+
+    #[test]
+    fn agents_only_rejects_agents_none() {
+        let tmp = init_workspace();
+        let args = Args {
+            agents: Some(vec![AgentTarget::None]),
+            ..agents_only_args()
+        };
+        let code = run_agents_only(tmp.path(), args, true).expect("run");
+        assert_eq!(code, ExitCode::from(2));
+    }
+
+    #[test]
+    fn agents_only_conflicts_with_workspace_flags() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        for flag in ["--force", "--surface=x", "--events=cloud", "--key=dif_pk_x"] {
+            let err = Cli::try_parse_from(["dif-init", "--agents-only", flag])
+                .err()
+                .unwrap_or_else(|| panic!("{flag} should conflict"));
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{flag}"
+            );
+        }
     }
 }

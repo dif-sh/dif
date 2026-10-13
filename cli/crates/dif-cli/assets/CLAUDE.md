@@ -2,7 +2,7 @@
 
 This project uses [dif.sh](https://dif.sh) — experimentation-as-code. Experiments live as `.md` files under `dif/experiments/`, and a Rust CLI compiles them into a typed TypeScript artifact (`dif/generated/client.ts`) the app imports at render time.
 
-**Claude Code users:** the `.claude/skills/dif-author-experiment` and `.claude/skills/dif-conclude-experiment` skills contain the deep workflow guidance. This file is the short orientation; the skills are loaded on demand when you draft or conclude an experiment.
+**Claude Code users:** the `.claude/skills/dif-*` skills contain the deep workflow guidance: `dif-author-experiment`, `dif-conclude-experiment`, `dif-triage-experiments` and `dif-generate-surfaces`. This file is the short orientation; the skills are loaded on demand when you draft, conclude or triage an experiment.
 
 ## Runtime install
 
@@ -73,12 +73,14 @@ A good experiment has: a one-sentence falsifiable hypothesis, named variants wit
 
 The `--decision` you pass to `dif conclude` becomes the next line in the surface's `## Learnings` log, which `dif new` embeds into every future draft on the same surface. Write it like the next person reads it cold: one signed-and-dated outcome line.
 
-Good: `"Shipped variant_a. +2.1% checkout conversion, p<0.01 over 14d."`
+Good: `"Shipped variant_a. +2.1% completed_checkout (95% CI +0.8% to +3.4%), p=0.004 over 14d. Guardrails: refund_rate clean."`
 Bad: `"Inconclusive."`
 
 ## Where to go deeper
 
-- `.claude/skills/dif-author-experiment/` — full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
-- `.claude/skills/dif-conclude-experiment/` — pre-conclude checklist + how to write Decisions that become useful Learnings.
-- `.claude/skills/dif-generate-surfaces/` — for fresh repos: read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
-- https://dif.sh/docs — full documentation.
+- `.claude/skills/dif-author-experiment/`: full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
+- `.claude/skills/dif-conclude-experiment/`: get the result from dif cloud, check the verdict, and write a Decision that becomes a useful Learning.
+- `.claude/skills/dif-triage-experiments/`: review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR per experiment in autonomous mode.
+- `.claude/skills/dif-generate-surfaces/`: for fresh repos, read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
+- https://dif.sh/docs/mcp/: connect dif cloud with a read token, over MCP or as `DIF_TOKEN` for REST. The conclude and triage skills need one of them.
+- https://dif.sh/docs: full documentation.

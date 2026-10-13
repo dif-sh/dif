@@ -72,7 +72,7 @@ A good experiment has: a one-sentence falsifiable hypothesis, named variants wit
 
 The --decision text becomes the next surface Learning, which `dif new` embeds into every future draft on the same surface. Write it like the next person reads it cold: one signed-and-dated outcome line.
 
-Good: "Shipped variant_a. +2.1% checkout conversion, p<0.01 over 14d."
+Good: "Shipped variant_a. +2.1% completed_checkout (95% CI +0.8% to +3.4%), p=0.004 over 14d. Guardrails: refund_rate clean."
 Bad: "Inconclusive."
 
 # Where to go deeper
@@ -80,6 +80,8 @@ Bad: "Inconclusive."
 Skills, by name. `dif init` installs them under .claude/skills/<name>/; a plugin install provides them under the same names.
 
 dif-author-experiment      full authoring workflow + references
-dif-conclude-experiment    pre-conclude checklist + Decision writing
+dif-conclude-experiment    get dif cloud results, check the verdict, write the Decision
+dif-triage-experiments     act on every experiment the dif cloud overview flags (ramp, turn off, conclude)
 dif-generate-surfaces      for fresh repos: propose the initial set of surfaces from app context
-https://www.dif.sh/docs/   full documentation
+https://www.dif.sh/docs/mcp/   connect dif cloud with a read token, over MCP or as DIF_TOKEN for REST
+https://www.dif.sh/docs/       full documentation
