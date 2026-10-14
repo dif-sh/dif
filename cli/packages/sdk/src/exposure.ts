@@ -1,9 +1,8 @@
-// Exposure event firing — render-time, deduped per (experiment, user).
-//
-// A per-load set always applies.
-// A localStorage entry also stops the next page load.
+// Exposure events fire at render time.
+// Dedup is per page load, and in localStorage.
 
 import { uuidv7 } from "./event-id.js";
+import { bytesToHex, sha256 } from "./sha256.js";
 import type { ExperimentSpec, ExposureEvent, Sink } from "./types.js";
 import { SOURCE } from "./version.js";
 
@@ -12,8 +11,11 @@ const fired = new Set<string>();
 
 const STORAGE_PREFIX = "dif:exp:v1:";
 const ENTRY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_KEYS_SCANNED = 1000;
 
-/** localStorage, or null when it is missing or throws (privacy modes). */
+let pruned = false;
+
+/** localStorage, or null when absent or blocked. */
 function getStorage(): Storage | null {
   try {
     if (typeof window === "undefined") return null;
@@ -23,21 +25,49 @@ function getStorage(): Storage | null {
   }
 }
 
-/** True when a live entry already records this variant. */
+// The key holds a hash, not the user id.
+// A collision causes one extra or skipped exposure.
+function userHash(userId: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(userId)).subarray(0, 8));
+}
+
+/** Return the variant of a live entry, else null. */
+function liveVariant(raw: string | null, now: number): string | null {
+  if (raw === null) return null;
+  try {
+    const entry = JSON.parse(raw) as { variant?: unknown; until?: unknown } | null;
+    if (entry === null || typeof entry !== "object") return null;
+    const { variant, until } = entry;
+    if (typeof variant !== "string" || typeof until !== "number") return null;
+    // A clock error or an edit can put until too far ahead.
+    if (!(until > now && until <= now + ENTRY_TTL_MS)) return null;
+    return variant;
+  } catch {
+    return null;
+  }
+}
+
+/** Remove entries that are expired, malformed or too far ahead. */
+function pruneStale(store: Storage): void {
+  try {
+    const now = Date.now();
+    const stale: string[] = [];
+    const count = Math.min(store.length, MAX_KEYS_SCANNED);
+    for (let i = 0; i < count; i++) {
+      const key = store.key(i);
+      if (key === null || !key.startsWith(STORAGE_PREFIX)) continue;
+      if (liveVariant(store.getItem(key), now) === null) stale.push(key);
+    }
+    for (const key of stale) store.removeItem(key);
+  } catch {
+    // Stale entries stay until the next load.
+  }
+}
+
 function alreadyRecorded(store: Storage, key: string, variant: string): boolean {
   try {
-    const raw = store.getItem(key);
-    if (raw === null) return false;
-    const entry = JSON.parse(raw) as { variant?: unknown; until?: unknown } | null;
-    return (
-      entry !== null &&
-      typeof entry === "object" &&
-      entry.variant === variant &&
-      typeof entry.until === "number" &&
-      entry.until > Date.now()
-    );
+    return liveVariant(store.getItem(key), Date.now()) === variant;
   } catch {
-    // Treat an unreadable entry as absent.
     return false;
   }
 }
@@ -51,12 +81,8 @@ function record(store: Storage, key: string, variant: string): void {
 }
 
 /**
- * Fire one exposure event across every configured sink. Idempotent per
- * (experiment, user) for the lifetime of the module.
- *
- * With a cloud sink and localStorage it also stays quiet across page loads,
- * until the entry expires (30 days) or the variant changes. The entry is
- * saved only after the cloud answers 2xx, so a lost exposure fires again.
+ * Fire one exposure event to the sinks.
+ * A cloud 2xx saves an entry that stops later loads.
  */
 export function fireExposure(
   spec: ExperimentSpec,
@@ -71,7 +97,11 @@ export function fireExposure(
 
   const cloudSinks = sinks.filter((s) => s.kind === "cloud");
   const store = cloudSinks.length > 0 ? getStorage() : null;
-  const storeKey = `${STORAGE_PREFIX}${spec.id}:${userId}`;
+  if (store && !pruned) {
+    pruned = true;
+    pruneStale(store);
+  }
+  const storeKey = `${STORAGE_PREFIX}${spec.id}:${userHash(userId)}`;
   if (store && alreadyRecorded(store, storeKey, variant)) return;
 
   const event: ExposureEvent = {
@@ -104,7 +134,8 @@ export function fireExposure(
   }
 }
 
-/** Test-only: clear the per-session set. Saved entries stay, as on a reload. */
+/** Test-only: act like a new page load. Saved entries stay. */
 export function __resetExposures(): void {
   fired.clear();
+  pruned = false;
 }

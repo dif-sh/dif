@@ -49,8 +49,8 @@ export function cloudSink(cfg: CloudSinkConfig): Sink {
 }
 
 /**
- * POST one event. Resolves `true` on a 2xx and `false` on anything else.
- * It never rejects and never throws.
+ * POST one event. Resolves `true` on 2xx, else `false`.
+ * It never rejects or throws.
  */
 function post(url: string, auth: string, body: string): Promise<boolean> {
   try {

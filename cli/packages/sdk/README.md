@@ -100,21 +100,31 @@ In the browser, with cloud delivery, the SDK also remembers what it sent. It
 keeps one `localStorage` entry per experiment and user:
 
 ```
-dif:exp:v1:<experiment>:<user>  →  { "variant": "…", "until": <unix ms> }
+dif:exp:v1:<experiment>:<user hash>  →  { "variant": "…", "until": <unix ms> }
 ```
+
+`<user hash>` is the first 8 bytes of the SHA-256 of the user id, in hex, so the
+key never holds a raw user id such as an email. Two users on one browser that
+share a hash would cost one extra or one skipped exposure. That is rare enough
+to accept.
 
 - An exposure fires when the entry is absent, expired, or names another
   variant. A reassignment still fires, so you can see it in the results.
 - The entry is written **only after the cloud answers 2xx**. If the request
   fails or the page closes first, nothing is written and the exposure fires
   again on the next load.
-- An entry lasts 30 days from the send that wrote it.
+- An entry lasts 30 days from the send that wrote it. An entry whose `until`
+  is more than 30 days ahead (a clock that ran fast, or an edit) counts as
+  expired.
+- The first exposure on each page load removes entries that are expired,
+  malformed or too far ahead.
 - If `localStorage` is missing or throws (private mode, blocked storage), the
   SDK dedupes per page load only.
 - With `events: custom`, your handler decides what is delivered, so dedup stays
   per page load and no entry is written.
-- On the server there is no `window`, so nothing changes: `assign()` never fires
-  an exposure.
+- On the server there is no `window`, so nothing is saved. `assign()` never
+  fires an exposure. A bare `dif()` call with a `userId` set can still fire one,
+  deduped per process only.
 
 ## Event ids
 

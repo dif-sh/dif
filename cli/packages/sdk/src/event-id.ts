@@ -1,5 +1,5 @@
 // Each exposure and track gets one UUIDv7 id.
-// The collector uses it to store a re-sent event once.
+// The collector stores a re-sent event once.
 
 const HEX: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
 
@@ -9,7 +9,7 @@ function randomBytes(n: number): Uint8Array {
   if (c && typeof c.getRandomValues === "function") {
     c.getRandomValues(out);
   } else {
-    // The id must be unique. It does not need to be secret.
+    // Ids must be unique. They need not be secret.
     for (let i = 0; i < n; i++) out[i] = Math.floor(Math.random() * 256);
   }
   return out;

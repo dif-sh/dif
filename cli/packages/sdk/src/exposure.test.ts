@@ -1,5 +1,5 @@
 // Persisted exposure dedup. The cloud sink reports a 2xx and only then does
-// the SDK write `dif:exp:v1:<experiment>:<user>` to localStorage.
+// the SDK write `dif:exp:v1:<experiment>:<user hash>` to localStorage.
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -7,10 +7,15 @@ import assert from "node:assert/strict";
 import { __reset, __register, dif } from "./index.js";
 import { __resetCloudWarnings } from "./sinks/cloud.js";
 import { __resetExposures } from "./exposure.js";
+import { bytesToHex, sha256 } from "./sha256.js";
 import type { ExposureEvent } from "./index.js";
 
 const DAY = 24 * 60 * 60 * 1000;
-const KEY = "dif:exp:v1:persist-exp:u-1";
+/** The key rule: 8 bytes of SHA-256, in hex. */
+const hashOf = (user: string) =>
+  bytesToHex(sha256(new TextEncoder().encode(user)).subarray(0, 8));
+const keyFor = (user: string, exp = "persist-exp") => `dif:exp:v1:${exp}:${hashOf(user)}`;
+const KEY = keyFor("u-1");
 const g = globalThis as Record<string, unknown>;
 
 class MemoryStorage {
@@ -23,6 +28,12 @@ class MemoryStorage {
   }
   removeItem(k: string): void {
     this.data.delete(k);
+  }
+  get length(): number {
+    return this.data.size;
+  }
+  key(i: number): string | null {
+    return [...this.data.keys()][i] ?? null;
   }
 }
 
@@ -187,7 +198,7 @@ describe("persisted exposure dedup", () => {
     register({ control: 50, variant_a: 50 });
     initCloud();
     store.setItem(
-      "dif:exp:v1:persist-exp:u-2",
+      keyFor("u-2"),
       JSON.stringify({ variant: "control", until: Date.now() + DAY }),
     );
     dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
@@ -302,5 +313,146 @@ describe("persisted exposure dedup", () => {
     await settle();
     assert.equal(bodies.length, 2);
     assert.notEqual(bodies[0]!.event_id, bodies[1]!.event_id);
+  });
+});
+
+describe("exposure entry key", () => {
+  it("holds a short hash of the user id and never the raw id", async () => {
+    register({ control: 50, variant_a: 50 });
+    dif.init({
+      project: "acme",
+      publishableKey: "dif_pk_test_aaaaaaaa_secret",
+      apiUrl: "https://api.example.test",
+      userId: () => "ann@example.com",
+    });
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+    const keys = [...store.data.keys()];
+    assert.deepEqual(keys, [keyFor("ann@example.com")]);
+    assert.ok(!keys[0]!.includes("ann"));
+    assert.match(keys[0]!, /^dif:exp:v1:persist-exp:[0-9a-f]{16}$/);
+  });
+});
+
+describe("entry window", () => {
+  it("treats an entry whose until is over 30 days ahead as expired", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+    const variant = (bodies[0] as unknown as ExposureEvent).variant;
+    store.setItem(KEY, JSON.stringify({ variant, until: Date.now() + 31 * DAY }));
+    newPageLoad();
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+    assert.equal(bodies.length, 2);
+    const entry = JSON.parse(store.getItem(KEY)!);
+    assert.ok(entry.until <= Date.now() + 30 * DAY);
+  });
+
+  it("keeps an entry that ends inside the 30 day window", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+    const variant = (bodies[0] as unknown as ExposureEvent).variant;
+    store.setItem(KEY, JSON.stringify({ variant, until: Date.now() + 29 * DAY }));
+    newPageLoad();
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+    assert.equal(bodies.length, 1);
+  });
+});
+
+describe("pruning stale entries", () => {
+  const P = "dif:exp:v1:";
+  const live = () => JSON.stringify({ variant: "control", until: Date.now() + DAY });
+
+  function seed(): void {
+    store.setItem(`${P}old:aaaaaaaaaaaaaaaa`, JSON.stringify({ variant: "control", until: Date.now() - 1 }));
+    store.setItem(`${P}bad:bbbbbbbbbbbbbbbb`, "{not json");
+    store.setItem(`${P}shape:cccccccccccccccc`, JSON.stringify({ variant: 3, until: "x" }));
+    store.setItem(`${P}null:dddddddddddddddd`, "null");
+    store.setItem(`${P}far:eeeeeeeeeeeeeeee`, JSON.stringify({ variant: "control", until: Date.now() + 60 * DAY }));
+    store.setItem(`${P}live:ffffffffffffffff`, live());
+    store.setItem("other:key", "{not json");
+    store.setItem("dif:exp:v0:old:aaaa", "{not json");
+  }
+
+  const run = async () => {
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    await settle();
+  };
+
+  it("removes expired, malformed and too far entries and keeps the rest", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    seed();
+    await run();
+    const keys = [...store.data.keys()].sort();
+    assert.deepEqual(keys, [
+      "dif:exp:v0:old:aaaa",
+      `${P}live:ffffffffffffffff`,
+      KEY,
+      "other:key",
+    ].sort());
+  });
+
+  it("prunes once per page load", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    await run();
+    seed();
+    const other = dif("persist-exp", { control: () => "c", variant_a: () => "a" });
+    other();
+    assert.ok(store.getItem(`${P}old:aaaaaaaaaaaaaaaa`) !== null, "no second prune");
+
+    newPageLoad();
+    other();
+    assert.equal(store.getItem(`${P}old:aaaaaaaaaaaaaaaa`), null, "next load prunes");
+  });
+
+  it("does not prune for custom sinks", () => {
+    register({ control: 50, variant_a: 50 });
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => {}, track: () => {} },
+    });
+    seed();
+    dif("persist-exp", { control: () => "c", variant_a: () => "a" })();
+    assert.ok(store.getItem(`${P}old:aaaaaaaaaaaaaaaa`) !== null);
+  });
+
+  it("survives a store whose key, getItem or removeItem throws", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    seed();
+    store.key = () => {
+      throw new Error("denied");
+    };
+    await assert.doesNotReject(run());
+    assert.equal(bodies.length, 1);
+
+    newPageLoad();
+    store.key = MemoryStorage.prototype.key;
+    store.removeItem = () => {
+      throw new Error("denied");
+    };
+    await assert.doesNotReject(run());
+  });
+
+  it("looks at a bounded number of keys", async () => {
+    register({ control: 50, variant_a: 50 });
+    initCloud();
+    for (let i = 0; i < 5000; i++) store.setItem(`k${i}`, "x");
+    store.setItem(`${P}old:aaaaaaaaaaaaaaaa`, "{not json");
+    let calls = 0;
+    const key = store.key.bind(store);
+    store.key = (i: number) => {
+      calls++;
+      return key(i);
+    };
+    await run();
+    assert.ok(calls <= 1000, `key() called ${calls} times`);
   });
 });

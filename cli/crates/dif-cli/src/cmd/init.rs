@@ -718,7 +718,7 @@ export default function resolve(): \"mobile\" | \"tablet\" | \"desktop\" | null 
 pub(crate) const DEFAULT_EXPOSURE_TS: &str =
     "// dif/events/exposure.ts — deliver one exposure event.
 //
-// dif calls this once per (experiment, user) per session, at render time. Do
+// dif calls this once per (experiment, user) per page load, at render time. Do
 // whatever you like: forward to Amplitude, Mixpanel, Segment, a webhook, your
 // own backend. Keep it non-throwing — analytics must never crash a render.
 //
