@@ -9,7 +9,8 @@ function randomBytes(n: number): Uint8Array {
   if (c && typeof c.getRandomValues === "function") {
     c.getRandomValues(out);
   } else {
-    // Ids must be unique. They need not be secret.
+    // Only old runtimes lack crypto. These ids are guessable.
+    // Unique is enough: a copy must match user, name and time.
     for (let i = 0; i < n; i++) out[i] = Math.floor(Math.random() * 256);
   }
   return out;

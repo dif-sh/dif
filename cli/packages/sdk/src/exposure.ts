@@ -128,9 +128,12 @@ export function fireExposure(
   }
 
   if (store && deliveries.length > 0) {
-    void Promise.all(deliveries.map((d) => d.catch(() => false))).then((ok) => {
-      if (ok.every(Boolean)) record(store, storeKey, variant);
-    });
+    // A failed write only costs a repeat exposure next load.
+    Promise.all(deliveries.map((d) => d.catch(() => false)))
+      .then((ok) => {
+        if (ok.every(Boolean)) record(store, storeKey, variant);
+      })
+      .catch(() => {});
   }
 }
 
