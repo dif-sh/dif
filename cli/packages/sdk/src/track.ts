@@ -12,6 +12,7 @@
 // site — analytics must not crash a render.
 
 import { getState } from "./config.js";
+import { uuidv7 } from "./event-id.js";
 import { SOURCE } from "./version.js";
 import type { MetricEvent, TrackProps } from "./types.js";
 
@@ -29,6 +30,7 @@ export function track(metric: string, opts: TrackProps = {}): void {
   // forbids assigning `undefined` to an optional, and the wire shape (a JSON
   // POST or a custom handler) is cleanest without undefined keys anyway.
   const event: MetricEvent = {
+    event_id: uuidv7(),
     metric,
     user_id: userId,
     fired_at: opts.firedAt ?? Date.now(),

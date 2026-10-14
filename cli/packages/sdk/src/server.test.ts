@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { DifServer } from "./server.js";
 import { SOURCE } from "./version.js";
 
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 interface FetchCall {
   url: string;
   init: RequestInit;
@@ -61,6 +63,17 @@ describe("DifServer.track", () => {
     assert.equal(body.value, 49);
     assert.equal(body.currency, "USD");
     assert.equal(body.source, SOURCE);
+  });
+
+  it("puts a new UUIDv7 event_id on every track", async () => {
+    const server = new DifServer({ apiKey: "dif_live_aaaaaaaa_x", apiUrl: "https://api.example.test" });
+    await server.track({ metric: "m", userId: "u" });
+    await server.track({ metric: "m", userId: "u", idempotencyKey: "k" });
+    const [a, b] = fetchCalls.map((c) => JSON.parse(c.init.body as string));
+    assert.match(a.event_id, UUID_V7);
+    assert.match(b.event_id, UUID_V7);
+    assert.notEqual(a.event_id, b.event_id);
+    assert.equal(b.idempotency_key, "k");
   });
 
   it("warns on non-2xx without throwing", async () => {

@@ -80,14 +80,20 @@ export interface DifInitConfig {
 export interface Sink {
   /** Sink identifier — for logs / dedupe. */
   readonly kind: string;
-  /** Send one event. Must not throw — it should swallow + log internally. */
-  emit(event: ExposureEvent): void;
+  /**
+   * Send one event. Must not throw — it should swallow + log internally.
+   * The cloud sink returns a promise that resolves `true` after a 2xx.
+   * The SDK saves its dedup entry only then. Other sinks return nothing.
+   */
+  emit(event: ExposureEvent): void | Promise<boolean>;
 }
 
 /** Exposure event shape emitted to the configured sinks. */
 export interface ExposureEvent {
   /** Always `"dif.exposure"`. */
   event: "dif.exposure";
+  /** UUIDv7 made when the event is created. Lowercase canonical form. */
+  event_id: string;
   /** Experiment id. */
   experiment: string;
   /** Variant id chosen for this user. */
@@ -126,6 +132,8 @@ export interface TrackProps {
 
 /** Metric event shape sent to the cloud's `/v1/track` endpoint. */
 export interface MetricEvent {
+  /** UUIDv7 made when the event is created. Lowercase canonical form. */
+  event_id: string;
   metric: string;
   user_id: string;
   value?: number;

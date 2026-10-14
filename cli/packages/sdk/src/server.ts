@@ -8,6 +8,7 @@
 // call per event. The bearer is a secret token (dif_<env>_…), never a
 // publishable key.
 
+import { uuidv7 } from "./event-id.js";
 import { SOURCE } from "./version.js";
 
 const DEFAULT_API_URL = "https://cloud.dif.sh";
@@ -50,6 +51,7 @@ export class DifServer {
   async track(input: TrackInput): Promise<void> {
     const url = `${this.apiUrl}/v1/track`;
     const payload = {
+      event_id: uuidv7(),
       metric: input.metric,
       user_id: input.userId,
       value: input.value,
