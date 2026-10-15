@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   EventQueue,
+  FLUSH_BYTES,
   MAX_BODY_BYTES,
   MAX_RETRIES,
   __resetQueues,
@@ -247,6 +248,28 @@ describe("EventQueue validation", () => {
     assert.match(warns[0]!, /value must be a finite number/);
   });
 
+  it("drops an event with U+0000 alone and sends the rest", async () => {
+    const q = make();
+    const good1 = q.add(ev(1));
+    const inValue = q.add(ev(2, { props: { k: "a\u0000b" } }));
+    const inKey = q.add(ev(3, { props: { "k\u0000": 1 } }));
+    const inField = q.add(ev(4, { user_id: "u\u0000" }));
+    const good2 = q.add(ev(5));
+    await q.flush();
+    assert.equal(calls.length, 1);
+    assert.deepEqual(
+      calls[0]!.events.map((e) => e.event_id),
+      [ev(1).event_id, ev(5).event_id],
+    );
+    assert.deepEqual(
+      await Promise.all([good1, inValue, inKey, inField, good2]),
+      [true, false, false, false, true],
+    );
+    assert.equal(warns.length, 3);
+    assert.match(warns[0]!, /props must not contain U\+0000/);
+    assert.match(warns[2]!, /user_id must not contain U\+0000/);
+  });
+
   it("drops an event that cannot be turned into JSON", async () => {
     const q = make();
     const loop: Record<string, unknown> = {};
@@ -303,6 +326,40 @@ describe("EventQueue body size", () => {
     await q.flush();
     assert.equal(calls.length, 1);
     assert.equal(utf8Length(calls[0]!.body), MAX_BODY_BYTES);
+  });
+});
+
+describe("EventQueue byte threshold", () => {
+  const kb = (n: number) => ({ props: { pad: "x".repeat(n * 1000) } });
+
+  it("flushes before a new event would pass the threshold", async () => {
+    const q = make();
+    for (let i = 1; i <= 4; i++) void q.add(ev(i, kb(5)));
+    await settle();
+    assert.equal(calls.length, 1);
+    assert.deepEqual(
+      calls[0]!.events.map((e) => e.event_id),
+      [1, 2, 3].map((i) => ev(i).event_id),
+    );
+    assert.ok(utf8Length(calls[0]!.body) <= FLUSH_BYTES);
+    await q.flush();
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.events.length, 1);
+  });
+
+  it("sends one event at once when it alone passes the threshold", async () => {
+    const q = make();
+    void q.add(ev(1, kb(20)));
+    await settle();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.events.length, 1);
+  });
+
+  it("keeps small events waiting for the count and the timer", async () => {
+    const q = make();
+    for (let i = 0; i < 19; i++) void q.add(ev(i));
+    await settle();
+    assert.equal(calls.length, 0);
   });
 });
 
@@ -628,11 +685,74 @@ describe("EventQueue page lifecycle", () => {
     for (let i = 0; i < 20; i++) void track.add(ev(i, { note }));
     track.flush();
     await settle();
-    for (let i = 100; i < 122; i++) void exposure.add(ev(i, { note }));
+    for (let i = 100; i < 108; i++) void exposure.add(ev(i, { note }));
     win.dispatchEvent(new Event("pagehide"));
     await settle();
     assert.equal(rejected.includes(exposureUrl), false);
     assert.equal(calls.filter((c) => c.url === exposureUrl).length, 1);
+  });
+
+  it("keeps large-props events of both queues inside the quota at pagehide", async () => {
+    const sent = new Set<string>();
+    const track = make({ lifecycle: true });
+    const exposure = make({ lifecycle: true, url: exposureUrl });
+    const pad = "x".repeat(4000);
+    for (let i = 0; i < 12; i++) {
+      void track.add(ev(i, { props: { pad } }));
+      void exposure.add(ev(100 + i, { props: { pad } }));
+      sent.add(String(ev(i).event_id));
+      sent.add(String(ev(100 + i).event_id));
+    }
+    await settle();
+    const rejected: string[] = [];
+    enforceQuota(rejected);
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.deepEqual(rejected, []);
+    // Every event went out, whether before or at the hide.
+    assert.deepEqual(new Set(calls.flatMap((c) => c.events.map((e) => String(e.event_id)))), sent);
+  });
+
+  it("sends a keepalive request that fails at hide again in smaller pieces", async () => {
+    // The quota left is small: a body over 8 KB cannot go.
+    const delivered: string[] = [];
+    responder = (call) => {
+      if (utf8Length(call.body) > 8000) return "throw";
+      delivered.push(...call.events.map((e) => String(e.event_id)));
+      return ok();
+    };
+    const q = make({ lifecycle: true });
+    const all: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      all.push(String(ev(i).event_id));
+      void q.add(ev(i, { props: { pad: "x".repeat(1400) } }));
+    }
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.deepEqual([...delivered].sort(), all);
+    for (const c of calls) assert.equal(c.init.keepalive, true);
+  });
+
+  it("does not split forever a single event that always fails at hide", async () => {
+    responder = () => "throw";
+    const q = make({ lifecycle: true });
+    void q.add(ev(1));
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.equal(calls.length, 1);
+  });
+
+  it("does not split a batch that fails while the page is visible", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    responder = (_c, n) => (n === 1 ? "throw" : ok());
+    const q = make({ lifecycle: true });
+    for (let i = 0; i < 4; i++) void q.add(ev(i));
+    void q.flush();
+    await settle();
+    mock.timers.tick(5000);
+    await settle();
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.body, calls[0]!.body);
   });
 
   it("does not send a batch again that the hide itself sent", async () => {

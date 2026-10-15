@@ -38,17 +38,27 @@ function hasLoneSurrogate(s: string): boolean {
   return false;
 }
 
-/** First stored field that is not valid Unicode, else null. */
-function badUnicode(f: Fields, names: readonly string[]): string | null {
+// Postgres text and jsonb refuse U+0000.
+/** The rule a string breaks, else null. */
+function textFault(s: string): "lone" | "nul" | null {
+  if (s.includes("\u0000")) return "nul";
+  return hasLoneSurrogate(s) ? "lone" : null;
+}
+
+/** First stored field with a bad character, else null. */
+function badText(f: Fields, names: readonly string[]): string | null {
   for (const name of names) {
     const v = f[name];
-    if (typeof v === "string" && hasLoneSurrogate(v)) return `${name} must be valid Unicode`;
+    if (typeof v !== "string") continue;
+    const fault = textFault(v);
+    if (fault === "lone") return `${name} must be valid Unicode`;
+    if (fault === "nul") return `${name} must not contain U+0000`;
   }
   return null;
 }
 
-function propsFault(v: unknown, depth: number): "lone" | "deep" | null {
-  if (typeof v === "string") return hasLoneSurrogate(v) ? "lone" : null;
+function propsFault(v: unknown, depth: number): "lone" | "nul" | "deep" | null {
+  if (typeof v === "string") return textFault(v);
   if (v === null || typeof v !== "object") return null;
   if (depth > PROPS_DEPTH) return "deep";
   if (Array.isArray(v)) {
@@ -59,7 +69,8 @@ function propsFault(v: unknown, depth: number): "lone" | "deep" | null {
     return null;
   }
   for (const [key, item] of Object.entries(v as Fields)) {
-    if (hasLoneSurrogate(key)) return "lone";
+    const keyFault = textFault(key);
+    if (keyFault) return keyFault;
     const fault = propsFault(item, depth + 1);
     if (fault) return fault;
   }
@@ -83,7 +94,7 @@ export function validateExposure(raw: unknown): string | null {
   if (!isText(e.surface)) return "surface is required";
   if (!isFiniteNumber(e.bucket)) return "bucket must be a number";
   if (!exposureTimeOk(e.fired_at)) return FIRED_AT_ERROR;
-  return badUnicode(e, ["experiment", "variant", "user_id", "surface", "source", "idempotency_key"]);
+  return badText(e, ["experiment", "variant", "user_id", "surface", "source", "idempotency_key"]);
 }
 
 // A bad fired_at passes: the handler uses the time now.
@@ -94,7 +105,7 @@ export function validateTrack(raw: unknown): string | null {
   if (!isText(e.user_id)) return "user_id is required";
   if (e.value !== undefined && !isFiniteNumber(e.value)) return "value must be a finite number";
   if (isFiniteNumber(e.fired_at) && Math.abs(e.fired_at) > MAX_TIME_MS) return FIRED_AT_ERROR;
-  const unicode = badUnicode(e, [
+  const text = badText(e, [
     "metric",
     "user_id",
     "currency",
@@ -102,10 +113,11 @@ export function validateTrack(raw: unknown): string | null {
     "source",
     "idempotency_key",
   ]);
-  if (unicode) return unicode;
+  if (text) return text;
   if (e.props !== null && typeof e.props === "object") {
     const fault = propsFault(e.props, 1);
     if (fault === "lone") return "props must be valid Unicode";
+    if (fault === "nul") return "props must not contain U+0000";
     if (fault === "deep") return `props is nested more than ${PROPS_DEPTH} deep`;
   }
   return null;

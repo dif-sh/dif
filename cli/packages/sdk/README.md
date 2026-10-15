@@ -162,16 +162,18 @@ configured, the call logs to `console.debug` and drops.
 In the browser, with cloud delivery, exposures and `dif.track()` events go
 through one queue per endpoint (`/v1/exposure` and `/v1/track`).
 
-- **When it sends.** At 20 queued events, 2 seconds after the first queued
-  event, on `pagehide`, and when the page turns hidden. Each send is one
-  `keepalive` `fetch` with a JSON array.
-- **Body size.** A body is at most 60,000 bytes. A larger batch is split into
-  several requests. A single event over that size is dropped with a console
-  warning.
+- **When it sends.** At 20 queued events, when the queued events would pass
+  16,000 bytes, 2 seconds after the first queued event, on `pagehide`, and when
+  the page turns hidden. Each send is one `keepalive` `fetch` with a JSON
+  array.
+- **Body size.** A body is at most 60,000 bytes, and about 16,000 bytes unless
+  one event is larger. A single event over 60,000 bytes is dropped with a
+  console warning.
 - **Checks before queueing.** Each event is checked against the rules of the
   cloud handlers (for example `experiment`, `variant`, `metric` and `user_id`
   must be non-empty strings, `bucket` and `value` must be finite numbers, and
-  `fired_at` must be a time `Date` can hold). An event that fails is dropped
+  `fired_at` must be a time `Date` can hold, and no stored string, props key or
+  props value may hold a lone surrogate or U+0000). An event that fails is dropped
   alone with a console warning, so one bad event does not cost its batch. The
   SDK shows up to 20 such warnings.
 - **Retries.** A network error, a 5xx or a 429 is tried again, at most 3
@@ -194,7 +196,11 @@ through one queue per endpoint (`/v1/exposure` and `/v1/track`).
   sent with `keepalive` is not sent twice, because the browser lets it finish.
   After the page is hidden, a new event goes out at once until the page shows
   again. The browser limits the `keepalive` requests in flight to
-  64 KiB together, so a very large queue at page close can still lose events.
+  64 KiB together. The byte limit on each queue keeps what is left at page
+  close well under that, and a `keepalive` request that fails at page close is
+  sent again as two smaller requests, down to one event. Events can still be
+  lost at page close when many batches wait to retry together, or when one
+  event is close to 60,000 bytes and the browser has no quota left.
 - **Dedup entries.** A batch's exposures get their `localStorage` entries only
   after that batch answers 2xx; see [Exposure dedup](#exposure-dedup).
 

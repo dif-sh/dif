@@ -4,6 +4,10 @@
 /** Keeps a keepalive fetch inside the 64 KiB browser quota. */
 export const MAX_BODY_BYTES = 60_000;
 
+// Two queues and some retries share 64 KiB at hide.
+/** A queue flushes before it holds more bytes than this. */
+export const FLUSH_BYTES = 16_000;
+
 /** Most retries for one batch: one send plus three retries. */
 export const MAX_RETRIES = 3;
 
@@ -179,6 +183,7 @@ function uninstallListeners(): void {
 
 export class EventQueue {
   private pending: Item[] = [];
+  private pendingBytes = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly live = new Set<Batch>();
   private closed = false;
@@ -195,8 +200,16 @@ export class EventQueue {
   add(event: unknown): Promise<boolean> {
     const item = this.prepare(event);
     if (!item) return Promise.resolve(false);
+    // Send the queue first, so a batch stays small.
+    if (this.pending.length > 0 && this.pendingBytes + item.bytes + 1 > FLUSH_BYTES) this.drain();
     this.pending.push(item);
-    if (this.closed || this.pending.length >= this.opts.maxEvents || isPageHidden()) {
+    this.pendingBytes += item.bytes + 1;
+    if (
+      this.closed ||
+      this.pending.length >= this.opts.maxEvents ||
+      this.pendingBytes >= FLUSH_BYTES ||
+      isPageHidden()
+    ) {
       this.drain();
     } else if (this.timer === null) {
       this.timer = setTimeout(() => {
@@ -301,6 +314,7 @@ export class EventQueue {
     }
     const items = this.pending;
     this.pending = [];
+    this.pendingBytes = 0;
     this.dispatch(items);
   }
 
@@ -369,6 +383,10 @@ export class EventQueue {
     if (batch.finished) return;
     batch.inflight = false;
     if (out.ok) return this.finish(batch, true);
+    if (this.lostAtHide(batch, out)) {
+      this.release(batch);
+      return this.dispatchHalves(batch.items);
+    }
     if (retryable(out.status) && batch.attempts <= MAX_RETRIES) {
       const wait = retryDelay(
         batch.attempts,
@@ -407,9 +425,21 @@ export class EventQueue {
       this.dispatch(batch.items.filter((i) => i !== bad));
       return;
     }
-    const half = Math.ceil(batch.items.length / 2);
-    this.dispatch(batch.items.slice(0, half));
-    this.dispatch(batch.items.slice(half));
+    this.dispatchHalves(batch.items);
+  }
+
+  private dispatchHalves(items: Item[]): void {
+    const half = Math.ceil(items.length / 2);
+    this.dispatch(items.slice(0, half));
+    this.dispatch(items.slice(half));
+  }
+
+  // A failed keepalive fetch at hide may exceed quota.
+  // Two halves can fit where the whole did not.
+  private lostAtHide(batch: Batch, out: Outcome): boolean {
+    return (
+      this.opts.keepalive && batch.sentHidden && out.status === null && batch.items.length > 1
+    );
   }
 
   private release(batch: Batch): void {
