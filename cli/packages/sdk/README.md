@@ -110,7 +110,9 @@ to accept.
 
 - An exposure fires when the entry is absent, expired, or names another
   variant. A reassignment still fires, so you can see it in the results.
-- The entry is written **only after the cloud answers 2xx**. If the request
+- The entry is written **only after the cloud answers 2xx** for the request
+  that held the exposure. With [batching](#batching-and-retries) that is the
+  batch, so the entry can follow the exposure by a few seconds. If the batch
   fails or the page closes first, nothing is written and the exposure fires
   again on the next load.
 - An entry lasts 30 days from the send that wrote it. An entry whose `until`
@@ -149,11 +151,52 @@ dif.track("article_read", {
 });
 ```
 
-Calls are fire-and-forget: one HTTP POST per event using `fetch` with
-`keepalive: true`. Each event carries an `event_id` (see
-[Event ids](#event-ids)). The call never throws; bad analytics must not crash a
-render. When `publishableKey` isn't configured, the call logs to
-`console.debug` and drops.
+Calls are fire-and-forget. Events queue and go out in batches using `fetch`
+with `keepalive: true`; see [Batching and retries](#batching-and-retries). Each
+event carries an `event_id` (see [Event ids](#event-ids)). The call never
+throws; bad analytics must not crash a render. When `publishableKey` isn't
+configured, the call logs to `console.debug` and drops.
+
+## Batching and retries
+
+In the browser, with cloud delivery, exposures and `dif.track()` events go
+through one queue per endpoint (`/v1/exposure` and `/v1/track`).
+
+- **When it sends.** At 20 queued events, 2 seconds after the first queued
+  event, on `pagehide`, and when the page turns hidden. Each send is one
+  `keepalive` `fetch` with a JSON array.
+- **Body size.** A body is at most 60,000 bytes. A larger batch is split into
+  several requests. A single event over that size is dropped with a console
+  warning.
+- **Checks before queueing.** Each event is checked against the rules of the
+  cloud handlers (for example `experiment`, `variant`, `metric` and `user_id`
+  must be non-empty strings, `bucket` and `value` must be finite numbers, and
+  `fired_at` must be a time `Date` can hold). An event that fails is dropped
+  alone with a console warning, so one bad event does not cost its batch. The
+  SDK shows up to 20 such warnings.
+- **Retries.** A network error, a 5xx or a 429 is tried again, at most 3
+  times: after about 1, 2 and 4 seconds, each wait cut to between half and all
+  of that, and no shorter than `Retry-After` (up to 30 seconds). A retry sends
+  the same body, so the same `event_id`s. Other 4xx answers are not retried.
+  If the cloud answers 400 for a batch and names the event, the SDK drops that
+  event and sends the rest. If it names none, the SDK sends the batch again in
+  two halves. Browsers hide `Retry-After` from cross-origin responses unless
+  the server lists it in `Access-Control-Expose-Headers`.
+- **Page close.** On `pagehide` and when the page turns hidden, the SDK sends
+  what is queued and any batch that waits to retry, at once. It also sends a
+  second copy of each request still in flight, with the same body. After the
+  page is hidden, a new event goes out at once until the page shows again.
+  The browser limits the `keepalive` requests in flight to 64 KiB together, so
+  a very large queue at page close can still lose events.
+- **Dedup entries.** A batch's exposures get their `localStorage` entries only
+  after that batch answers 2xx; see [Exposure dedup](#exposure-dedup).
+
+`await dif.flush()` sends the queue at once and resolves when each event is sent
+or lost. It is useful before a hard redirect, and in tests.
+
+Where the page cannot report that it is closing (no `window`, such as on a
+server), there is no batching: each event is sent at once, in a request of one
+event, and the same checks and retries apply.
 
 ## Server-side
 
@@ -173,6 +216,29 @@ await dif.track({
   currency: "USD",
 });
 ```
+
+By default each `track()` call is one awaited request, with no retry, and the
+SDK does not check the event first.
+
+For many events, opt in to batching:
+
+```ts
+const dif = new DifServer({
+  apiKey: process.env.DIF_KEY,
+  batch: true,                      // or { size: 100, intervalMs: 1000 }
+});
+
+await dif.track({ metric: "job_done", userId: job.userId }); // resolves once queued
+await dif.flush();  // send what is queued; resolves when each event is sent or lost
+await dif.close();  // flush, then stop batching
+```
+
+With `batch`, events are checked, queued and sent as arrays of up to `size`
+events (default 20, at most 500) every `intervalMs` (default 2000), in bodies
+of at most 60,000 bytes. Failures are retried as in [Batching and
+retries](#batching-and-retries). `track()` resolves when the event is queued, so
+call `flush()` or `close()` before the process ends, or the last events can be
+lost. After `close()`, each `track()` is one request again.
 
 Never put a secret token in a browser bundle. They authenticate as the
 project (read-only on most routes, write to ingest), and leaked secrets
@@ -217,10 +283,12 @@ useEffect(() => track("completed_checkout"), []);
 - Metric tracking (`dif.track`): to dif.sh Cloud in cloud mode, or your
   `dif/events/track.ts` handler in custom mode. Server tracking is cloud-only.
 
-**Does not (in v0):**
-- Batch events. Each call is one HTTP POST.
-- Retry on failure. Browser drops; server warns.
-- Buffer offline. If the request fails, the event is gone.
+- In the browser, batches events and retries failures (3 times, same body, same
+  `event_id`s). `DifServer` does the same when you opt in with `batch`.
+
+**Does not:**
+- Buffer offline. After the retries fail, or when the page closes before a
+  send, the event is gone.
 - Compute lift, p-values, or any analytics. That's the cloud's job.
 
 ## Preview & QA forcing
