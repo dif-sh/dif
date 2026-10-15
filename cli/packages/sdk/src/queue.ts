@@ -4,7 +4,7 @@
 /** Keeps a keepalive fetch inside the 64 KiB browser quota. */
 export const MAX_BODY_BYTES = 60_000;
 
-/** Most retries for one batch. */
+/** Most retries for one batch: one send plus three retries. */
 export const MAX_RETRIES = 3;
 
 /** The handlers accept at most 500 events in one request. */
@@ -12,6 +12,7 @@ const MAX_EVENTS_PER_REQUEST = 500;
 
 const MAX_RETRY_AFTER_MS = 30_000;
 const DEFAULT_RETRY_BASE_MS = 1000;
+/** Drop warnings shown, for all queues together. */
 const MAX_INVALID_WARNINGS = 20;
 
 export interface QueueOptions {
@@ -109,7 +110,7 @@ function warnDropped(label: string, why: string): void {
   invalidWarnings++;
   console.warn(
     invalidWarnings > MAX_INVALID_WARNINGS
-      ? `[dif] further ${label} events may be dropped without a warning.`
+      ? "[dif] further dropped events get no warning."
       : `[dif] dropped a ${label} event: ${why}`,
   );
 }
