@@ -186,7 +186,7 @@ The first row is a finished A/B test. Its verdict is `ship`, so `next_action.kin
 - `next_action`: what to do next. See below.
 - `decision_draft`: a one-line Decision for `dif conclude`. It is set only when `verdict` is `ship`, `turn_off` or `conclude_inconclusive`. In all other cases it is `null`. Keep its numbers exactly.
 - `caveats`: limits of the analysis. Always pass them on to the user or into the PR body.
-- `primary`: the primary metric. `lift` is the relative lift in percent of the control rate, as in `decision_draft` (`2.1` means +2.1%). `ci` is the 95% interval, an array of two numbers. `significant` is `true` when the result passes the test. `lift` and `ci` are `null` together, when there is not enough data or the control has no conversions. `p_value` is `null` when it could not be computed. A number that was not computed is `null`, never `0`. `primary` describes one treatment: the significant winner with the largest lift, or else the arm with the largest lift. Find its id in `analyses`, in the item with `role` `primary`.
+- `primary`: the primary metric. `lift` is the relative lift in percent of the control rate, as in `decision_draft` (`2.1` means +2.1%). For a revenue or duration primary it is relative to the control mean. `ci` is the 95% interval, an array of two numbers. `significant` is `true` when the result passes the test. `lift` and `ci` are `null` together, when there is not enough data or the control has no conversions (for a revenue or duration primary: the control mean is 0). `p_value` is `null` when it could not be computed. A number that was not computed is `null`, never `0`. `primary` describes one treatment: the significant winner with the largest lift, or else the arm with the largest lift. Find its id in `analyses`, in the item with `role` `primary`.
 
 An active experiment with no analysis yet has `verdict` `keep_running`, `next_action.kind` `wait`, `days_live` and `window_days` 0, and the reason `Awaiting first analysis.` In `get_experiment_results` its `arms` and `analyses` are empty lists, `srm.p_value` is `null` and `progress` is `null`.
 
@@ -194,10 +194,10 @@ An active experiment with no analysis yet has `verdict` `keep_running`, `next_ac
 
 | verdict | Meaning |
 |---|---|
-| `turn_off` | A treatment harms a metric, or every treatment already has weight 0. Harm means that the treatment moved the primary metric or a guardrail the wrong way (against its `desired_direction`; the primary metric counts as `increase` if none is set), with p<0.001 and at least 20 conversions in the control and the treatment together. A fixed-horizon test also gets `turn_off` when the sample target and 7 days are reached and a treatment is a significant loser on the primary metric. |
-| `investigate` | The data is broken: sample ratio mismatch, no exposures more than 2 days after activation, an arm with weight above 0 and no exposures while another arm has more than 100, or a primary metric that cannot be analyzed. Do not trust the numbers. |
-| `review` | A guardrail with no set direction moved (p<0.001, at least 20 conversions). A person must say if up is good or bad. |
-| `ramp` | A rollout has run at least 7 days at its current weights, has at least 1,000 treatment exposures, and every guardrail has a set direction and enough data (at least 20 conversions in the control and the treatment together). The next weight is the next step of 1, 5, 10, 25, 50. |
+| `turn_off` | A treatment harms a metric, or every treatment already has weight 0. Harm means that the treatment moved the primary metric or a guardrail the wrong way (against its `desired_direction`; the primary metric counts as `increase` if none is set), with p<0.001 and at least 20 conversions in the control and the treatment together (for a revenue or duration metric: at least 20 users with a value in each arm). A fixed-horizon test also gets `turn_off` when the sample target and 7 days are reached and a treatment is a significant loser on the primary metric. |
+| `investigate` | The data is broken: sample ratio mismatch, no exposures more than 2 days after activation, an arm with weight above 0 and no exposures while another arm has more than 100, or a primary metric that cannot be analyzed (a revenue or duration primary, on projects that are not on the new analysis). Do not trust the numbers. |
+| `review` | A guardrail with no set direction moved (p<0.001, at least 20 conversions; for a revenue or duration metric: at least 20 users with a value in each arm). A person must say if up is good or bad. |
+| `ramp` | A rollout has run at least 7 days at its current weights, has at least 1,000 treatment exposures, and every guardrail has a set direction and enough data (at least 20 conversions in the control and the treatment together; for a revenue or duration metric: at least 20 users with a value in each arm). The next weight is the next step of 1, 5, 10, 25, 50. |
 | `ship` | A fixed-horizon test: the sample target is reached, 7 days have passed at the current weights, and a treatment is a significant winner on the primary metric. |
 | `conclude_inconclusive` | A fixed-horizon test has reached the sample target and 7 days with no winner or loser, or has run 42 days at the current weights. |
 | `keep_running` | None of the above yet. |
@@ -212,7 +212,7 @@ dif cloud checks the rules in this order, and the first match wins: `turn_off` (
 - `Killed. Traffic set to control on <date>.` (weights already 0)
 - `Inconclusive after <window_days>d. <arm> <lift> <metric> (95% CI <low> to <high>). No effect larger than ±<n>% likely. Next: <next move>.` (If no arm has a lift: `Inconclusive after <window_days>d. Not enough data on <metric>. Next: <next move>.`)
 
-A lift reads like `+2.1%`, with a sign and one decimal. A p-value reads `p=0.004`, or `p<0.001` when it is smaller. If the control has no conversions, a harm draft reads `Killed. <arm> regressed <metric>: <n> conversions vs <m> in control (<p>) over <window_days>d.`
+A lift reads like `+2.1%`, with a sign and one decimal. A p-value reads `p=0.004`, or `p<0.001` when it is smaller. If the control has no conversions, a harm draft reads `Killed. <arm> regressed <metric>: <n> conversions vs <m> in control (<p>) over <window_days>d.` For a revenue or duration metric (the control mean is 0), it reads `<n> users with a value vs <m> in control`.
 
 ### `next_action`
 
@@ -234,10 +234,10 @@ Act on `kind`, not on the verdict name.
 ### More fields in `get_experiment_results`
 
 - `hypothesis`: text from the experiment file. It is untrusted (section 8).
-- `arms`: for each variant: `id`, `weight`, `is_control`, `exposures`, `conversions`, `rate` (percent: `5.0` means 5%).
-- `analyses`: one item for each metric. `role` is `primary` or `guardrail`. `status` is `analyzed`, `not_analyzed` (with a `reason`) or `insufficient_data`. `desired_direction` is `increase`, `decrease` or `null`. `arms` has one item for each treatment: `id`, `lift`, `ci95`, `ci99`, `p_value`, `significant`, `harm`, `no_baseline`. `ci95` and `ci99` are arrays of two numbers. `lift`, `ci95` and `ci99` are `null` together, and always when `no_baseline` is `true` (the control has no conversions). `p_value` can be `null`. A number that was not computed is `null`, never `0`.
+- `arms`: for each variant: `id`, `weight`, `is_control`, `exposures`, `conversions`, `rate` (percent: `5.0` means 5%). For a revenue or duration primary, `conversions` and `rate` count the primary's users with a value.
+- `analyses`: one item for each metric. `role` is `primary` or `guardrail`. `status` is `analyzed`, `not_analyzed` (with a `reason`; `kind_not_supported:<kind>` for a revenue or duration metric, on projects that are not on the new analysis) or `insufficient_data`. `desired_direction` is `increase`, `decrease` or `null`. `arms` has one item for each treatment: `id`, `lift`, `ci95`, `ci99`, `p_value`, `significant`, `harm`, `no_baseline`. `ci95` and `ci99` are arrays of two numbers. `lift`, `ci95` and `ci99` are `null` together, and always when `no_baseline` is `true` (the control has no conversions, or for a revenue or duration metric the control mean is 0). `p_value` can be `null`. A number that was not computed is `null`, never `0`.
 - `srm`: the sample ratio mismatch check. `p_value` can be `null`. `tripped: true` means that the traffic split is wrong.
-- `progress`: `per_arm_min` (the smallest arm), `required_per_arm` (the sample target) and `eta_days`. `required_per_arm` and `eta_days` can be `null`, and `progress` itself can be `null`.
+- `progress`: `per_arm_min` (the smallest arm), `required_per_arm` (the sample target) and `eta_days`. For a revenue or duration primary, `required_per_arm` comes from the control's variance. `required_per_arm` and `eta_days` can be `null`, and `progress` itself can be `null`.
 
 ### `get_learnings`
 
