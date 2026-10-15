@@ -77,6 +77,18 @@ describe("validateExposure", () => {
     );
     assert.equal(validateExposure(exposure({ user_id: "a😀b" })), null);
   });
+
+  it("rejects a stored string that holds U+0000", () => {
+    assert.equal(
+      validateExposure(exposure({ user_id: "a\u0000b" })),
+      "user_id must not contain U+0000",
+    );
+    assert.equal(
+      validateExposure(exposure({ experiment: "\u0000" })),
+      "experiment must not contain U+0000",
+    );
+    assert.equal(validateExposure(exposure({ source: "s\u0000" })), "source must not contain U+0000");
+  });
 });
 
 describe("validateTrack", () => {
@@ -124,6 +136,21 @@ describe("validateTrack", () => {
   it("rejects a stored field that is not valid Unicode", () => {
     assert.equal(validateTrack(track({ unit: "\ud800" })), "unit must be valid Unicode");
     assert.equal(validateTrack(track({ metric: "m\ud800" })), "metric must be valid Unicode");
+  });
+
+  it("rejects a stored string that holds U+0000", () => {
+    assert.equal(validateTrack(track({ metric: "m\u0000" })), "metric must not contain U+0000");
+    assert.equal(validateTrack(track({ user_id: "\u0000u" })), "user_id must not contain U+0000");
+    assert.equal(validateTrack(track({ currency: "U\u0000D" })), "currency must not contain U+0000");
+  });
+
+  it("rejects props with U+0000 in a key or a value, at any depth", () => {
+    const msg = "props must not contain U+0000";
+    assert.equal(validateTrack(track({ props: { k: "a\u0000" } })), msg);
+    assert.equal(validateTrack(track({ props: { "k\u0000": 1 } })), msg);
+    assert.equal(validateTrack(track({ props: { a: { b: ["x", "y\u0000"] } } })), msg);
+    assert.equal(validateTrack(track({ props: { a: { "b\u0000": true } } })), msg);
+    assert.equal(validateTrack(track({ props: { k: "\\u0000" } })), null);
   });
 
   it("ignores props that are not an object", () => {
