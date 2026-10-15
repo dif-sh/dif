@@ -177,17 +177,24 @@ through one queue per endpoint (`/v1/exposure` and `/v1/track`).
 - **Retries.** A network error, a 5xx or a 429 is tried again, at most 3
   times: after about 1, 2 and 4 seconds, each wait cut to between half and all
   of that, and no shorter than `Retry-After` (up to 30 seconds). A retry sends
-  the same body, so the same `event_id`s. Other 4xx answers are not retried.
-  If the cloud answers 400 for a batch and names the event, the SDK drops that
-  event and sends the rest. If it names none, the SDK sends the batch again in
-  two halves. Browsers hide `Retry-After` from cross-origin responses unless
-  the server lists it in `Access-Control-Expose-Headers`.
+  the same body, so the same `event_id`s. Browsers hide `Retry-After` from
+  cross-origin responses unless the server lists it in
+  `Access-Control-Expose-Headers`.
+- **Answers the SDK cannot read.** In the browser, dif cloud's 400, 401 and 503
+  answers carry no CORS headers, so a cross-origin page cannot read them. The
+  `fetch` fails like a network error: the SDK sends the same body up to 3 more
+  times and then drops the batch. This is why the checks before queueing
+  matter. The other answers of dif cloud (202, 403, 429 and 500) can be read.
+  Where the page can read a 4xx answer (for example `DifServer` on the same
+  origin), it is not retried. A 400 for a batch that names the event drops that
+  event and sends the rest. A 400 that names none sends the batch again in two
+  halves.
 - **Page close.** On `pagehide` and when the page turns hidden, the SDK sends
-  what is queued and any batch that waits to retry, at once. It also sends a
-  second copy of each request still in flight, with the same body. After the
-  page is hidden, a new event goes out at once until the page shows again.
-  The browser limits the `keepalive` requests in flight to 64 KiB together, so
-  a very large queue at page close can still lose events.
+  what is queued and any batch that waits to retry, at once. A request already
+  sent with `keepalive` is not sent twice, because the browser lets it finish.
+  After the page is hidden, a new event goes out at once until the page shows
+  again. The browser limits the `keepalive` requests in flight to
+  64 KiB together, so a very large queue at page close can still lose events.
 - **Dedup entries.** A batch's exposures get their `localStorage` entries only
   after that batch answers 2xx; see [Exposure dedup](#exposure-dedup).
 
