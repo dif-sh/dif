@@ -4,7 +4,7 @@
 // getState(). One config per bundle; calling init again overwrites. This is
 // intentional — there is only one "current user" per app instance.
 
-import { cloudSink, cloudTrack } from "./sinks/cloud.js";
+import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
 import type {
   AttributeBag,
   DifConfig,
@@ -27,9 +27,28 @@ export interface ResolvedState {
   enabled: boolean;
   /** Active QA/preview forces (experiment id → variant). */
   overrides: Record<string, string>;
+  /** Sends the events the cloud queues hold. */
+  flush: () => Promise<void>;
 }
 
 let state: ResolvedState | null = null;
+
+/** Cloud delivery from the last init. */
+interface CloudDelivery {
+  apiUrl: string;
+  publishableKey: string | null;
+  sink: Sink | null;
+  track: CloudTrack;
+}
+
+let cloud: CloudDelivery | null = null;
+
+function closeCloud(): void {
+  const old = cloud;
+  cloud = null;
+  void old?.sink?.close?.();
+  void old?.track.close();
+}
 
 // One-shot warnings for cloud-mode misconfiguration — fire once per bundle
 // load so a noisy app doesn't spam the console on every re-init/re-render.
@@ -64,12 +83,23 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
 
   if (events?.mode === "custom") {
     apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
+    closeCloud();
     sinks = [{ kind: "custom", emit: events.exposure }];
     trackHandler = events.track;
   } else {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
-    sinks = publishableKey ? [cloudSink({ apiUrl, publishableKey })] : [];
-    trackHandler = cloudTrack({ apiUrl, publishableKey });
+    // A repeat init keeps its queues, so batching holds.
+    if (!cloud || cloud.apiUrl !== apiUrl || cloud.publishableKey !== publishableKey) {
+      closeCloud();
+      cloud = {
+        apiUrl,
+        publishableKey,
+        sink: publishableKey ? cloudSink({ apiUrl, publishableKey }) : null,
+        track: cloudTrack({ apiUrl, publishableKey }),
+      };
+    }
+    sinks = cloud.sink ? [cloud.sink] : [];
+    trackHandler = cloud.track;
 
     if (merged.enabled !== false) {
       if (!publishableKey && !noKeyWarned) {
@@ -104,7 +134,13 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     trackHandler,
     enabled: merged.enabled !== false,
     overrides: merged.overrides ?? {},
+    flush: flushCloud,
   };
+}
+
+function flushCloud(): Promise<void> {
+  if (!cloud) return Promise.resolve();
+  return Promise.all([cloud.sink?.flush?.(), cloud.track.flush()]).then(() => undefined);
 }
 
 export function getState(): ResolvedState | null {
@@ -127,6 +163,7 @@ export function getOverrides(): Record<string, string> {
 
 /** Test-only. */
 export function resetState(): void {
+  closeCloud();
   state = null;
   noKeyWarned = false;
   noUserIdWarned = false;

@@ -6,7 +6,14 @@
 
 import { difCall, __register, __resetRegistry } from "./core.js";
 import { __resetExposures } from "./exposure.js";
-import { setState, resetState, setOverrides, getOverrides, type DifInitConfig } from "./config.js";
+import {
+  setState,
+  resetState,
+  setOverrides,
+  getOverrides,
+  getState,
+  type DifInitConfig,
+} from "./config.js";
 import { track } from "./track.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
@@ -17,6 +24,8 @@ export interface DifFn {
   init(config: DifInitConfig): void;
   /** Fire a metric event. */
   track(metric: string, opts?: TrackProps): void;
+  /** Sends queued events. Resolves when all are settled. */
+  flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
   setOverrides(overrides: Record<string, string>): void;
   /** The active QA/preview forces. */
@@ -26,6 +35,10 @@ export interface DifFn {
    * @deprecated Use `dif.init(...)`.
    */
   configure(config: DifConfig | DifInitConfig): void;
+}
+
+function flush(): Promise<void> {
+  return getState()?.flush() ?? Promise.resolve();
 }
 
 function init(config: DifInitConfig): void {
@@ -39,6 +52,7 @@ function configure(config: DifConfig | DifInitConfig): void {
 export const dif: DifFn = Object.assign(difCall, {
   init,
   track,
+  flush,
   setOverrides,
   getOverrides,
   configure,

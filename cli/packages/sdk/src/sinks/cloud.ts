@@ -3,11 +3,18 @@
 // `setState` when events mode is cloud (the default). This is the built-in
 // alternative to custom mode, where the user writes their own handlers.
 //
+// Each endpoint has one queue. See queue.ts.
+//
 // We use `fetch` (not `sendBeacon`) because we need to set
 // `Authorization: Bearer <publishableKey>` on every request. `keepalive: true`
 // keeps the request alive across page nav.
 
+import { EventQueue, canObservePageHide } from "../queue.js";
 import type { ExposureEvent, MetricEvent, Sink } from "../types.js";
+import { validateExposure, validateTrack } from "../validate.js";
+
+const BATCH_SIZE = 20;
+const BATCH_INTERVAL_MS = 2000;
 
 // Shared across cloudSink + cloudTrack — a bad publishableKey (401) or a dead
 // endpoint (5xx) affects every event the same way, so one warning for the
@@ -19,15 +26,39 @@ export function __resetCloudWarnings(): void {
   non2xxWarned = false;
 }
 
-function warnOnNon2xx(res: Response): void {
-  if (res.ok || non2xxWarned) return;
+function warnOnGiveUp(status: number | null): void {
+  if (status === null || non2xxWarned) return;
   non2xxWarned = true;
   if (typeof console !== "undefined") {
     console.warn(
-      `[dif] cloud rejected an event (HTTP ${res.status}) — check the publishableKey in ` +
+      `[dif] cloud rejected an event (HTTP ${status}) — check the publishableKey in ` +
         "dif/config.yaml. Further failures will be silent.",
     );
   }
+}
+
+function createQueue(
+  apiUrl: string,
+  path: string,
+  key: string,
+  label: string,
+  validate: (parsed: unknown) => string | null,
+): EventQueue {
+  const browser = canObservePageHide();
+  return new EventQueue({
+    url: `${apiUrl.replace(/\/+$/, "")}${path}`,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+    },
+    label,
+    validate,
+    maxEvents: browser ? BATCH_SIZE : 1,
+    intervalMs: BATCH_INTERVAL_MS,
+    keepalive: true,
+    lifecycle: browser,
+    onGiveUp: warnOnGiveUp,
+  });
 }
 
 export interface CloudSinkConfig {
@@ -38,40 +69,17 @@ export interface CloudSinkConfig {
 }
 
 export function cloudSink(cfg: CloudSinkConfig): Sink {
-  const url = `${cfg.apiUrl.replace(/\/+$/, "")}/v1/exposure`;
-  const auth = `Bearer ${cfg.publishableKey}`;
+  let queue: EventQueue | null = null;
+  const get = () =>
+    (queue ??= createQueue(cfg.apiUrl, "/v1/exposure", cfg.publishableKey, "exposure", validateExposure));
   return {
     kind: "cloud",
     emit(event: ExposureEvent) {
-      return post(url, auth, JSON.stringify(event));
+      return get().add(event);
     },
+    flush: () => (queue ? queue.flush() : Promise.resolve()),
+    close: () => (queue ? queue.close() : Promise.resolve()),
   };
-}
-
-/**
- * POST one event. Resolves `true` on 2xx, else `false`.
- * It never rejects or throws.
- */
-function post(url: string, auth: string, body: string): Promise<boolean> {
-  try {
-    return fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: auth,
-      },
-      body,
-      keepalive: true,
-    })
-      .then((res) => {
-        warnOnNon2xx(res);
-        return res.ok;
-      })
-      .catch(() => false);
-  } catch {
-    // Synchronous throws (fetch undefined, etc.) are also swallowed.
-    return Promise.resolve(false);
-  }
 }
 
 export interface CloudTrackConfig {
@@ -81,21 +89,31 @@ export interface CloudTrackConfig {
   publishableKey: string | null;
 }
 
+/** The track handler, with the queue's flush and close. */
+export type CloudTrack = ((event: MetricEvent) => void) & {
+  flush(): Promise<void>;
+  close(): Promise<void>;
+};
+
 /**
- * Build the cloud track handler: posts one `MetricEvent` to `<apiUrl>/v1/track`.
+ * Build the cloud track handler: queues one `MetricEvent` for `<apiUrl>/v1/track`.
  * Without a publishableKey it logs to console.debug and drops — analytics must
  * never block, and the cloud requires authenticated writes.
  */
-export function cloudTrack(cfg: CloudTrackConfig): (event: MetricEvent) => void {
-  const url = `${cfg.apiUrl.replace(/\/+$/, "")}/v1/track`;
+export function cloudTrack(cfg: CloudTrackConfig): CloudTrack {
   const { publishableKey } = cfg;
-  return (event: MetricEvent) => {
+  let queue: EventQueue | null = null;
+  const handler = ((event: MetricEvent) => {
     if (!publishableKey) {
       if (typeof console !== "undefined") {
         console.debug("[dif] track (no publishableKey, dropped)", event.metric, event);
       }
       return;
     }
-    void post(url, `Bearer ${publishableKey}`, JSON.stringify(event));
-  };
+    queue ??= createQueue(cfg.apiUrl, "/v1/track", publishableKey, "track", validateTrack);
+    void queue.add(event);
+  }) as CloudTrack;
+  handler.flush = () => (queue ? queue.flush() : Promise.resolve());
+  handler.close = () => (queue ? queue.close() : Promise.resolve());
+  return handler;
 }

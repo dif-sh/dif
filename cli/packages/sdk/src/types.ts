@@ -85,6 +85,10 @@ export interface Sink {
    * The SDK saves its dedup entry only then.
    */
   emit(event: ExposureEvent): void | Promise<boolean>;
+  /** Sends queued events. Only a buffering sink has it. */
+  flush?(): Promise<void>;
+  /** Flushes and stops. Only a buffering sink has it. */
+  close?(): Promise<void>;
 }
 
 /** Exposure event shape emitted to the configured sinks. */

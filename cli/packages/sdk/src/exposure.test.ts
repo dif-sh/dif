@@ -84,7 +84,7 @@ beforeEach(() => {
   g.window = { localStorage: store };
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    bodies.push(JSON.parse(init?.body as string));
+    bodies.push(...JSON.parse(init?.body as string));
     return new Response("{}", { status });
   }) as typeof fetch;
   savedWarn = console.warn;

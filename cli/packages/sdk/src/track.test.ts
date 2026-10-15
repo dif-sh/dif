@@ -90,7 +90,7 @@ describe("dif.track", () => {
     const headers = call.init.headers as Record<string, string>;
     assert.equal(headers["content-type"], "application/json");
     assert.equal(headers.authorization, "Bearer dif_pk_live_aaaaaaaa_secret-secret-secret");
-    const body = JSON.parse(call.init.body as string);
+    const body = JSON.parse(call.init.body as string)[0];
     assert.equal(body.metric, "completed_checkout");
     assert.equal(body.user_id, "u-1");
     assert.equal(body.value, 49);
@@ -109,7 +109,7 @@ describe("dif.track", () => {
     dif.track("m");
     dif.track("m", { idempotencyKey: "order-1" });
     await Promise.resolve();
-    const [a, b] = fetchCalls.map((c) => JSON.parse(c.init.body as string));
+    const [a, b] = fetchCalls.map((c) => JSON.parse(c.init.body as string)[0]);
     assert.match(a.event_id, UUID_V7);
     assert.match(b.event_id, UUID_V7);
     assert.notEqual(a.event_id, b.event_id);
@@ -176,7 +176,7 @@ describe("dif.track", () => {
     });
     dif.track("metric", { userId: "override" });
     await Promise.resolve();
-    const body = JSON.parse(fetchCalls[0]!.init.body as string);
+    const body = JSON.parse(fetchCalls[0]!.init.body as string)[0];
     assert.equal(body.user_id, "override");
   });
 
