@@ -68,7 +68,7 @@ describe("cloudSink", () => {
     assert.equal(headers["content-type"], "application/json");
     assert.equal(headers.authorization, "Bearer dif_pk_test_aaaaaaaa_secret");
     const body = JSON.parse(call.init.body as string);
-    assert.deepEqual(body, SAMPLE_EVENT);
+    assert.deepEqual(body, [SAMPLE_EVENT]);
   });
 
   it("reports true after a 2xx and false after a non-2xx", async () => {
@@ -174,7 +174,7 @@ describe("dif.init exposure delivery", () => {
     assert.equal(posts.length, 1, "expected exactly one POST to /v1/exposure");
     const headers = posts[0]!.init.headers as Record<string, string>;
     assert.equal(headers.authorization, "Bearer dif_pk_live_aaaaaaaa");
-    const body = JSON.parse(posts[0]!.init.body as string);
+    const body = JSON.parse(posts[0]!.init.body as string)[0];
     assert.equal(body.event, "dif.exposure");
     assert.equal(body.experiment, id);
     assert.equal(body.user_id, "u-1");
