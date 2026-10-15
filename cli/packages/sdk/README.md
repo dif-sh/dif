@@ -89,7 +89,49 @@ the SDK; after that, every `dif()` call resolves locally.
 
 Variant resolution is deterministic, sticky per user, and byte-compatible
 with `dif-core` (Rust). One exposure event fires per `(experiment, user)`
-per session.
+per page load. In the browser with cloud delivery, it also stays quiet across
+page loads; see [Exposure dedup](#exposure-dedup).
+
+## Exposure dedup
+
+Within one page load, an exposure fires once per `(experiment, user)`.
+
+In the browser, with cloud delivery, the SDK also remembers what it sent. It
+keeps one `localStorage` entry per experiment and user:
+
+```
+dif:exp:v1:<experiment>:<user hash>  →  { "variant": "…", "until": <unix ms> }
+```
+
+`<user hash>` is the first 8 bytes of the SHA-256 of the user id, in hex, so the
+key never holds a raw user id such as an email. Two users on one browser that
+share a hash would cost one extra or one skipped exposure. That is rare enough
+to accept.
+
+- An exposure fires when the entry is absent, expired, or names another
+  variant. A reassignment still fires, so you can see it in the results.
+- The entry is written **only after the cloud answers 2xx**. If the request
+  fails or the page closes first, nothing is written and the exposure fires
+  again on the next load.
+- An entry lasts 30 days from the send that wrote it. An entry whose `until`
+  is more than 30 days ahead (a clock that ran fast, or an edit) counts as
+  expired.
+- The first exposure on each page load removes entries that are expired,
+  malformed or too far ahead.
+- If `localStorage` is missing or throws (private mode, blocked storage), the
+  SDK dedupes per page load only.
+- With `events: custom`, your handler decides what is delivered, so dedup stays
+  per page load and no entry is written.
+- On the server there is no `window`, so nothing is saved. `assign()` never
+  fires an exposure. A bare `dif()` call with a `userId` set can still fire one,
+  deduped per process only.
+
+## Event ids
+
+Every exposure and every `dif.track()` or `DifServer.track()` call carries an
+`event_id`: a UUIDv7 in lowercase form, made when the event is created. Cloud
+handlers that do not read `event_id` ignore it. Custom handlers receive it on
+the event object.
 
 ## Metric tracking
 
@@ -108,7 +150,8 @@ dif.track("article_read", {
 ```
 
 Calls are fire-and-forget: one HTTP POST per event using `fetch` with
-`keepalive: true`. The call never throws; bad analytics must not crash a
+`keepalive: true`. Each event carries an `event_id` (see
+[Event ids](#event-ids)). The call never throws; bad analytics must not crash a
 render. When `publishableKey` isn't configured, the call logs to
 `console.debug` and drops.
 
@@ -166,9 +209,11 @@ useEffect(() => track("completed_checkout"), []);
 - Audience predicate evaluation and exclusion-group arbitration. Within a
   group, the SDK picks the same winner as `dif qa` (sorted by created date,
   then id), so the CLI and the runtime agree on who sees what.
-- One exposure event per `(experiment, user)` per session. Delivered per the
-  `events` config from `dif build`: cloud mode posts to dif.sh Cloud, custom
-  mode calls your `dif/events/exposure.ts` handler.
+- One exposure event per `(experiment, user)` per page load, and in the
+  browser with cloud delivery, once per 30 days until the variant changes.
+  Delivered per the `events` config from `dif build`: cloud mode posts to
+  dif.sh Cloud, custom mode calls your `dif/events/exposure.ts` handler.
+- An `event_id` (UUIDv7) on every exposure and track.
 - Metric tracking (`dif.track`): to dif.sh Cloud in cloud mode, or your
   `dif/events/track.ts` handler in custom mode. Server tracking is cloud-only.
 

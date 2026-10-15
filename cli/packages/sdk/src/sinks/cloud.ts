@@ -43,26 +43,35 @@ export function cloudSink(cfg: CloudSinkConfig): Sink {
   return {
     kind: "cloud",
     emit(event: ExposureEvent) {
-      const body = JSON.stringify(event);
-      try {
-        void fetch(url, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: auth,
-          },
-          body,
-          keepalive: true,
-        })
-          .then(warnOnNon2xx)
-          .catch(() => {
-            // Swallow — analytics must never throw at the call site.
-          });
-      } catch {
-        // Synchronous throws (fetch undefined, etc.) are also swallowed.
-      }
+      return post(url, auth, JSON.stringify(event));
     },
   };
+}
+
+/**
+ * POST one event. Resolves `true` on 2xx, else `false`.
+ * It never rejects or throws.
+ */
+function post(url: string, auth: string, body: string): Promise<boolean> {
+  try {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: auth,
+      },
+      body,
+      keepalive: true,
+    })
+      .then((res) => {
+        warnOnNon2xx(res);
+        return res.ok;
+      })
+      .catch(() => false);
+  } catch {
+    // Synchronous throws (fetch undefined, etc.) are also swallowed.
+    return Promise.resolve(false);
+  }
 }
 
 export interface CloudTrackConfig {
@@ -87,23 +96,6 @@ export function cloudTrack(cfg: CloudTrackConfig): (event: MetricEvent) => void 
       }
       return;
     }
-    const body = JSON.stringify(event);
-    try {
-      void fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${publishableKey}`,
-        },
-        body,
-        keepalive: true,
-      })
-        .then(warnOnNon2xx)
-        .catch(() => {
-          // Swallow — analytics must never throw at the call site.
-        });
-    } catch {
-      // Synchronous throws (fetch undefined, etc.) are also swallowed.
-    }
+    void post(url, `Bearer ${publishableKey}`, JSON.stringify(event));
   };
 }

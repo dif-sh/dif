@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { dif, __reset } from "./index.js";
 import { SOURCE } from "./version.js";
 
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 interface FetchCall {
   url: string;
   init: RequestInit;
@@ -95,6 +97,33 @@ describe("dif.track", () => {
     assert.equal(body.currency, "USD");
     assert.equal(body.source, SOURCE);
     assert.ok(typeof body.fired_at === "number");
+  });
+
+  it("puts a new UUIDv7 event_id on every track", async () => {
+    dif.init({
+      project: "acme",
+      publishableKey: "dif_pk_live_aaaaaaaa_secret-secret-secret",
+      apiUrl: "https://api.example.test",
+      userId: () => "u-1",
+    });
+    dif.track("m");
+    dif.track("m", { idempotencyKey: "order-1" });
+    await Promise.resolve();
+    const [a, b] = fetchCalls.map((c) => JSON.parse(c.init.body as string));
+    assert.match(a.event_id, UUID_V7);
+    assert.match(b.event_id, UUID_V7);
+    assert.notEqual(a.event_id, b.event_id);
+    assert.equal(b.idempotency_key, "order-1");
+  });
+
+  it("passes event_id to a custom track handler", () => {
+    const seen: { event_id: string }[] = [];
+    dif.init({
+      userId: () => "u-1",
+      events: { mode: "custom", exposure: () => {}, track: (e) => void seen.push(e) },
+    });
+    dif.track("m");
+    assert.match(seen[0]!.event_id, UUID_V7);
   });
 
   it("uses the publishable key baked into events config", async () => {

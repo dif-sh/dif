@@ -19,6 +19,7 @@ let originalWarn: typeof console.warn;
 
 const SAMPLE_EVENT: ExposureEvent = {
   event: "dif.exposure",
+  event_id: "01933f2e-7c4a-7b3e-8f21-5d6a9c0e4b17",
   experiment: "x",
   variant: "control",
   user_id: "u-1",
@@ -68,6 +69,23 @@ describe("cloudSink", () => {
     assert.equal(headers.authorization, "Bearer dif_pk_test_aaaaaaaa_secret");
     const body = JSON.parse(call.init.body as string);
     assert.deepEqual(body, SAMPLE_EVENT);
+  });
+
+  it("reports true after a 2xx and false after a non-2xx", async () => {
+    const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });
+    assert.equal(await sink.emit(SAMPLE_EVENT), true);
+    globalThis.fetch = (async () => new Response("no", { status: 500 })) as typeof fetch;
+    assert.equal(await sink.emit(SAMPLE_EVENT), false);
+  });
+
+  it("reports false when the request fails, never rejecting", async () => {
+    const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });
+    globalThis.fetch = (() => Promise.reject(new Error("net down"))) as typeof fetch;
+    assert.equal(await sink.emit(SAMPLE_EVENT), false);
+    globalThis.fetch = (() => {
+      throw new Error("boom");
+    }) as typeof fetch;
+    assert.equal(await sink.emit(SAMPLE_EVENT), false);
   });
 
   it("strips trailing slashes from apiUrl", () => {
