@@ -152,7 +152,9 @@ function installListeners(): void {
   const doc = target("document");
   const onHide = () => {
     hidden = true;
-    for (const q of [...lifecycleQueues]) q.hide();
+    const queues = [...lifecycleQueues];
+    for (const q of queues) q.hide();
+    for (const q of queues) q.shadowInflight();
   };
   const onShow = () => {
     hidden = false;
@@ -218,7 +220,7 @@ export class EventQueue {
     return this.flush();
   }
 
-  /** The page is hiding: send everything that could be lost. */
+  /** The page is hiding: send what is not sent yet. */
   hide(): void {
     this.drain();
     for (const batch of [...this.live]) {
@@ -228,6 +230,12 @@ export class EventQueue {
         this.send(batch);
       }
     }
+  }
+
+  // Run after hide() on every queue.
+  // A copy uses shared quota, so unsent batches go first.
+  shadowInflight(): void {
+    if (this.opts.keepalive) return;
     for (const batch of [...this.live]) {
       if (batch.inflight && !batch.sentHidden && !batch.shadowed) {
         batch.shadowed = true;
@@ -335,13 +343,13 @@ export class EventQueue {
       .catch(() => this.finish(batch, false));
   }
 
-  private async request(batch: Batch): Promise<Outcome> {
+  private async request(batch: Batch, keepalive = this.opts.keepalive): Promise<Outcome> {
     try {
       const res = await fetch(this.opts.url, {
         method: "POST",
         headers: this.opts.headers,
         body: batch.body,
-        ...(this.opts.keepalive && { keepalive: true }),
+        ...(keepalive && { keepalive: true }),
       });
       const retryAfter = parseRetryAfter(res.headers?.get?.("retry-after") ?? null, Date.now());
       return { ok: res.ok, status: res.status, retryAfterMs: retryAfter, res };
@@ -350,9 +358,9 @@ export class EventQueue {
     }
   }
 
-  // The first copy can fail unseen after unload.
+  // A request without keepalive can fail unseen after unload.
   private async shadow(batch: Batch): Promise<void> {
-    const out = await this.request(batch);
+    const out = await this.request(batch, true);
     if (out.ok) this.finish(batch, true);
   }
 

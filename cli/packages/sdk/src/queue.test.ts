@@ -543,10 +543,22 @@ describe("EventQueue page lifecycle", () => {
     assert.equal(calls.length, 2, "the cancelled retry does not fire again");
   });
 
-  it("sends a batch that is in flight again, with the same body", async () => {
+  it("does not copy a keepalive request that is in flight", async () => {
+    responder = () => new Promise<Response>(() => {});
+    const q = make({ lifecycle: true });
+    q.add(ev(1));
+    q.flush();
+    await settle();
+    hide();
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.equal(calls.length, 1);
+  });
+
+  it("copies a request that is not keepalive, with keepalive and the same body", async () => {
     const held: Array<(r: Response) => void> = [];
     responder = () => new Promise<Response>((r) => held.push(r));
-    const q = make({ lifecycle: true });
+    const q = make({ lifecycle: true, keepalive: false });
     const p = q.add(ev(1));
     q.flush();
     await settle();
@@ -555,15 +567,16 @@ describe("EventQueue page lifecycle", () => {
     await settle();
     assert.equal(calls.length, 2);
     assert.equal(calls[1]!.body, calls[0]!.body);
+    assert.equal(calls[1]!.init.keepalive, true);
     held[1]!(ok());
     assert.equal(await p, true);
     held[0]!(ok());
     await settle();
   });
 
-  it("sends an in-flight batch again once, however many times the page hides", async () => {
+  it("copies a request that is not keepalive once, however many times the page hides", async () => {
     responder = () => new Promise<Response>(() => {});
-    const q = make({ lifecycle: true });
+    const q = make({ lifecycle: true, keepalive: false });
     q.add(ev(1));
     q.flush();
     await settle();
@@ -572,6 +585,54 @@ describe("EventQueue page lifecycle", () => {
     hide();
     await settle();
     assert.equal(calls.length, 2);
+  });
+
+  // The browser shares 64 KiB of keepalive bodies in flight.
+  const enforceQuota = (rejected: string[]) => {
+    let inflight = 0;
+    responder = (call) => {
+      if (call.init.keepalive === true) {
+        const bytes = utf8Length(call.body);
+        if (inflight + bytes > 65_536) {
+          rejected.push(call.url);
+          throw new Error("quota");
+        }
+        inflight += bytes;
+      }
+      return new Promise<Response>(() => {});
+    };
+  };
+  const exposureUrl = "https://api.example.test/v1/exposure";
+  const note = "x".repeat(1500);
+
+  it("sends the unsent batch of a second queue beside a large request in flight", async () => {
+    const rejected: string[] = [];
+    enforceQuota(rejected);
+    const track = make({ lifecycle: true });
+    const exposure = make({ lifecycle: true, url: exposureUrl });
+    for (let i = 0; i < 20; i++) void track.add(ev(i, { note }));
+    track.flush();
+    await settle();
+    for (let i = 100; i < 110; i++) void exposure.add(ev(i));
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.deepEqual(rejected, []);
+    assert.equal(calls.filter((c) => c.url === exposureUrl).length, 1);
+  });
+
+  it("sends the unsent batches of every queue before any copy", async () => {
+    const rejected: string[] = [];
+    enforceQuota(rejected);
+    const track = make({ lifecycle: true, keepalive: false });
+    const exposure = make({ lifecycle: true, url: exposureUrl, maxEvents: 50 });
+    for (let i = 0; i < 20; i++) void track.add(ev(i, { note }));
+    track.flush();
+    await settle();
+    for (let i = 100; i < 122; i++) void exposure.add(ev(i, { note }));
+    win.dispatchEvent(new Event("pagehide"));
+    await settle();
+    assert.equal(rejected.includes(exposureUrl), false);
+    assert.equal(calls.filter((c) => c.url === exposureUrl).length, 1);
   });
 
   it("does not send a batch again that the hide itself sent", async () => {
