@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { __reset, __register, dif } from "./index.js";
 import { __resetCloudWarnings } from "./sinks/cloud.js";
 import { __resetExposures } from "./exposure.js";
-import { __resetQueues, MAX_BODY_BYTES, utf8Length } from "./queue.js";
+import { __resetQueues, FLUSH_BYTES, MAX_BODY_BYTES, utf8Length } from "./queue.js";
 import { bytesToHex, sha256 } from "./sha256.js";
 
 const g = globalThis as Record<string, unknown>;
@@ -222,7 +222,7 @@ describe("batched exposure dedup", () => {
 
   it("flushes at 20 events and keeps every body at 60 KB or less", async () => {
     initCloud();
-    for (let i = 0; i < 45; i++) dif.track(`m${i}`, { props: { pad: "x".repeat(2500) } });
+    for (let i = 0; i < 45; i++) dif.track(`m${i}`, { props: { pad: "x".repeat(200) } });
     await settle();
     assert.equal(calls.length, 2, "two flushes at 20 events");
     await dif.flush();
@@ -234,12 +234,12 @@ describe("batched exposure dedup", () => {
     for (const c of calls) assert.ok(utf8Length(c.body) <= MAX_BODY_BYTES);
   });
 
-  it("splits a flush of large events into bodies of 60 KB or less", async () => {
+  it("sends large events in bodies of 16 KB or less", async () => {
     initCloud();
     for (let i = 0; i < 20; i++) dif.track(`m${i}`, { props: { pad: "x".repeat(10_000) } });
-    await settle();
+    await dif.flush();
     assert.ok(calls.length >= 4);
-    for (const c of calls) assert.ok(utf8Length(c.body) <= MAX_BODY_BYTES);
+    for (const c of calls) assert.ok(utf8Length(c.body) <= FLUSH_BYTES);
     assert.equal(calls.reduce((n, c) => n + c.events.length, 0), 20);
   });
 });
