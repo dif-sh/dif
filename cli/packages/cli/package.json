@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/cli",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "The dif CLI: feature flags and A/B tests as Markdown files in your git repo. `dif validate` checks them and `dif build` compiles a typed TypeScript client. This package downloads the matching Rust binary on install.",
   "license": "MIT",
   "bin": {

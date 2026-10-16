@@ -1,7 +1,7 @@
 {
   "name": "dif",
   "displayName": "dif",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Skills for authoring, validating and concluding feature flags and A/B tests kept as Markdown files with the dif CLI.",
   "author": {
     "name": "Chris Fowles",

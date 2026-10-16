@@ -1,6 +1,6 @@
 {
   "name": "@dif.sh/openfeature",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "OpenFeature server provider for dif feature flags and A/B tests. Resolves evaluations against the experiments registered by dif/generated/client.ts.",
   "license": "MIT",
   "type": "module",
@@ -48,7 +48,7 @@
     "typescript"
   ],
   "peerDependencies": {
-    "@dif.sh/sdk": "^0.7.0",
+    "@dif.sh/sdk": "^0.8.0",
     "@openfeature/server-sdk": "^1.18.0"
   },
   "devDependencies": {
