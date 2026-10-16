@@ -34,7 +34,7 @@ dif new <id> --surface <name>             draft dif/experiments/active/<id>.md
 dif validate                              schema, weights, audience, exclusion checks
 dif build                                 compile to dif/generated/client.ts + dif/context.json
 dif qa --user <id>                        trace a user's assignment chain
-dif conclude <id> --decision "<text>"     atomic: archive + fill Decision + append surface Learning
+dif conclude <id> --decision "<text>"     one step: archive + fill Decision + append surface Learning
 dif scaffold-audiences                    write the starter audience resolvers (locale, device_type)
 
 # Validation error codes
