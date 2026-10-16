@@ -13,7 +13,7 @@ set -eu
 
 REPO="dif-sh/dif"
 INSTALL_DIR="${DIF_INSTALL_DIR:-$HOME/.local/bin}"
-DEFAULT_VERSION="v0.7.0" # stamped by scripts/prepare-release.sh
+DEFAULT_VERSION="v0.8.0" # stamped by scripts/prepare-release.sh
 VERSION=""
 
 while [ $# -gt 0 ]; do
