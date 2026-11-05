@@ -101,12 +101,11 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             }
         }
     };
-    // A non-default host must reach the generated client too.
-    let url = args.url.clone().or_else(|| {
-        link.as_ref()
-            .map(|l| l.cloud_url.clone())
-            .filter(|u| u != DEFAULT_CLOUD_URL)
-    });
+    let url = events_url(
+        args.url.clone(),
+        link.as_ref().map(|l| l.cloud_url.as_str()),
+        workspace.config.events().url.as_deref(),
+    );
 
     let switched_from_custom = workspace.config.events().mode == EventsMode::Custom;
     let config_path = workspace.root.join(paths::CONFIG_FILE);
@@ -122,6 +121,20 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
 
     report_success(switched_from_custom, link.as_ref(), json);
     Ok(ExitCode::from(0))
+}
+
+/// The `events.url` to write, or `None` to keep the current line.
+fn events_url(
+    flag: Option<String>,
+    session: Option<&str>,
+    current: Option<&str>,
+) -> Option<String> {
+    // Rewrite a stale url, so events reach the session host.
+    flag.or_else(|| {
+        session
+            .filter(|u| *u != DEFAULT_CLOUD_URL || current.is_some())
+            .map(String::from)
+    })
 }
 
 fn link_project(
@@ -498,6 +511,17 @@ mod tests {
         let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
         assert_eq!(f.code, "needs_selection");
         assert_eq!(server.paths()[1], "/v1/cli/projects?org=acme");
+    }
+
+    #[test]
+    fn events_url_follows_the_session_host() {
+        let local = Some("http://localhost:3000");
+        assert_eq!(
+            events_url(None, Some(DEFAULT_CLOUD_URL), local).as_deref(),
+            Some(DEFAULT_CLOUD_URL)
+        );
+        assert_eq!(events_url(None, Some(DEFAULT_CLOUD_URL), None), None);
+        assert_eq!(events_url(None, local, None).as_deref(), local);
     }
 
     #[test]
