@@ -54,6 +54,7 @@ W001  call site references an experiment that isn't active (warning)
 W002  audience file has no matching entry in audience_attributes (warning)
 W003  legacy exposure: block in dif/config.yaml, superseded by events: (warning)
 W004  active experiment file's status isn't active (warning)
+W005  active experiment while features.experiments is false (warning)
 
 # Before drafting an experiment
 

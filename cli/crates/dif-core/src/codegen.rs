@@ -158,15 +158,20 @@ pub fn render_events(workspace: &Workspace, out_dir: &Path) -> String {
     out
 }
 
+/// Active experiments the client registers. None when experiments are off.
+fn registered(workspace: &Workspace) -> impl Iterator<Item = &ParsedExperiment> {
+    let enabled = workspace.config.features().experiments;
+    workspace
+        .active
+        .iter()
+        .filter(move |p| enabled && matches!(p.spec.status, Status::Active))
+}
+
 /// Walk active experiments and collect the set of audience attribute names
 /// they reference. This is the tree-shake input for `emit_audiences`.
 fn referenced_attribute_names(workspace: &Workspace) -> HashSet<String> {
     let mut out = HashSet::new();
-    for parsed in workspace
-        .active
-        .iter()
-        .filter(|p| matches!(p.spec.status, Status::Active))
-    {
+    for parsed in registered(workspace) {
         for pred in parsed
             .spec
             .audience
@@ -199,11 +204,7 @@ fn relative_import_prefix(out_dir: &Path, workspace_root: &Path) -> String {
 /// Render the full file contents as a string. Pulled out so tests can snapshot
 /// the output without touching the filesystem.
 pub fn render_client(workspace: &Workspace) -> String {
-    let mut active: Vec<&ParsedExperiment> = workspace
-        .active
-        .iter()
-        .filter(|p| matches!(p.spec.status, Status::Active))
-        .collect();
+    let mut active: Vec<&ParsedExperiment> = registered(workspace).collect();
     active.sort_by(|a, b| a.spec.id.cmp(&b.spec.id));
 
     let mut out = String::new();
@@ -432,7 +433,7 @@ fn hex_salt(salt: &[u8; 16]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        config::{BucketingConfig, BuildConfig, Config},
+        config::{BucketingConfig, BuildConfig, Config, Features},
         parse::{parse_experiment_str, ParsedExperiment},
     };
     use std::path::PathBuf;
@@ -460,6 +461,8 @@ mod tests {
             },
             events: None,
             exposure: None,
+            project_type: None,
+            features: None,
             build: BuildConfig::default(),
         }
     }
@@ -593,6 +596,29 @@ created: 2026-01-01";
         assert_eq!(js_escape("with \"quote\""), "with \\\"quote\\\"");
         assert_eq!(js_escape("back\\slash"), "back\\\\slash");
         assert_eq!(js_escape("line\nbreak"), "line\\nbreak");
+    }
+
+    #[test]
+    fn disabled_experiments_emit_no_registrations_or_audiences() {
+        let exp = parse_active(
+            &format!("{SIMPLE_EXP}\naudience:\n  include:\n    - device_type: mobile"),
+            "checkout-cta-v2",
+        );
+        let root = PathBuf::from("/tmp/dif-test-ws");
+        let audiences = vec![AudienceFile {
+            slug: "device_type".into(),
+            path: root.join("dif/audiences/device_type.ts"),
+        }];
+        let mut ws = ws_with(vec![exp], audiences, root.clone());
+        let out_dir = root.join("dif").join("generated");
+        assert!(render_client(&ws).contains("__register({"));
+
+        ws.config.features = Some(Features {
+            experiments: false,
+            ..Features::default()
+        });
+        assert!(!render_client(&ws).contains("__register({"));
+        assert!(!render_audiences(&ws, &out_dir).contains("device_type"));
     }
 
     // -- audiences module -----------------------------------------------------
