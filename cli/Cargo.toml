@@ -30,6 +30,8 @@ clap        = { version = "4", features = ["derive", "wrap_help"] }
 indicatif   = "0.17"
 console     = "0.15"
 dialoguer   = "0.11"
+# rustls only: no native-tls, no openssl.
+ureq        = { version = "3", default-features = false, features = ["rustls"] }
 
 # Internal crate refs
 dif-core    = { path = "crates/dif-core", version = "0.8.0" }
