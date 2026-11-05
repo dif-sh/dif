@@ -101,8 +101,12 @@ impl CloudEnv {
             });
         }
         let c = stored?;
+        // Never send a token to a host that did not issue it.
+        if self.cloud_url.as_ref().is_some_and(|u| *u != c.cloud_url) {
+            return None;
+        }
         Some(Session {
-            cloud_url: self.cloud_url.clone().unwrap_or(c.cloud_url),
+            cloud_url: c.cloud_url,
             token: c.token,
             source: Source::File,
             user: c.user,
@@ -218,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn file_session_keeps_its_cloud_url_unless_env_overrides() {
+    fn file_session_applies_only_to_its_own_cloud_url() {
         let tmp = tempfile::tempdir().unwrap();
         let mut env = env_in(tmp.path(), None);
         env.save_credential(&stored("dif_cli_file")).unwrap();
@@ -227,8 +231,11 @@ mod tests {
         assert_eq!((s.token.as_str(), s.source), ("dif_cli_file", Source::File));
         assert_eq!(s.cloud_url, "http://localhost:4321");
 
+        env.cloud_url = Some("http://localhost:4321".into());
+        assert_eq!(env.session().unwrap().cloud_url, "http://localhost:4321");
+
         env.cloud_url = Some("https://other.example".into());
-        assert_eq!(env.session().unwrap().cloud_url, "https://other.example");
+        assert!(env.session().is_none());
     }
 
     #[test]

@@ -349,14 +349,11 @@ fn status(args: &StatusArgs, env: &CloudEnv, json: bool) -> Outcome {
 
 fn logout(env: &CloudEnv, json: bool) -> Outcome {
     let revoked = match env.load_credential() {
-        Some(c) => {
-            let base = env.cloud_url.clone().unwrap_or(c.cloud_url);
-            Client::new(&base, Some(c.token))
-                .post("/v1/cli/logout", &json!({}))
-                .ok()
-                .and_then(|v| v["revoked"].as_bool())
-                .unwrap_or(false)
-        }
+        Some(c) => Client::new(&c.cloud_url, Some(c.token))
+            .post("/v1/cli/logout", &json!({}))
+            .ok()
+            .and_then(|v| v["revoked"].as_bool())
+            .unwrap_or(false),
         None => false,
     };
     env.delete_credential()?;
@@ -468,6 +465,28 @@ mod tests {
         assert!(matches!(poll(&server, 12, &clock), PollOutcome::Pending));
         assert_eq!(*clock.sleeps.borrow(), vec![5, 5, 2]);
         assert_eq!(server.paths().len(), 3);
+    }
+
+    #[test]
+    fn logout_revokes_at_the_host_that_issued_the_token() {
+        let server = FakeServer::start(|_| (200, r#"{"revoked":true}"#.into()));
+        let tmp = tempfile::tempdir().unwrap();
+        let env = CloudEnv {
+            config_dir: Some(tmp.path().join("dif")),
+            token: None,
+            cloud_url: Some("http://127.0.0.1:1".into()),
+        };
+        env.save_credential(&StoredCredential {
+            token: "dif_cli_file".into(),
+            cloud_url: server.url.clone(),
+            user: None,
+            expires_at: None,
+        })
+        .unwrap();
+
+        logout(&env, true).unwrap().unwrap();
+        assert_eq!(server.paths(), ["/v1/cli/logout"]);
+        assert!(env.load_credential().is_none());
     }
 
     #[test]
