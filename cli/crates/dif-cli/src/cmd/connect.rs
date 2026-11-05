@@ -169,6 +169,7 @@ fn link_project(
     let choice = match (&args.project, args.create, &org) {
         (Some(slug), _, _) => Some(Choice::Existing(slug.clone())),
         (None, true, Some(o)) => Some(Choice::Create(o.clone())),
+        (None, true, None) if interactive => prompt_org(&orgs).map(Choice::Create),
         _ if interactive => prompt(&client, &orgs, org.clone()).map_err(fail)?,
         _ => None,
     };
@@ -231,9 +232,7 @@ fn link_project(
     let status = resp["repo"]["status"].as_str().unwrap_or("unlinked");
     let mut repo = json!({ "status": status, "detected": detected });
     if status != "linked" {
-        if let Some(url) = resp["repo"].get("github_install_url") {
-            repo["github_install_url"] = url.clone();
-        }
+        repo["github_install_url"] = resp["repo"]["github_install_url"].clone();
     }
     Ok(Link {
         dashboard_url: resp["dashboard_url"]
@@ -297,23 +296,8 @@ fn prompt(
     org: Option<String>,
 ) -> Result<Option<Choice>, ApiError> {
     let slug = |v: &Value| v["slug"].as_str().unwrap_or_default().to_string();
-    let org = match org {
-        Some(o) => o,
-        None => {
-            let items: Vec<String> = orgs.iter().map(slug).collect();
-            if items.is_empty() {
-                return Ok(None);
-            }
-            match Select::new()
-                .with_prompt("Which org?")
-                .items(&items)
-                .default(0)
-                .interact_opt()
-            {
-                Ok(Some(i)) => items[i].clone(),
-                _ => return Ok(None),
-            }
-        }
+    let Some(org) = org.or_else(|| prompt_org(orgs)) else {
+        return Ok(None);
     };
     let projects = list_projects(client, Some(&org))?;
     let mut items: Vec<String> = projects
@@ -333,6 +317,26 @@ fn prompt(
             _ => None,
         },
     )
+}
+
+/// `None` when there is no org or the person cancels.
+fn prompt_org(orgs: &[Value]) -> Option<String> {
+    let items: Vec<String> = orgs
+        .iter()
+        .map(|o| o["slug"].as_str().unwrap_or_default().to_string())
+        .collect();
+    if items.is_empty() {
+        return None;
+    }
+    match Select::new()
+        .with_prompt("Which org?")
+        .items(&items)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => Some(items[i].clone()),
+        _ => None,
+    }
 }
 
 fn detect_github_repo(root: &Path) -> Option<String> {
@@ -384,21 +388,26 @@ fn report_no_workspace(json: bool) {
     );
 }
 
+fn success_json(config: &str, switched_from_custom: bool, link: Option<&Link>) -> Value {
+    let mut payload = serde_json::json!({
+        "ok": true,
+        "config": config,
+        "mode": "cloud",
+        "switched_from_custom": switched_from_custom,
+        "next": "dif build",
+    });
+    if let Some(l) = link {
+        payload["project"] = json!({ "slug": l.slug, "org": l.org, "created": l.created });
+        payload["dashboard_url"] = json!(l.dashboard_url);
+        payload["repo"] = l.repo.clone();
+    }
+    payload
+}
+
 fn report_success(switched_from_custom: bool, link: Option<&Link>, json: bool) {
     let config = Path::new(paths::CONFIG_FILE).display().to_string();
     if json {
-        let mut payload = serde_json::json!({
-            "ok": true,
-            "config": config,
-            "mode": "cloud",
-            "switched_from_custom": switched_from_custom,
-            "next": "dif build",
-        });
-        if let Some(l) = link {
-            payload["project"] = json!({ "slug": l.slug, "org": l.org, "created": l.created });
-            payload["dashboard_url"] = json!(l.dashboard_url);
-            payload["repo"] = l.repo.clone();
-        }
+        let payload = success_json(&config, switched_from_custom, link);
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
         return;
     }
@@ -512,6 +521,161 @@ mod tests {
         let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
         assert_eq!(f.code, "needs_selection");
         assert_eq!(server.paths()[1], "/v1/cli/projects?org=acme");
+    }
+
+    const KEY: &str = "dif_pk_live_abc123";
+
+    #[test]
+    fn links_an_existing_project() {
+        let server = FakeServer::start(|req| {
+            match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into()),
+            "/v1/cli/projects?org=acme" => (
+                200,
+                r#"{"projects":[{"slug":"acme-shop","name":"acme-shop","org":"acme","repo":null}]}"#
+                    .into(),
+            ),
+            "/v1/cli/projects/acme-shop/key" => (
+                200,
+                format!(r#"{{"project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        }
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            project: Some("acme-shop".into()),
+            ..args()
+        };
+
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!(
+            (link.slug.as_str(), link.org.as_str()),
+            ("acme-shop", "acme")
+        );
+        assert!(!link.created);
+        assert_eq!(link.key, KEY);
+        assert_eq!(link.cloud_url, server.url);
+        assert_eq!(link.dashboard_url, format!("{}/acme-shop", server.url));
+        // The contract sends null when Cloud has no GitHub App.
+        assert_eq!(
+            link.repo,
+            json!({ "status": "unlinked", "detected": null, "github_install_url": null })
+        );
+
+        let v = success_json("dif/config.yaml", false, Some(&link));
+        assert_eq!(
+            v,
+            json!({
+                "ok": true,
+                "project": { "slug": "acme-shop", "org": "acme", "created": false },
+                "config": "dif/config.yaml",
+                "mode": "cloud",
+                "switched_from_custom": false,
+                "dashboard_url": format!("{}/acme-shop", server.url),
+                "repo": { "status": "unlinked", "detected": null, "github_install_url": null },
+                "next": "dif build",
+            })
+        );
+    }
+
+    #[test]
+    fn creates_a_project_in_the_only_org() {
+        let server = FakeServer::start(|req| match (req.method.as_str(), req.path.as_str()) {
+            ("GET", "/v1/cli/whoami") => {
+                (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into())
+            }
+            ("POST", "/v1/cli/projects") => (
+                201,
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","dashboard_url":"https://cloud.dif.sh/shop",
+                    "repo":{{"status":"unlinked","github_install_url":"https://github.com/apps/dif-sh/installations/new"}}}}"#
+                ),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            ..args()
+        };
+
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        let body: Value = serde_json::from_str(&server.requests.lock().unwrap()[1].body).unwrap();
+        assert_eq!(body, json!({ "org": "acme", "name": "shop" }));
+        assert_eq!((link.slug.as_str(), link.org.as_str()), ("shop", "acme"));
+        assert!(link.created);
+        assert_eq!(link.key, KEY);
+        assert_eq!(link.dashboard_url, "https://cloud.dif.sh/shop");
+
+        let v = success_json("dif/config.yaml", true, Some(&link));
+        assert_eq!(
+            v["project"],
+            json!({ "slug": "shop", "org": "acme", "created": true })
+        );
+        assert_eq!(v["switched_from_custom"], true);
+        assert_eq!(
+            v["repo"],
+            json!({
+                "status": "unlinked",
+                "detected": null,
+                "github_install_url": "https://github.com/apps/dif-sh/installations/new",
+            })
+        );
+    }
+
+    #[test]
+    fn a_linked_repo_has_no_install_url() {
+        let server = FakeServer::start(|req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into()),
+            "/v1/cli/projects?org=acme" => (
+                200,
+                r#"{"projects":[{"slug":"acme-shop","org":"acme","repo":"acme/shop"}]}"#.into(),
+            ),
+            _ => (
+                200,
+                format!(r#"{{"project_key":"{KEY}","repo":{{"status":"linked"}}}}"#),
+            ),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            project: Some("acme-shop".into()),
+            ..args()
+        };
+
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!(link.repo, json!({ "status": "linked", "detected": null }));
+    }
+
+    #[test]
+    fn a_404_maps_to_not_found_codes() {
+        let server = FakeServer::start(|req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into()),
+            "/v1/cli/projects?org=acme" => (
+                200,
+                r#"{"projects":[{"slug":"acme-shop","org":"acme","repo":null}]}"#.into(),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+
+        let a = Args {
+            project: Some("acme-shop".into()),
+            ..args()
+        };
+        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
+        assert_eq!((f.code, f.exit), ("project_not_found", 2));
+
+        let a = Args {
+            create: true,
+            ..args()
+        };
+        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
+        assert_eq!((f.code, f.exit), ("org_not_found", 2));
     }
 
     #[test]

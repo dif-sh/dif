@@ -1,6 +1,6 @@
 ---
 name: dif-connect-cloud
-description: Connect a dif.sh workspace to dif cloud from the terminal. Signs the dif CLI in with a code the person approves in the browser, links or creates the dif cloud project, writes its publishable key into dif/config.yaml, shows the GitHub App install link and runs dif build. Use when the user wants to connect, link or set up dif cloud, log in or sign up to dif, send events to dif cloud, or mentions dif auth login, dif connect or needs_selection. Other dif skills use it as their "Connect to dif cloud" step.
+description: Connect a dif.sh workspace to dif cloud from the terminal. Signs the dif CLI in with a code the person approves in the browser, links or creates the dif cloud project, writes its publishable key into dif/config.yaml, shows the GitHub App install link and runs dif build. Use when the user wants to connect, link or set up dif cloud, log in or sign up to dif, send events to dif cloud, or mentions dif auth login, dif connect or needs_selection.
 ---
 
 # Connecting to dif cloud

@@ -279,7 +279,12 @@ fn poll_for_token(
     clock: &dyn Clock,
 ) -> Result<PollOutcome, ApiError> {
     let deadline = clock.now() + timeout;
-    let mut interval = interval;
+    // A zero interval from the server makes a busy loop.
+    let mut interval = if interval.is_zero() {
+        Duration::from_secs(5)
+    } else {
+        interval
+    };
     loop {
         clock.sleep(interval.min(deadline.saturating_duration_since(clock.now())));
         match client.post("/v1/cli/token", &json!({ "device_code": device_code })) {
@@ -465,6 +470,23 @@ mod tests {
         assert!(matches!(poll(&server, 12, &clock), PollOutcome::Pending));
         assert_eq!(*clock.sleeps.borrow(), vec![5, 5, 2]);
         assert_eq!(server.paths().len(), 3);
+    }
+
+    #[test]
+    fn zero_interval_falls_back_to_five_seconds() {
+        let server = token_server(&["authorization_pending"; 10]);
+        let clock = FakeClock::new();
+        let client = Client::new(&server.url, None);
+        let outcome = poll_for_token(
+            &client,
+            "dc-1",
+            Duration::ZERO,
+            Duration::from_secs(12),
+            &clock,
+        )
+        .unwrap();
+        assert!(matches!(outcome, PollOutcome::Pending));
+        assert_eq!(*clock.sleeps.borrow(), vec![5, 5, 2]);
     }
 
     #[test]
