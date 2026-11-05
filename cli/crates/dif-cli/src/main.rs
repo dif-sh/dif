@@ -27,7 +27,7 @@ struct Cli {
 enum Command {
     /// Scaffold the dif.sh convention in the current directory.
     Init(cmd::init::Args),
-    /// Connect the workspace to dif.sh Cloud with a publishable key.
+    /// Connect the workspace to dif.sh Cloud (login or a publishable key).
     Connect(cmd::connect::Args),
     /// Sign in to dif.sh Cloud, show the login, or sign out.
     Auth(cmd::auth::Args),
