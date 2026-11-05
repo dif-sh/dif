@@ -158,14 +158,20 @@ fn link_project(
     let whoami = client.get("/v1/cli/whoami").map_err(fail)?;
     let orgs = whoami["orgs"].as_array().cloned().unwrap_or_default();
     let org = match &args.org {
-        Some(slug) if orgs.iter().any(|o| o["slug"] == slug.as_str()) => Some(slug.clone()),
-        Some(slug) => {
-            return Err(Failure::new(
-                "org_not_found",
-                2,
-                format!("no org {slug} for this login"),
-            ))
-        }
+        Some(slug) => match orgs
+            .iter()
+            .filter_map(|o| o["slug"].as_str())
+            .find(|s| s.eq_ignore_ascii_case(slug))
+        {
+            Some(found) => Some(found.to_string()),
+            None => {
+                return Err(Failure::new(
+                    "org_not_found",
+                    2,
+                    format!("no org {slug} for this login"),
+                ))
+            }
+        },
         None if orgs.len() == 1 => orgs[0]["slug"].as_str().map(String::from),
         None => None,
     };
@@ -548,6 +554,32 @@ mod tests {
         };
         let f = link_project(tmp.path(), &same, &env, false, "shop").unwrap_err();
         assert_eq!(f.code, "cloud_unreachable");
+    }
+
+    #[test]
+    fn org_matches_without_case() {
+        let server = FakeServer::start(|req| match req.path.as_str() {
+            "/v1/cli/whoami" => (
+                200,
+                r#"{"orgs":[{"slug":"acme","name":"Acme"},{"slug":"team","name":"Team"}]}"#.into(),
+            ),
+            "/v1/cli/projects" => (
+                201,
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                ),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            org: Some("ACME".into()),
+            create: true,
+            ..args()
+        };
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!(link.org, "acme");
     }
 
     #[test]
