@@ -174,7 +174,12 @@ fn link_project(
     };
     let Some(choice) = choice else {
         let projects = list_projects(&client, org.as_deref()).map_err(fail)?;
-        return Err(needs_selection(&orgs, &projects));
+        let message = if args.create {
+            "choose an org: pass --org <slug> with --create"
+        } else {
+            "choose a project: pass --project <slug> or --create"
+        };
+        return Err(needs_selection(&orgs, &projects, message));
     };
 
     let base = client.base().to_string();
@@ -264,29 +269,25 @@ fn list_projects(client: &Client, org: Option<&str>) -> Result<Vec<Value>, ApiEr
         .unwrap_or_default())
 }
 
-fn needs_selection(orgs: &[Value], projects: &[Value]) -> Failure {
+fn needs_selection(orgs: &[Value], projects: &[Value], message: &str) -> Failure {
     let pick = |v: &Value, keys: &[&str]| -> Value {
         keys.iter()
             .map(|k| (k.to_string(), v.get(*k).cloned().unwrap_or(Value::Null)))
             .collect::<serde_json::Map<_, _>>()
             .into()
     };
-    Failure::new(
-        "needs_selection",
-        2,
-        "choose a project: pass --project <slug> or --create",
-    )
-    .with(
-        "orgs",
-        orgs.iter().map(|o| pick(o, &["slug", "name"])).collect(),
-    )
-    .with(
-        "projects",
-        projects
-            .iter()
-            .map(|p| pick(p, &["slug", "name", "org", "repo"]))
-            .collect(),
-    )
+    Failure::new("needs_selection", 2, message)
+        .with(
+            "orgs",
+            orgs.iter().map(|o| pick(o, &["slug", "name"])).collect(),
+        )
+        .with(
+            "projects",
+            projects
+                .iter()
+                .map(|p| pick(p, &["slug", "name", "org", "repo"]))
+                .collect(),
+        )
 }
 
 /// `None` when the person cancels a prompt.
