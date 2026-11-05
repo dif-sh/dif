@@ -146,6 +146,12 @@ fn link_project(
     let session = env
         .session()
         .ok_or_else(|| Failure::new("not_logged_in", 2, "run dif auth login"))?;
+    if let Some(u) = &args.url {
+        if u.trim_end_matches('/') != session.cloud_url {
+            let msg = format!("--url must match the login host {}", session.cloud_url);
+            return Err(Failure::new("usage", 2, msg));
+        }
+    }
     let client = Client::new(&session.cloud_url, Some(session.token.clone()));
     let fail = |e: ApiError| rejected(env, &session, e);
 
@@ -523,6 +529,26 @@ mod tests {
     }
 
     const KEY: &str = "dif_pk_live_abc123";
+
+    #[test]
+    fn a_url_for_another_host_is_a_usage_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some("http://127.0.0.1:1"));
+        let a = Args {
+            url: Some("https://selfhosted.example".into()),
+            project: Some("acme-shop".into()),
+            ..args()
+        };
+        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
+        assert_eq!((f.code, f.exit), ("usage", 2));
+
+        let same = Args {
+            url: Some("http://127.0.0.1:1/".into()),
+            ..a
+        };
+        let f = link_project(tmp.path(), &same, &env, false, "shop").unwrap_err();
+        assert_eq!(f.code, "cloud_unreachable");
+    }
 
     #[test]
     fn links_an_existing_project() {

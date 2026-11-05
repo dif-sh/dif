@@ -112,7 +112,7 @@ impl CloudEnv {
         }
         let c = stored?;
         // Send a token only to the host that issued it.
-        if self.cloud_url.as_ref().is_some_and(|u| *u != c.cloud_url) {
+        if c.cloud_url != self.login_url() {
             return None;
         }
         Some(Session {
@@ -242,7 +242,8 @@ mod tests {
     #[test]
     fn env_read_token_is_not_a_cli_session() {
         let tmp = tempfile::tempdir().unwrap();
-        let env = env_in(tmp.path(), Some("dif_pat_0123abcd_secret"));
+        let mut env = env_in(tmp.path(), Some("dif_pat_0123abcd_secret"));
+        env.cloud_url = Some("http://localhost:4321".into());
         assert!(env.session().is_none());
         assert!(env.ignores_env_token());
 
@@ -256,12 +257,13 @@ mod tests {
         let mut env = env_in(tmp.path(), None);
         env.save_credential(&stored("dif_cli_file")).unwrap();
 
+        // A local login does not apply to the default cloud.
+        assert!(env.session().is_none());
+
+        env.cloud_url = Some("http://localhost:4321".into());
         let s = env.session().unwrap();
         assert_eq!((s.token.as_str(), s.source), ("dif_cli_file", Source::File));
         assert_eq!(s.cloud_url, "http://localhost:4321");
-
-        env.cloud_url = Some("http://localhost:4321".into());
-        assert_eq!(env.session().unwrap().cloud_url, "http://localhost:4321");
 
         env.cloud_url = Some("https://other.example".into());
         assert!(env.session().is_none());

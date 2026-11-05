@@ -42,7 +42,7 @@ Branch on `error`, not on the exit-code number. Treat any non-zero exit as failu
 
 | `error` | Exit | When |
 |---|---|---|
-| `not_logged_in` | 2 | No usable credential: no `dif_cli_` token in `DIF_TOKEN`, and no credentials file for the current cloud URL. A stored login applies only to the cloud URL that issued it, so `DIF_CLOUD_URL` pointing at another host gives `not_logged_in`. |
+| `not_logged_in` | 2 | No usable credential: no `dif_cli_` token in `DIF_TOKEN`, and no credentials file for the current cloud URL. A stored login applies only to the cloud URL that issued it. The current cloud URL is `DIF_CLOUD_URL`, or `https://cloud.dif.sh` when it is unset, so a local login does not apply without `DIF_CLOUD_URL`. |
 | `token_invalid` | 2 | The server rejected the token (revoked, expired). The CLI deletes the local credential. |
 | `forbidden` | 1 | The token is valid but lacks the role or scope. |
 | `cloud_unreachable` | 1 | DNS, TLS, timeout or connection failure. |
@@ -237,7 +237,7 @@ Success:
 |---|---|---|
 | `no_workspace` | 2 | No `dif/` here. This error is unchanged. |
 | `org_not_found` / `project_not_found` | 2 | An unknown slug was passed. |
-| `usage` | 2 | `--project` was combined with `--create`. |
+| `usage` | 2 | `--project` was combined with `--create`, or `--url` names a host other than the login's. |
 
 ---
 
@@ -339,7 +339,8 @@ The initializer can skip steps 2–3 and run `dif auth login` interactively with
 These tighten cases that v1 left open. None of them changes a name, a type or a documented meaning, so the version stays `cli-contract/1`.
 
 - `DIF_TOKEN` is used only for `dif_cli_` tokens (section 1).
-- A stored login applies only to the cloud URL that issued it (section 1).
+- A stored login applies only to the cloud URL that issued it, and the default is `https://cloud.dif.sh` (section 1).
+- On the logged-in path, `--url` must match the login host (section 5).
 - `project_type: []` when omitted; `features` written to config only when a feature is off; unknown `project_type` strings load (sections 2–3).
 - `dif build` effect per feature is spelled out (section 3).
 - `dif auth status` with `source: "env"` omits `user` and `expires_at` without `--verify` (section 4).
