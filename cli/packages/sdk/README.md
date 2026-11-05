@@ -253,9 +253,10 @@ retries](#batching-and-retries). `track()` resolves when the event is queued, so
 call `flush()` or `close()` before the process ends, or the last events can be
 lost. After `close()`, each `track()` is one request again.
 
-Never put a secret token in a browser bundle. They authenticate as the
-project (read-only on most routes, write to ingest), and leaked secrets
-must be rotated immediately via the Keys settings.
+Mint the secret key (`dif_live_…` / `dif_test_…`) in dif.sh Cloud under
+Settings → Keys → Server keys. Cloud shows it once. Never put it in a
+browser bundle: it writes events as the project. If one leaks, revoke it
+in the same card and mint a new one.
 
 ## React
 
