@@ -10,6 +10,12 @@ pub struct Config {
     pub project: String,
     /// Surface assumed when `dif new` is called without `--surface`.
     pub default_surface: String,
+    /// Kinds of project. `None` when the key is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_type: Option<Vec<ProjectType>>,
+    /// Enabled dif features. `None` resolves to all on.
+    #[serde(default)]
+    pub features: Option<Features>,
     /// Schema of attributes the audience predicate language is allowed to reference.
     #[serde(default)]
     pub audience_attributes: Vec<AudienceAttribute>,
@@ -33,6 +39,59 @@ impl Config {
     /// (or omits it) defaults to cloud delivery.
     pub fn events(&self) -> EventsConfig {
         self.events.clone().unwrap_or_default()
+    }
+
+    /// The resolved features. A missing block means all on.
+    pub fn features(&self) -> Features {
+        self.features.unwrap_or_default()
+    }
+}
+
+/// One kind of project, as `dif init --project-type` records it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectType {
+    /// Marketing site.
+    Marketing,
+    /// Product app.
+    App,
+    /// Online store.
+    Ecommerce,
+}
+
+impl ProjectType {
+    /// Every project type, in canonical order.
+    pub const ALL: [ProjectType; 3] = [Self::Marketing, Self::App, Self::Ecommerce];
+
+    /// The config and CLI spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Marketing => "marketing",
+            Self::App => "app",
+            Self::Ecommerce => "ecommerce",
+        }
+    }
+}
+
+/// Which dif features a project uses. A missing key means true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Features {
+    /// Exposure and metric events.
+    pub analytics: bool,
+    /// Feature flags.
+    pub flags: bool,
+    /// A/B experiments.
+    pub experiments: bool,
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Self {
+            analytics: true,
+            flags: true,
+            experiments: true,
+        }
     }
 }
 
@@ -180,5 +239,57 @@ mod tests {
         assert!(config.audience_attributes.is_empty());
         assert!(config.events.is_none());
         assert!(config.exposure.is_none());
+    }
+
+    #[test]
+    fn config_without_features_block_turns_all_features_on() {
+        let yaml = "project: acme-shop\ndefault_surface: home\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        assert!(config.project_type.is_none());
+        assert_eq!(config.features(), Features::default());
+        assert!(config.features().analytics);
+        assert!(config.features().flags);
+        assert!(config.features().experiments);
+    }
+
+    #[test]
+    fn missing_feature_key_means_true() {
+        let yaml = "project: p\ndefault_surface: home\nfeatures:\n  experiments: false\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        assert_eq!(
+            config.features(),
+            Features {
+                analytics: true,
+                flags: true,
+                experiments: false,
+            }
+        );
+    }
+
+    #[test]
+    fn empty_features_block_means_all_on() {
+        let yaml = "project: p\ndefault_surface: home\nfeatures:\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        assert_eq!(config.features(), Features::default());
+    }
+
+    #[test]
+    fn project_type_parses_as_a_list() {
+        let yaml = "project: p\ndefault_surface: home\nproject_type: [marketing, app, ecommerce]\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        assert_eq!(
+            config.project_type,
+            Some(vec![
+                ProjectType::Marketing,
+                ProjectType::App,
+                ProjectType::Ecommerce
+            ])
+        );
+    }
+
+    #[test]
+    fn unknown_project_type_is_rejected() {
+        let yaml = "project: p\ndefault_surface: home\nproject_type: [blog]\n";
+        assert!(serde_yaml::from_str::<Config>(yaml).is_err());
     }
 }

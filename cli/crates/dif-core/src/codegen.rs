@@ -460,6 +460,8 @@ mod tests {
             },
             events: None,
             exposure: None,
+            project_type: None,
+            features: None,
             build: BuildConfig::default(),
         }
     }
