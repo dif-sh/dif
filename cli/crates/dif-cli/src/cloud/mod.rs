@@ -209,3 +209,72 @@ pub fn print_json(json: bool, value: &Value) -> bool {
     }
     json
 }
+
+#[cfg(test)]
+mod tests {
+    use super::credentials::StoredCredential;
+    use super::fake_server::FakeServer;
+    use super::*;
+
+    fn status(status: u16) -> ApiError {
+        ApiError::Status {
+            status,
+            code: None,
+            retry_after: None,
+        }
+    }
+
+    fn env_with_file(dir: &std::path::Path, token: Option<&str>) -> CloudEnv {
+        let env = CloudEnv {
+            config_dir: Some(dir.join("dif")),
+            token: token.map(String::from),
+            cloud_url: None,
+        };
+        env.save_credential(&StoredCredential {
+            token: "dif_cli_file".into(),
+            cloud_url: DEFAULT_CLOUD_URL.into(),
+            user: None,
+            expires_at: None,
+        })
+        .unwrap();
+        env
+    }
+
+    #[test]
+    fn only_a_401_drops_the_file_credential() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_file(tmp.path(), None);
+        let session = env.session().unwrap();
+
+        let f = rejected(&env, &session, status(403));
+        assert_eq!((f.code, f.exit), ("forbidden", 1));
+        assert!(env.load_credential().is_some());
+
+        let f = rejected(&env, &session, status(401));
+        assert_eq!((f.code, f.exit), ("token_invalid", 2));
+        assert!(env.load_credential().is_none());
+    }
+
+    #[test]
+    fn a_rejected_env_token_keeps_the_file_credential() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_file(tmp.path(), Some("dif_cli_env"));
+        let session = env.session().unwrap();
+
+        let f = rejected(&env, &session, status(401));
+        assert_eq!((f.code, f.exit), ("token_invalid", 2));
+        assert!(env.load_credential().is_some());
+    }
+
+    #[test]
+    fn rate_limit_takes_retry_after_from_the_body() {
+        let server =
+            FakeServer::start(|_| (429, r#"{"error":"rate_limited","retry_after":30}"#.into()));
+        let f = Client::new(&server.url, None)
+            .get("/v1/cli/whoami")
+            .unwrap_err()
+            .into_failure();
+        assert_eq!((f.code, f.exit), ("rate_limited", 1));
+        assert_eq!(f.to_json()["retry_after"], 30);
+    }
+}
