@@ -88,7 +88,7 @@ This writes the key into `dif/generated/client.ts`. `dif connect` changed only `
 | `error` | What to do |
 |---|---|
 | `not_logged_in` | Go to Step 2. |
-| `token_invalid` | The login expired or was revoked. If Step 1 showed `"source": "env"`, the `DIF_TOKEN` variable holds a token the CLI cannot use, for example a `dif_pat_` read token. Ask the person to unset it for these commands, and stop. Otherwise go to Step 2. |
+| `token_invalid` | The login expired or was revoked. If Step 1 showed `"source": "env"`, the `dif_cli_` token in `DIF_TOKEN` is no longer valid. Ask the person to replace or unset it, and stop. Otherwise go to Step 2. |
 | `forbidden` | This login cannot do that, for example create a project in that org. Tell the person. They can pick an existing project, or ask an org owner. |
 | `org_not_found`, `project_not_found` | The slug is wrong. Run `dif connect --json` with no flags to get the lists again. |
 | `no_workspace` | There is no `dif/` folder here. Run `dif init` first. |

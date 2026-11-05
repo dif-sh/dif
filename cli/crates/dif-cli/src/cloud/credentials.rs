@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 const CREDENTIALS_FILE: &str = "credentials.json";
 const PENDING_FILE: &str = "pending-login.json";
+const CLI_TOKEN_PREFIX: &str = "dif_cli_";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredCredential {
@@ -74,11 +75,15 @@ impl CloudEnv {
                     .or_else(|| var("USERPROFILE"))
                     .map(|h| Path::new(&h).join(".config"))
             });
-        CloudEnv {
+        let env = CloudEnv {
             config_dir: config_root.map(|r| r.join("dif")),
             token: var("DIF_TOKEN").map(|t| t.trim().to_string()),
             cloud_url: var("DIF_CLOUD_URL").map(|u| u.trim().trim_end_matches('/').to_string()),
+        };
+        if env.ignores_env_token() {
+            eprintln!("note: DIF_TOKEN is not a dif_cli_ token; using dif auth login instead");
         }
+        env
     }
 
     /// The base URL for a new login.
@@ -88,10 +93,14 @@ impl CloudEnv {
             .unwrap_or_else(|| DEFAULT_CLOUD_URL.to_string())
     }
 
-    /// `DIF_TOKEN` wins over the credentials file.
+    /// A `dif_cli_` token in `DIF_TOKEN` wins over the credentials file.
     pub fn session(&self) -> Option<Session> {
         let stored = self.load_credential();
-        if let Some(token) = &self.token {
+        if let Some(token) = self
+            .token
+            .as_ref()
+            .filter(|t| t.starts_with(CLI_TOKEN_PREFIX))
+        {
             return Some(Session {
                 token: token.clone(),
                 source: Source::Env,
@@ -112,6 +121,13 @@ impl CloudEnv {
             user: c.user,
             expires_at: c.expires_at,
         })
+    }
+
+    /// Skills and MCP docs put `dif_pat_` read tokens in `DIF_TOKEN`.
+    pub fn ignores_env_token(&self) -> bool {
+        self.token
+            .as_ref()
+            .is_some_and(|t| !t.starts_with(CLI_TOKEN_PREFIX))
     }
 
     fn path(&self, name: &str) -> Option<PathBuf> {
@@ -219,6 +235,17 @@ mod tests {
         assert_eq!(s.token, "dif_cli_env");
         assert_eq!(s.source, Source::Env);
         assert_eq!(s.cloud_url, DEFAULT_CLOUD_URL);
+    }
+
+    #[test]
+    fn env_read_token_is_not_a_cli_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_in(tmp.path(), Some("dif_pat_0123abcd_secret"));
+        assert!(env.session().is_none());
+        assert!(env.ignores_env_token());
+
+        env.save_credential(&stored("dif_cli_file")).unwrap();
+        assert_eq!(env.session().unwrap().source, Source::File);
     }
 
     #[test]
