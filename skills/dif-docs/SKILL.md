@@ -69,7 +69,7 @@ const checkout = dif("new-checkout", {
 - SDK (`dif()`, `assign()`, React and Svelte adapters, `dif.track()`): https://dif.sh/docs/sdk.md
 - `dif/config.yaml`: https://dif.sh/docs/config.md
 - Events (cloud vs custom delivery): https://dif.sh/docs/events.md
-- Validation codes (E001–E010, W001–W004): https://dif.sh/docs/troubleshooting.md
+- Validation codes (E001–E010, W001–W005): https://dif.sh/docs/troubleshooting.md
 - dif cloud MCP server and read API (tools, REST endpoints, read tokens, verdicts): https://dif.sh/docs/mcp.md
 - Full index: https://dif.sh/llms.txt
 - Source: https://github.com/dif-sh/dif

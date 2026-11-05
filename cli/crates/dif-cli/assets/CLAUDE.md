@@ -61,6 +61,7 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
+- **W005** — Active experiment while `features.experiments` is false in `dif/config.yaml` (warning).
 
 ## Before drafting an experiment
 

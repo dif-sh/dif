@@ -2201,9 +2201,9 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
         let config = tmp.path().join(paths::CONFIG_FILE);
-        let block = "\n# dif features in use. A missing key means true.\nfeatures:\n  analytics: true\n  flags: true\n  experiments: true\n";
-        let text = std::fs::read_to_string(&config).unwrap();
-        std::fs::write(&config, text.replace(block, "")).unwrap();
+        assert!(!std::fs::read_to_string(&config)
+            .unwrap()
+            .contains("features:"));
 
         let args = Args {
             features: Some(vec![
