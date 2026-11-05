@@ -2552,7 +2552,7 @@ mod tests {
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(
             config.project_type,
-            Some(vec![ProjectType::App, ProjectType::Ecommerce])
+            Some(vec!["app".into(), "ecommerce".into()])
         );
         assert_eq!(config.features, Some(features));
     }

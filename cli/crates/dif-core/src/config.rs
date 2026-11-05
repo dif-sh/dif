@@ -11,8 +11,9 @@ pub struct Config {
     /// Surface assumed when `dif new` is called without `--surface`.
     pub default_surface: String,
     /// Kinds of project. `None` when the key is absent.
+    /// Plain strings, so a new kind does not break old CLIs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_type: Option<Vec<ProjectType>>,
+    pub project_type: Option<Vec<String>>,
     /// Enabled dif features. `None` resolves to all on.
     #[serde(default)]
     pub features: Option<Features>,
@@ -279,17 +280,14 @@ mod tests {
         let config: Config = serde_yaml::from_str(yaml).expect("config parses");
         assert_eq!(
             config.project_type,
-            Some(vec![
-                ProjectType::Marketing,
-                ProjectType::App,
-                ProjectType::Ecommerce
-            ])
+            Some(vec!["marketing".into(), "app".into(), "ecommerce".into()])
         );
     }
 
     #[test]
-    fn unknown_project_type_is_rejected() {
-        let yaml = "project: p\ndefault_surface: home\nproject_type: [blog]\n";
-        assert!(serde_yaml::from_str::<Config>(yaml).is_err());
+    fn unknown_project_type_still_loads_the_config() {
+        let yaml = "project: p\ndefault_surface: home\nproject_type: [app, docs]\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        assert_eq!(config.project_type, Some(vec!["app".into(), "docs".into()]));
     }
 }
