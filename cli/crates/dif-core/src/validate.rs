@@ -18,6 +18,7 @@
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 //! - `W003` legacy `exposure:` block (superseded by `events:`)
 //! - `W004` active experiment file's `status:` isn't `active`
+//! - `W005` active experiment while `features.experiments` is false
 
 use crate::{
     diag::{Diagnostic, Report},
@@ -44,6 +45,7 @@ pub fn run(workspace: &Workspace) -> Report {
     orphan_refs(workspace, &mut report);
     legacy_exposure_block(workspace, &mut report);
     active_status(workspace, &mut report);
+    experiments_disabled(workspace, &mut report);
     duplicate_experiment_ids(workspace, &mut report);
     duplicate_variant_ids(workspace, &mut report);
     sort_report(&mut report);
@@ -327,6 +329,28 @@ pub fn active_status(workspace: &Workspace, report: &mut Report) {
                 ));
             }
         }
+    }
+}
+
+/// Active experiments while `features.experiments` is false.
+/// Warning only: the config can change before the experiment ships.
+pub fn experiments_disabled(workspace: &Workspace, report: &mut Report) {
+    if workspace.config.features().experiments {
+        return;
+    }
+    for parsed in workspace
+        .active
+        .iter()
+        .filter(|p| matches!(p.spec.status, Status::Active))
+    {
+        report.warnings.push(simple_error(
+            "W005",
+            "experiment is active but `features.experiments` is false in dif/config.yaml"
+                .to_string(),
+            parsed,
+            workspace,
+            Some("Set `features.experiments: true`, or conclude this experiment."),
+        ));
     }
 }
 
@@ -844,6 +868,47 @@ created: 2026-01-02";
         );
         let report = run(&ws);
         assert!(!report.warnings.iter().any(|d| d.code == "W003"));
+    }
+
+    #[test]
+    fn disabled_experiments_with_active_experiment_warns() {
+        let mut config = empty_config();
+        config.features = Some(crate::config::Features {
+            experiments: false,
+            ..Default::default()
+        });
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            config,
+        );
+        let report = run(&ws);
+        assert!(report.is_clean(), "warning only: {:?}", report.errors);
+        let w = report
+            .warnings
+            .iter()
+            .find(|d| d.code == "W005")
+            .expect("W005");
+        assert_eq!(w.file, "dif/experiments/active/x.md");
+    }
+
+    #[test]
+    fn enabled_experiments_or_drafts_do_not_warn() {
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        assert!(!run(&ws).warnings.iter().any(|d| d.code == "W005"));
+
+        let mut config = empty_config();
+        config.features = Some(crate::config::Features {
+            experiments: false,
+            ..Default::default()
+        });
+        let draft = VALID_FRONTMATTER.replace("status: active", "status: draft");
+        let ws = make_workspace(vec![parse(&draft, "x")], vec![make_surface("home")], config);
+        assert!(!run(&ws).warnings.iter().any(|d| d.code == "W005"));
     }
 
     #[test]
