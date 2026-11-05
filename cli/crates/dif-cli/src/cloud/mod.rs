@@ -1,6 +1,5 @@
-//! dif.sh Cloud access for the cloud verbs (`dif auth`, `dif connect`).
-//!
-//! Local verbs must not use this module: they never touch the network.
+//! dif.sh Cloud access for `dif auth` and `dif connect`.
+//! Local verbs must not use it: they stay offline.
 
 pub mod credentials;
 #[cfg(test)]
@@ -15,7 +14,7 @@ pub use credentials::{CloudEnv, Session, Source};
 
 pub const DEFAULT_CLOUD_URL: &str = "https://cloud.dif.sh";
 
-/// A failed cloud call, before it becomes a contract error code.
+/// A failed cloud call, before mapping to a contract code.
 #[derive(Debug)]
 pub enum ApiError {
     /// DNS, TLS, timeout or connection failure.
@@ -39,7 +38,7 @@ impl ApiError {
         }
     }
 
-    /// Map to the shared cloud error codes of the CLI contract.
+    /// Map to the shared cloud error codes of the contract.
     pub fn into_failure(self) -> Failure {
         match self {
             ApiError::Unreachable(msg) => Failure::new(
@@ -150,7 +149,7 @@ fn read(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result
     })
 }
 
-/// A contract error: a stable `error` code, a message and an exit code.
+/// A contract error: stable `error` code, message and exit code.
 #[derive(Debug)]
 pub struct Failure {
     pub code: &'static str,
@@ -202,7 +201,8 @@ pub fn rejected(env: &CloudEnv, session: &Session, e: ApiError) -> Failure {
     failure
 }
 
-/// Print a success object in JSON mode. Return true when printed.
+/// Print a success object in JSON mode.
+/// Return true when printed.
 pub fn print_json(json: bool, value: &Value) -> bool {
     if json {
         println!("{}", serde_json::to_string_pretty(value).unwrap());

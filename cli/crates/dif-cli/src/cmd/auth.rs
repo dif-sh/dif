@@ -1,4 +1,4 @@
-//! `dif auth` — sign the CLI in to dif.sh Cloud with a device code.
+//! `dif auth`: sign in to dif.sh Cloud by device code.
 
 use super::CmdError;
 use crate::cloud::credentials::{PendingLogin, StoredCredential};
@@ -29,7 +29,7 @@ pub enum AuthCommand {
 
 #[derive(ClapArgs, Debug)]
 pub struct LoginArgs {
-    /// Start the login, print the URL and code, and return at once.
+    /// Start the login, print the URL and code, then return.
     #[arg(long, conflicts_with = "resume")]
     pub no_wait: bool,
     /// Wait for the login that --no-wait started.
@@ -400,7 +400,7 @@ mod tests {
         }
     }
 
-    /// Answer each token poll with the next error code, then succeed.
+    /// Answer each poll with the next error code, then succeed.
     fn token_server(codes: &'static [&'static str]) -> FakeServer {
         let n = AtomicUsize::new(0);
         FakeServer::start(move |req| {

@@ -23,9 +23,8 @@ use std::process::ExitCode;
 /// `dif connect` flags.
 #[derive(ClapArgs, Debug)]
 pub struct Args {
-    /// Publishable key (dif_pk_…) from your dif.sh Cloud project. Written to
-    /// dif/config.yaml and flowed into the generated client by `dif build`.
-    /// Without it, dif connect uses your `dif auth login` session.
+    /// Publishable key (dif_pk_…) to write to dif/config.yaml.
+    /// Without it, connect uses the dif auth login session.
     #[arg(long, conflicts_with_all = ["org", "project", "create", "name"])]
     pub key: Option<String>,
 
@@ -123,7 +122,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     Ok(ExitCode::from(0))
 }
 
-/// The `events.url` to write, or `None` to keep the current line.
+/// The `events.url` to write. `None` keeps the current line.
 fn events_url(
     flag: Option<String>,
     session: Option<&str>,

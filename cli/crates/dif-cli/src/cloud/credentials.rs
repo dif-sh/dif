@@ -56,7 +56,8 @@ pub struct Session {
     pub expires_at: Option<String>,
 }
 
-/// The process inputs for cloud verbs, kept apart from the real env for tests.
+/// Process inputs for cloud verbs.
+/// Tests set them without the real env.
 #[derive(Debug, Clone, Default)]
 pub struct CloudEnv {
     pub config_dir: Option<PathBuf>,
@@ -110,7 +111,7 @@ impl CloudEnv {
             });
         }
         let c = stored?;
-        // Never send a token to a host that did not issue it.
+        // Send a token only to the host that issued it.
         if self.cloud_url.as_ref().is_some_and(|u| *u != c.cloud_url) {
             return None;
         }
@@ -183,7 +184,8 @@ fn remove(path: Option<PathBuf>) -> std::io::Result<bool> {
     }
 }
 
-/// Write via a temp file and rename, so readers never see half a token.
+/// Write a temp file, then rename it.
+/// Readers thus never see half a token.
 fn write_private<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     let dir = path.parent().expect("credential path has a parent");
     let mut builder = std::fs::DirBuilder::new();
