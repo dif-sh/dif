@@ -800,6 +800,8 @@ pub(crate) const SKILL_CONCLUDE: &str =
     include_str!("../../assets/claude/skills/dif-conclude-experiment/SKILL.md");
 pub(crate) const SKILL_CONCLUDE_CLOUD_API: &str =
     include_str!("../../assets/claude/skills/dif-conclude-experiment/references/cloud-api.md");
+pub(crate) const SKILL_CONNECT_CLOUD: &str =
+    include_str!("../../assets/claude/skills/dif-connect-cloud/SKILL.md");
 pub(crate) const SKILL_GENERATE_SURFACES: &str =
     include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
 pub(crate) const SKILL_TRIAGE: &str =
@@ -818,6 +820,7 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-author-experiment/references/audiences.md",
     ".claude/skills/dif-conclude-experiment/SKILL.md",
     ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
+    ".claude/skills/dif-connect-cloud/SKILL.md",
     ".claude/skills/dif-generate-surfaces/SKILL.md",
     ".claude/skills/dif-triage-experiments/SKILL.md",
     ".claude/skills/dif-triage-experiments/references/cloud-api.md",
@@ -826,7 +829,7 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
 /// Success line text for the Claude Code skills.
 const CLAUDE_SKILLS_LINE: &str = concat!(
     "wrote .claude/skills/ (dif-author-experiment, dif-conclude-experiment, ",
-    "dif-generate-surfaces, dif-triage-experiments)"
+    "dif-connect-cloud, dif-generate-surfaces, dif-triage-experiments)"
 );
 
 /// Path written for the `general` target: the model-agnostic AGENTS.md.
@@ -1006,6 +1009,7 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .join(".claude")
         .join("skills")
         .join("dif-conclude-experiment");
+    let connect = cwd.join(".claude").join("skills").join("dif-connect-cloud");
     let generate = cwd
         .join(".claude")
         .join("skills")
@@ -1034,6 +1038,7 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
             conclude.join("references").join("cloud-api.md"),
             SKILL_CONCLUDE_CLOUD_API.to_string(),
         ),
+        (connect.join("SKILL.md"), SKILL_CONNECT_CLOUD.to_string()),
         (
             generate.join("SKILL.md"),
             SKILL_GENERATE_SURFACES.to_string(),
@@ -1880,6 +1885,7 @@ mod tests {
         for (name, content) in [
             ("dif-author-experiment", SKILL_AUTHOR),
             ("dif-conclude-experiment", SKILL_CONCLUDE),
+            ("dif-connect-cloud", SKILL_CONNECT_CLOUD),
             ("dif-generate-surfaces", SKILL_GENERATE_SURFACES),
             ("dif-triage-experiments", SKILL_TRIAGE),
         ] {

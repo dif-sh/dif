@@ -30,6 +30,7 @@ dif/context.json                            agent-facing summary of active exper
 
 dif init                                  scaffold the convention (once per repo)
 dif connect --key <dif_pk_...>            optional: write a dif.sh Cloud publishable key into dif/config.yaml
+                                          (without --key: use the `dif auth login` session)
 dif new <id> --surface <name>             draft dif/experiments/active/<id>.md
 dif validate                              schema, weights, audience, exclusion checks
 dif build                                 compile to dif/generated/client.ts + dif/context.json
@@ -76,6 +77,7 @@ Skills, by name. `dif init` installs them under .claude/skills/<name>/; a plugin
 dif-author-experiment      full authoring workflow + references
 dif-conclude-experiment    get dif cloud results, check the verdict, write the Decision
 dif-triage-experiments     act on every experiment the dif cloud overview flags (ramp, turn off, conclude)
+dif-connect-cloud          sign in to dif cloud, link or create the project, write its key
 dif-generate-surfaces      for fresh repos: propose the initial set of surfaces from app context
 https://www.dif.sh/docs/mcp/   connect dif cloud with a read token, over MCP or as DIF_TOKEN for REST
 https://www.dif.sh/docs/       full documentation
