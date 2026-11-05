@@ -81,6 +81,7 @@ agent run the commands:
 | `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* | Drafts the frontmatter, picks weights, runs `dif validate` |
 | `dif-conclude-experiment` | *"Conclude checkout-cta-v2"* | Gets the result from dif.sh Cloud, writes the decision from its numbers, archives the file, logs the learning |
 | `dif-triage-experiments` | *"Triage my experiments"* | Reads the dif.sh Cloud overview, then ramps, turns off or concludes each experiment that needs action, one PR each |
+| `dif-connect-cloud` | *"Connect this repo to dif Cloud"* | Signs the CLI in with a browser code, links or creates the dif.sh Cloud project, writes its key, runs `dif build` |
 
 `dif new` drafts the file with your git email as owner. Open it, write the
 hypothesis, set `status: active`, and run `dif build`. Then install the

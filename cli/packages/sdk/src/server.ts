@@ -9,6 +9,7 @@
 // never a publishable key.
 
 import { uuidv7 } from "./event-id.js";
+import { warnIfEventLimit } from "./limit.js";
 import { EventQueue } from "./queue.js";
 import { validateTrack } from "./validate.js";
 import { SOURCE } from "./version.js";
@@ -78,7 +79,7 @@ export class DifServer {
       keepalive: false,
       lifecycle: false,
       onGiveUp: (status, events) => {
-        if (typeof console !== "undefined") {
+        if (!warnIfEventLimit(status) && typeof console !== "undefined") {
           console.warn(`[dif] track batch of ${events} events failed (${status ?? "no response"})`);
         }
       },
@@ -123,7 +124,7 @@ export class DifServer {
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok && typeof console !== "undefined") {
+      if (!res.ok && !warnIfEventLimit(res.status) && typeof console !== "undefined") {
         console.warn(`[dif] track ${input.metric} → ${res.status}`);
       }
     } catch (err) {

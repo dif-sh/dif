@@ -1,6 +1,7 @@
 //! CLI subcommands. Each module owns its `Args`, its `run` entrypoint, and
 //! its pretty-printer. Everything correctness-critical lives in `dif-core`.
 
+pub mod auth;
 pub mod build;
 pub mod conclude;
 pub mod connect;

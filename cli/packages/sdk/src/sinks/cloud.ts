@@ -9,6 +9,7 @@
 // `Authorization: Bearer <publishableKey>` on every request. `keepalive: true`
 // keeps the request alive across page nav.
 
+import { __resetLimitWarning, warnIfEventLimit } from "../limit.js";
 import { EventQueue, canObservePageHide } from "../queue.js";
 import type { ExposureEvent, MetricEvent, Sink } from "../types.js";
 import { validateExposure, validateTrack } from "../validate.js";
@@ -24,10 +25,11 @@ let non2xxWarned = false;
 /** Test-only. */
 export function __resetCloudWarnings(): void {
   non2xxWarned = false;
+  __resetLimitWarning();
 }
 
 function warnOnGiveUp(status: number | null): void {
-  if (status === null || non2xxWarned) return;
+  if (warnIfEventLimit(status) || status === null || non2xxWarned) return;
   non2xxWarned = true;
   if (typeof console !== "undefined") {
     console.warn(
