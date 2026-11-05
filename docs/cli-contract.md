@@ -1,6 +1,6 @@
 # dif CLI ↔ Cloud contract (v1)
 
-Status: **frozen**, approved by Chris on 2026-11-05. Version: `cli-contract/1`. Target release: dif CLI v0.9.0.
+Status: **frozen**, approved by Chris on 2026-11-05. Version: `cli-contract/1`, with the clarifications listed at the end. Target release: dif CLI v0.9.0.
 
 This file fixes the parts that other code depends on:
 
@@ -42,7 +42,7 @@ Branch on `error`, not on the exit-code number. Treat any non-zero exit as failu
 
 | `error` | Exit | When |
 |---|---|---|
-| `not_logged_in` | 2 | No credential in `DIF_TOKEN` or the credentials file. |
+| `not_logged_in` | 2 | No usable credential: no `dif_cli_` token in `DIF_TOKEN`, and no credentials file for the current cloud URL. A stored login applies only to the cloud URL that issued it, so `DIF_CLOUD_URL` pointing at another host gives `not_logged_in`. |
 | `token_invalid` | 2 | The server rejected the token (revoked, expired). The CLI deletes the local credential. |
 | `forbidden` | 1 | The token is valid but lacks the role or scope. |
 | `cloud_unreachable` | 1 | DNS, TLS, timeout or connection failure. |
@@ -53,7 +53,7 @@ Branch on `error`, not on the exit-code number. Treat any non-zero exit as failu
 
 | Variable | Effect |
 |---|---|
-| `DIF_TOKEN` | A `dif_cli_…` token. Wins over the credentials file. `dif auth logout` doesn't delete it. |
+| `DIF_TOKEN` | Used only when it holds a `dif_cli_…` token; then it wins over the credentials file. Any other value (for example a `dif_pat_` read token for MCP) is ignored with a note on stderr. `dif auth logout` doesn't delete or revoke it. |
 | `DIF_CLOUD_URL` | Cloud base URL. The default is `https://cloud.dif.sh`. |
 
 **Local-only commands** (`init`, `new`, `validate`, `build`, `qa`, `conclude`, `scaffold-audiences`, `connect --key`) **never** make network calls and never need login.
@@ -72,9 +72,9 @@ New flags (all optional):
 
 Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
 
-Errors added: `usage` (exit 2) for an unknown value in `--project-type` or `--features`.
+Errors added: `usage` (exit 2) for an unknown value in `--project-type` or `--features`, or for an empty list.
 
-The success JSON adds two fields:
+The success JSON adds two fields. `project_type` is always an array, `[]` when the flag is omitted. `features` always lists all three keys.
 
 ```json
 {
@@ -97,8 +97,9 @@ features:                        # optional; a missing block or key means true
   experiments: true
 ```
 
-- The fields are additive. Old configs with no `features` block behave as all-on.
-- `dif build` skips the codegen for a disabled feature. `dif validate` warns (it does not fail) when `experiments: false` and active experiments exist.
+- The fields are additive. Old configs with no `features` block behave as all-on. `dif init` writes the `features` block only when a feature is off.
+- `project_type` values outside the three listed load without error; only `dif init --project-type` rejects them.
+- `dif build`: `experiments: false` leaves out experiment registrations. `flags: false` has no build effect yet, because there is no flag-only codegen. `dif validate` warns (`W005`, it does not fail) when `experiments: false` and active experiments exist.
 - **Reserved:** what `analytics: false` removes from the generated client is decided separately. The key and its type are frozen now.
 - The initializer may write these keys itself or through `dif init` flags. The flags are the preferred path.
 
@@ -168,7 +169,7 @@ It never makes a network call unless you add `--verify`. It never prints the tok
 }
 ```
 
-`source` is either `"file"` or `"env"`. With `--verify`, a server rejection returns `token_invalid`.
+`source` is either `"file"` or `"env"`. For `"env"` without `--verify`, `user` and `expires_at` are left out, because the CLI can't know them without a network call. With `--verify`, a server rejection returns `token_invalid`.
 
 ### `dif auth logout`
 
@@ -206,7 +207,7 @@ On a TTY with none of these flags, the CLI prompts. In JSON mode or on a non-TTY
 }
 ```
 
-`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing.
+`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing. `repo` is `null` for a project that has no repo yet. With `--create` and several orgs, the caller must add `--org <slug>`.
 
 Success:
 
@@ -226,7 +227,9 @@ Success:
 `repo.status` takes one of these values:
 
 - `"linked"`: the project already has a repo; `github_install_url` is left out.
-- `"unlinked"`: show `github_install_url` to the person. Spec sync starts after the install.
+- `"unlinked"`: show `github_install_url` to the person. Spec sync starts after the install. `github_install_url` is `null` when the Cloud has no GitHub App configured (local or self-hosted).
+
+`dashboard_url` is `<cloud_url>/<slug>` for an existing project too.
 
 `repo.detected` comes from `git remote get-url origin` when it points at GitHub, and is `null` otherwise.
 
@@ -240,7 +243,7 @@ Success:
 
 ## 6. Cloud routes: `/v1/cli/*`
 
-All routes take and return JSON with `cache-control: no-store`. Errors follow the existing Cloud shape `{ "error": "<code>" }` plus an HTTP status. Authenticated routes take `Authorization: Bearer dif_cli_…`.
+All routes take and return JSON with `cache-control: no-store`. Errors follow the existing Cloud shape `{ "error": "<code>" }` plus an HTTP status. Authenticated routes take `Authorization: Bearer dif_cli_…`. A malformed body gives 400 `bad_request`. `user.email` can be `null`.
 
 ### `POST /v1/cli/device`
 No auth. Rate-limited per IP.
@@ -269,7 +272,7 @@ No bearer auth. The device code is the credential.
 { "token": "dif_cli_…", "expires_at": "…", "user": { "id": "uuid", "email": "…" } }
 ```
 
-Errors (400): `authorization_pending`, `slow_down`, `access_denied`, `expired_token`. On `slow_down`, the client adds 5 seconds to its interval. A second redeem after success returns `expired_token`.
+Errors (400): `authorization_pending`, `slow_down`, `access_denied`, `expired_token`. On `slow_down`, the client adds 5 seconds to its interval. A second redeem after success, or an unknown `device_code`, returns `expired_token`.
 
 ### `GET /v1/cli/whoami`
 ```json
@@ -282,9 +285,10 @@ Each successful authenticated call slides `expires_at` to now + 90 days.
 ```json
 { "projects": [{ "slug": "acme-shop", "name": "acme-shop", "org": "acme", "repo": "acme/shop", "role": "owner" }] }
 ```
+`repo` is `null` for a project that has no repo yet.
 
 ### `POST /v1/cli/projects`
-Scope: `project:create`. The caller must be an org member who is allowed to create projects.
+Scope: `project:create`. The caller must be an org owner or admin. A paid plan is **not** required; the dashboard needs one.
 ```json
 // request
 { "org": "acme", "name": "acme-shop", "repo_full_name": "acme/shop" }
@@ -298,13 +302,14 @@ Scope: `project:create`. The caller must be an org member who is allowed to crea
 ```
 `repo_full_name` is optional and only a hint. The GitHub App install binds the repo; the hint does not.
 
-Errors: `org_not_found` (404) and `forbidden` (403).
+Errors: `org_not_found` (404, also for an org the caller is not in) and `forbidden` (403, a member who is not owner or admin). `repo.github_install_url` can be `null` (see section 5).
 
 ### `GET /v1/cli/projects/:slug/key`
-Scope: `keys:read`.
+Scope: `keys:read`. The caller must be a project member. A paid plan is not required.
 ```json
 { "project_key": "dif_pk_live_…", "repo": { "status": "linked" } }
 ```
+An unlinked project returns `"repo": { "status": "unlinked", "github_install_url": "…" }`. Errors: `project_not_found` (404, also for a project the caller can't read).
 
 ### `POST /v1/cli/logout`
 It revokes the calling token.
@@ -321,8 +326,22 @@ It revokes the calling token.
 1. `dif auth status --json`. If `logged_in` is true, go to step 4.
 2. `dif auth login --no-wait --json`. Show `verification_uri_complete` and `user_code` to the person.
 3. `dif auth login --resume --json`. On `authorization_pending`, call it again. On `access_denied` or `expired_token`, stop and tell the person.
-4. `dif connect --json`. On `needs_selection`, ask the person to pick a project or to create one, then run it again with `--project` or `--create`.
+4. `dif connect --json`. On `needs_selection`, ask the person to pick a project or to create one, then run it again with `--project <slug>`, or `--create` (add `--org <slug>` when `orgs` lists more than one).
 5. If `repo.status` is `"unlinked"`, show `github_install_url`.
 6. `dif build`.
 
 The initializer can skip steps 2–3 and run `dif auth login` interactively with `stdio: inherit`.
+
+---
+
+## Clarifications (2026-11-05, after the build)
+
+These tighten cases that v1 left open. None of them changes a name, a type or a documented meaning, so the version stays `cli-contract/1`.
+
+- `DIF_TOKEN` is used only for `dif_cli_` tokens (section 1).
+- A stored login applies only to the cloud URL that issued it (section 1).
+- `project_type: []` when omitted; `features` written to config only when a feature is off; unknown `project_type` strings load (sections 2–3).
+- `dif build` effect per feature is spelled out (section 3).
+- `dif auth status` with `source: "env"` omits `user` and `expires_at` without `--verify` (section 4).
+- `repo` can be `null`, `github_install_url` can be `null`, `--create` with several orgs needs `--org` (sections 5–7).
+- No paid plan is needed to create a project or read its key. Additive errors: `bad_request`, `project_not_found` on the key route (section 6).
