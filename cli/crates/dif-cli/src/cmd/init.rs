@@ -24,7 +24,7 @@ use super::{validate_publishable_key, CmdError};
 use clap::{Args as ClapArgs, ValueEnum};
 use console::{style, Term};
 use dialoguer::Select;
-use dif_core::config::EventsMode;
+use dif_core::config::{EventsMode, Features, ProjectType};
 use dif_core::config_edit::render_events_block;
 use dif_core::paths;
 use std::path::{Path, PathBuf};
@@ -74,8 +74,25 @@ pub struct Args {
 
     /// Refresh agent files only: skills and managed blocks.
     /// Never changes dif/ content. Needs an existing workspace.
-    #[arg(long, conflicts_with_all = ["surface", "events", "key", "force"])]
+    #[arg(
+        long,
+        conflicts_with_all = ["surface", "events", "key", "force", "project_type", "features"]
+    )]
     pub agents_only: bool,
+
+    /// Kinds of project, comma-separated: `marketing`, `app`, `ecommerce`.
+    /// Omit to leave `project_type` out of dif/config.yaml.
+    #[arg(long, value_delimiter = ',')]
+    pub project_type: Option<Vec<String>>,
+
+    /// Enabled features, comma-separated: `analytics`, `flags`,
+    /// `experiments`. Omit to enable all three.
+    #[arg(long, value_delimiter = ',')]
+    pub features: Option<Vec<String>>,
+
+    /// Accept the default for every prompt.
+    #[arg(long)]
+    pub yes: bool,
 }
 
 /// `--agents` targets. Each maps to a set of scaffolded files;
@@ -124,24 +141,31 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     if let Some(raw) = &args.key {
         args.key = Some(validate_publishable_key(raw)?);
     }
-    let mode = resolve_events_mode(args.events, args.key.is_some(), json)?;
+    // Fail on a bad value before the events prompt.
+    if let Err(msg) = resolve_project_type(args.project_type.clone())
+        .and_then(|_| resolve_features(args.features.clone()))
+    {
+        report_usage_error(&msg, json);
+        return Ok(ExitCode::from(2));
+    }
+    let mode = resolve_events_mode(args.events, args.key.is_some(), json || args.yes)?;
     run_in(&cwd, args, mode, json)
 }
 
 /// Decide the events mode. An explicit `--events` flag wins. A `--key` implies
 /// cloud (a key is meaningless for custom mode — that combination is a hard
 /// error). Otherwise, on an interactive terminal, prompt; in any non-interactive
-/// context (`--json`, piped stdin, CI) default to cloud rather than block on a
-/// prompt that can't be answered.
+/// context (`--json`, `--yes`, piped stdin, CI) default to cloud rather than
+/// block on a prompt that can't be answered.
 fn resolve_events_mode(
     flag: Option<EventsModeArg>,
     has_key: bool,
-    json: bool,
+    no_prompt: bool,
 ) -> Result<EventsMode, CmdError> {
     let mode = match flag {
         Some(m) => m.into(),
         None if has_key => EventsMode::Cloud,
-        None if json || !Term::stdout().is_term() => EventsMode::Cloud,
+        None if no_prompt || !Term::stdout().is_term() => EventsMode::Cloud,
         None => {
             let items = [
                 "cloud — built-in delivery to dif.sh Cloud",
@@ -164,6 +188,48 @@ fn resolve_events_mode(
         ));
     }
     Ok(mode)
+}
+
+/// Resolve `--project-type` into a sorted list without duplicates.
+/// Order is fixed so a re-run writes the same config.
+fn resolve_project_type(values: Option<Vec<String>>) -> Result<Vec<ProjectType>, String> {
+    let mut out = Vec::new();
+    for value in values.unwrap_or_default() {
+        let Some(kind) = ProjectType::ALL.into_iter().find(|t| t.as_str() == value) else {
+            return Err(format!(
+                "unknown --project-type value `{value}`; expected marketing, app, ecommerce"
+            ));
+        };
+        out.push(kind);
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// Resolve `--features`, the list of enabled features.
+fn resolve_features(values: Option<Vec<String>>) -> Result<Features, String> {
+    let Some(values) = values else {
+        return Ok(Features::default());
+    };
+    let mut features = Features {
+        analytics: false,
+        flags: false,
+        experiments: false,
+    };
+    for value in values {
+        match value.as_str() {
+            "analytics" => features.analytics = true,
+            "flags" => features.flags = true,
+            "experiments" => features.experiments = true,
+            _ => {
+                return Err(format!(
+                    "unknown --features value `{value}`; expected analytics, flags, experiments"
+                ))
+            }
+        }
+    }
+    Ok(features)
 }
 
 /// Which agent-onboarding integrations to write, resolved from the flags.
@@ -245,6 +311,15 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
             return Ok(ExitCode::from(2));
         }
     };
+    let picks = resolve_project_type(args.project_type)
+        .and_then(|kinds| Ok((kinds, resolve_features(args.features)?)));
+    let (project_type, features) = match picks {
+        Ok(picks) => picks,
+        Err(msg) => {
+            report_usage_error(&msg, json);
+            return Ok(ExitCode::from(2));
+        }
+    };
 
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let project = cwd
@@ -269,7 +344,14 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     let mut plain_files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(paths::CONFIG_FILE),
-            default_config_yaml(&project, &surface, mode, args.key.as_deref()),
+            default_config_yaml(
+                &project,
+                &surface,
+                mode,
+                args.key.as_deref(),
+                &project_type,
+                features,
+            ),
         ),
         (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
         (
@@ -354,7 +436,15 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         write_managed(mf)?;
     }
 
-    report_success(&surface, json, sel, mode, already_initialized);
+    report_success(
+        &surface,
+        json,
+        sel,
+        mode,
+        already_initialized,
+        &project_type,
+        features,
+    );
     Ok(ExitCode::from(0))
 }
 
@@ -574,6 +664,8 @@ fn report_success(
     sel: AgentSelection,
     mode: EventsMode,
     already_initialized: bool,
+    project_type: &[ProjectType],
+    features: Features,
 ) {
     let next = next_steps(surface);
     if json {
@@ -582,6 +674,8 @@ fn report_success(
             "already_initialized": already_initialized,
             "created": created_paths(surface, sel, mode),
             "next": next,
+            "project_type": project_type,
+            "features": features,
         });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
         return;
@@ -639,6 +733,8 @@ fn default_config_yaml(
     surface: &str,
     mode: EventsMode,
     key: Option<&str>,
+    project_type: &[ProjectType],
+    features: Features,
 ) -> String {
     // The events block (comment + mapping) is rendered by dif-core so `dif init`
     // and `dif connect` stay byte-for-byte in agreement.
@@ -648,11 +744,31 @@ fn default_config_yaml(
         }
         EventsMode::Custom => render_events_block(EventsMode::Custom, None, None),
     };
+    let project_type_block = if project_type.is_empty() {
+        String::new()
+    } else {
+        let kinds: Vec<&str> = project_type.iter().map(|t| t.as_str()).collect();
+        format!(
+            "\n# Kinds of project: marketing, app, ecommerce.\nproject_type: [{}]\n",
+            kinds.join(", ")
+        )
+    };
+    let Features {
+        analytics,
+        flags,
+        experiments,
+    } = features;
     format!(
         "# dif.sh project config. Checked in. Edit by hand or re-run `dif init`.
 
 project: {project}
 default_surface: {surface}
+{project_type_block}
+# dif features in use. A missing key means true.
+features:
+  analytics: {analytics}
+  flags: {flags}
+  experiments: {experiments}
 
 # Audience attribute schema. The audience predicate language is closed over
 # this set — anything not declared here is a validation error. Each entry
@@ -1049,12 +1165,19 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dif_core::config::Config;
+    use dif_core::config::{Config, Features, ProjectType};
     use dif_core::parse::parse_surface_str;
 
     #[test]
     fn emitted_config_parses_as_config() {
-        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Cloud, None);
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            None,
+            &[],
+            Features::default(),
+        );
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.project, "acme-shop");
         assert_eq!(config.default_surface, "home");
@@ -1081,6 +1204,8 @@ mod tests {
             "home",
             EventsMode::Cloud,
             Some("dif_pk_live_xyz"),
+            &[],
+            Features::default(),
         );
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.events().mode, EventsMode::Cloud);
@@ -1090,7 +1215,14 @@ mod tests {
 
     #[test]
     fn emitted_custom_config_parses_as_custom() {
-        let yaml = default_config_yaml("acme-shop", "home", EventsMode::Custom, None);
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Custom,
+            None,
+            &[],
+            Features::default(),
+        );
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert_eq!(config.events().mode, EventsMode::Custom);
         assert!(config.events().url.is_none());
@@ -1135,6 +1267,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1185,6 +1318,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1217,6 +1351,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1241,6 +1376,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1292,6 +1428,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Custom,
             true,
@@ -1334,6 +1471,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1366,6 +1504,7 @@ mod tests {
             force: true,
             no_agent_files: false,
             agents_only: false,
+            ..default_args()
         };
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
@@ -1438,6 +1577,7 @@ mod tests {
                 force: true,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1478,6 +1618,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1510,6 +1651,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1544,6 +1686,7 @@ mod tests {
                 force: true,
                 no_agent_files: true,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1632,6 +1775,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1659,6 +1803,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1688,6 +1833,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -1718,6 +1864,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                ..default_args()
             },
             EventsMode::Cloud,
             true,
@@ -2019,6 +2166,9 @@ mod tests {
             force: false,
             no_agent_files: false,
             agents_only: false,
+            project_type: None,
+            features: None,
+            yes: false,
         }
     }
 
@@ -2321,6 +2471,120 @@ mod tests {
         assert_eq!(code, ExitCode::from(2));
     }
 
+    // -- --project-type / --features / --yes --------------------------------
+
+    #[test]
+    fn project_type_and_features_flags_split_on_commas() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        let cli = Cli::try_parse_from([
+            "dif-init",
+            "--project-type",
+            "app,ecommerce",
+            "--features",
+            "analytics,flags",
+            "--yes",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.args.project_type,
+            Some(vec!["app".to_string(), "ecommerce".to_string()])
+        );
+        assert_eq!(
+            cli.args.features,
+            Some(vec!["analytics".to_string(), "flags".to_string()])
+        );
+        assert!(cli.args.yes);
+    }
+
+    #[test]
+    fn resolve_project_type_orders_and_dedupes() {
+        let values = vec!["ecommerce".into(), "app".into(), "app".into()];
+        assert_eq!(
+            resolve_project_type(Some(values)).unwrap(),
+            vec![ProjectType::App, ProjectType::Ecommerce]
+        );
+        assert!(resolve_project_type(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn resolve_project_type_rejects_unknown_value() {
+        let err = resolve_project_type(Some(vec!["app".into(), "blog".into()])).unwrap_err();
+        assert!(err.contains("blog"), "{err}");
+        assert!(resolve_project_type(Some(vec![String::new()])).is_err());
+    }
+
+    #[test]
+    fn resolve_features_lists_enabled_features() {
+        assert_eq!(resolve_features(None).unwrap(), Features::default());
+        assert_eq!(
+            resolve_features(Some(vec!["flags".into()])).unwrap(),
+            Features {
+                analytics: false,
+                flags: true,
+                experiments: false,
+            }
+        );
+        let err = resolve_features(Some(vec!["billing".into()])).unwrap_err();
+        assert!(err.contains("billing"), "{err}");
+        assert!(resolve_features(Some(vec![String::new()])).is_err());
+    }
+
+    #[test]
+    fn emitted_config_records_project_type_and_features() {
+        let features = Features {
+            analytics: true,
+            flags: false,
+            experiments: true,
+        };
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            None,
+            &[ProjectType::App, ProjectType::Ecommerce],
+            features,
+        );
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert_eq!(
+            config.project_type,
+            Some(vec![ProjectType::App, ProjectType::Ecommerce])
+        );
+        assert_eq!(config.features, Some(features));
+    }
+
+    #[test]
+    fn emitted_config_leaves_out_project_type_when_none() {
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            None,
+            &[],
+            Features::default(),
+        );
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert!(config.project_type.is_none());
+        assert!(!yaml.contains("project_type:"));
+        assert_eq!(config.features, Some(Features::default()));
+    }
+
+    #[test]
+    fn unknown_feature_is_a_usage_error_that_writes_nothing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let args = Args {
+            features: Some(vec!["billing".into()]),
+            ..default_args()
+        };
+        let code = run_in(tmp.path(), args, EventsMode::Cloud, true).expect("run");
+        assert_eq!(code, ExitCode::from(2));
+        assert!(!tmp.path().join(paths::CONFIG_FILE).exists());
+    }
+
     #[test]
     fn agents_only_conflicts_with_workspace_flags() {
         use clap::Parser;
@@ -2329,7 +2593,14 @@ mod tests {
             #[command(flatten)]
             args: Args,
         }
-        for flag in ["--force", "--surface=x", "--events=cloud", "--key=dif_pk_x"] {
+        for flag in [
+            "--force",
+            "--surface=x",
+            "--events=cloud",
+            "--key=dif_pk_x",
+            "--project-type=app",
+            "--features=flags",
+        ] {
             let err = Cli::try_parse_from(["dif-init", "--agents-only", flag])
                 .err()
                 .unwrap_or_else(|| panic!("{flag} should conflict"));
