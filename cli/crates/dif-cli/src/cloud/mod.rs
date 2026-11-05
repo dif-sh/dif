@@ -192,6 +192,16 @@ impl Failure {
     }
 }
 
+/// Map an authenticated call's error. Drop a rejected file token.
+pub fn rejected(env: &CloudEnv, session: &Session, e: ApiError) -> Failure {
+    let failure = e.into_failure();
+    if failure.code == "token_invalid" && session.source == Source::File {
+        // The token_invalid code matters more than a failed delete.
+        let _ = env.delete_credential();
+    }
+    failure
+}
+
 /// Print a success object in JSON mode. Return true when printed.
 pub fn print_json(json: bool, value: &Value) -> bool {
     if json {

@@ -2,7 +2,7 @@
 
 use super::CmdError;
 use crate::cloud::credentials::{PendingLogin, StoredCredential};
-use crate::cloud::{print_json, ApiError, Client, CloudEnv, Failure, Session, Source};
+use crate::cloud::{print_json, rejected, ApiError, Client, CloudEnv, Failure, Source};
 use clap::{Args as ClapArgs, Subcommand};
 use console::style;
 use serde_json::{json, Value};
@@ -166,7 +166,7 @@ fn login(args: &LoginArgs, env: &CloudEnv, json: bool) -> Outcome {
         "expires_at": cred.expires_at,
     });
     if !print_json(json, &payload) {
-        eprintln!(
+        println!(
             "{} logged in as {}",
             style("✓").green().bold(),
             cred.user
@@ -301,7 +301,7 @@ fn poll_for_token(
 fn status(args: &StatusArgs, env: &CloudEnv, json: bool) -> Outcome {
     let Some(mut session) = env.session() else {
         if !print_json(json, &json!({ "ok": true, "logged_in": false })) {
-            eprintln!("not logged in; run {}", style("dif auth login").bold());
+            println!("not logged in; run {}", style("dif auth login").bold());
         }
         return Ok(Ok(()));
     };
@@ -312,7 +312,7 @@ fn status(args: &StatusArgs, env: &CloudEnv, json: bool) -> Outcome {
                 session.user = v.get("user").cloned();
                 session.expires_at = v["expires_at"].as_str().map(String::from);
             }
-            Err(e) => return Ok(Err(rejected(env, &session, e)?)),
+            Err(e) => return Ok(Err(rejected(env, &session, e))),
         }
     }
 
@@ -334,7 +334,7 @@ fn status(args: &StatusArgs, env: &CloudEnv, json: bool) -> Outcome {
             .as_ref()
             .and_then(|u| u["email"].as_str())
             .unwrap_or("a token");
-        eprintln!(
+        println!(
             "{} logged in to {} as {who} (from {})",
             style("✓").green().bold(),
             session.cloud_url,
@@ -345,15 +345,6 @@ fn status(args: &StatusArgs, env: &CloudEnv, json: bool) -> Outcome {
         );
     }
     Ok(Ok(()))
-}
-
-/// Map a cloud error. A rejected file token is deleted locally.
-pub fn rejected(env: &CloudEnv, session: &Session, e: ApiError) -> Result<Failure, CmdError> {
-    let failure = e.into_failure();
-    if failure.code == "token_invalid" && session.source == Source::File {
-        env.delete_credential()?;
-    }
-    Ok(failure)
 }
 
 fn logout(env: &CloudEnv, json: bool) -> Outcome {
@@ -370,7 +361,7 @@ fn logout(env: &CloudEnv, json: bool) -> Outcome {
     };
     env.delete_credential()?;
     if !print_json(json, &json!({ "ok": true, "revoked": revoked })) {
-        eprintln!("{} logged out", style("✓").green().bold());
+        println!("{} logged out", style("✓").green().bold());
     }
     Ok(Ok(()))
 }
