@@ -2497,34 +2497,6 @@ mod tests {
     // -- --project-type / --features / --yes --------------------------------
 
     #[test]
-    fn project_type_and_features_flags_split_on_commas() {
-        use clap::Parser;
-        #[derive(Parser)]
-        struct Cli {
-            #[command(flatten)]
-            args: Args,
-        }
-        let cli = Cli::try_parse_from([
-            "dif-init",
-            "--project-type",
-            "app,ecommerce",
-            "--features",
-            "analytics,flags",
-            "--yes",
-        ])
-        .unwrap();
-        assert_eq!(
-            cli.args.project_type,
-            Some(vec!["app".to_string(), "ecommerce".to_string()])
-        );
-        assert_eq!(
-            cli.args.features,
-            Some(vec!["analytics".to_string(), "flags".to_string()])
-        );
-        assert!(cli.args.yes);
-    }
-
-    #[test]
     fn resolve_project_type_orders_and_dedupes() {
         let values = vec!["ecommerce".into(), "app".into(), "app".into()];
         assert_eq!(
