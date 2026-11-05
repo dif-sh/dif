@@ -753,23 +753,25 @@ fn default_config_yaml(
             kinds.join(", ")
         )
     };
-    let Features {
-        analytics,
-        flags,
-        experiments,
-    } = features;
+    // All-on stays implicit, so older configs re-run without a collision.
+    let features_block = if features == Features::default() {
+        String::new()
+    } else {
+        let Features {
+            analytics,
+            flags,
+            experiments,
+        } = features;
+        format!(
+            "\n# dif features in use. A missing key means true.\nfeatures:\n  analytics: {analytics}\n  flags: {flags}\n  experiments: {experiments}\n"
+        )
+    };
     format!(
         "# dif.sh project config. Checked in. Edit by hand or re-run `dif init`.
 
 project: {project}
 default_surface: {surface}
-{project_type_block}
-# dif features in use. A missing key means true.
-features:
-  analytics: {analytics}
-  flags: {flags}
-  experiments: {experiments}
-
+{project_type_block}{features_block}
 # Audience attribute schema. The audience predicate language is closed over
 # this set — anything not declared here is a validation error. Each entry
 # must have a matching resolver at `dif/audiences/<name>.ts`. Run
@@ -2195,6 +2197,27 @@ mod tests {
     }
 
     #[test]
+    fn rerun_over_a_config_without_features_block_exits_zero() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+        let config = tmp.path().join(paths::CONFIG_FILE);
+        let block = "\n# dif features in use. A missing key means true.\nfeatures:\n  analytics: true\n  flags: true\n  experiments: true\n";
+        let text = std::fs::read_to_string(&config).unwrap();
+        std::fs::write(&config, text.replace(block, "")).unwrap();
+
+        let args = Args {
+            features: Some(vec![
+                "analytics".into(),
+                "flags".into(),
+                "experiments".into(),
+            ]),
+            ..default_args()
+        };
+        let second = run_in(tmp.path(), args, EventsMode::Cloud, true).expect("second");
+        assert_eq!(second, ExitCode::from(0));
+    }
+
+    #[test]
     fn rerun_in_initialized_workspace_leaves_files_untouched() {
         let tmp = tempfile::TempDir::new().unwrap();
         run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
@@ -2570,7 +2593,7 @@ mod tests {
         let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
         assert!(config.project_type.is_none());
         assert!(!yaml.contains("project_type:"));
-        assert_eq!(config.features, Some(Features::default()));
+        assert_eq!(config.features, None);
     }
 
     #[test]
