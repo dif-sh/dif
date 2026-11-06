@@ -22,13 +22,17 @@
 
 use super::{validate_publishable_key, CmdError};
 use clap::{Args as ClapArgs, ValueEnum};
-use console::{style, Term};
-use dialoguer::Select;
+use console::style;
 use dif_core::config::EventsMode;
 use dif_core::config_edit::render_events_block;
 use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+mod choices;
+mod ui;
+
+use choices::{detect_framework, Framework};
 
 /// `dif init` flags.
 #[derive(ClapArgs, Debug)]
@@ -48,6 +52,11 @@ pub struct Args {
     /// client authenticates without an env var. Copy it from cloud onboarding.
     #[arg(long)]
     pub key: Option<String>,
+
+    /// Your app framework. Picks the adapter package in the install step.
+    /// Omit to be asked on a TTY, or to detect it from package.json.
+    #[arg(long, value_enum)]
+    pub framework: Option<Framework>,
 
     /// Overwrite existing files. Off by default — refuses to clobber.
     #[arg(long)]
@@ -74,7 +83,7 @@ pub struct Args {
 
     /// Refresh agent files only: skills and managed blocks.
     /// Never changes dif/ content. Needs an existing workspace.
-    #[arg(long, conflicts_with_all = ["surface", "events", "key", "force"])]
+    #[arg(long, conflicts_with_all = ["surface", "events", "key", "framework", "force"])]
     pub agents_only: bool,
 }
 
@@ -124,40 +133,37 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     if let Some(raw) = &args.key {
         args.key = Some(validate_publishable_key(raw)?);
     }
-    let mode = resolve_events_mode(args.events, args.key.is_some(), json)?;
-    run_in(&cwd, args, mode, json)
+    let mode = resolve_events_mode(args.events, args.key.is_some())?;
+    if !ui::is_interactive(json) {
+        return run_in(&cwd, args, mode, json);
+    }
+    // Refuse before the questions, not after them.
+    if !args.force && is_home_dir(&cwd) {
+        report_home_dir_refusal(json);
+        return Ok(ExitCode::from(2));
+    }
+    match ui::ask(&cwd, &mut args)? {
+        Some(mode) => run_in(&cwd, args, mode, json),
+        None => Ok(ExitCode::from(1)),
+    }
+}
+
+/// Copy events settings from an existing config into unset flags.
+pub(crate) fn reuse_existing_events(_cwd: &Path, _args: &mut Args) {}
+
+/// The framework from `package.json` in `cwd`, or the plain SDK.
+fn detect_framework_in(cwd: &Path) -> Framework {
+    std::fs::read_to_string(cwd.join("package.json"))
+        .map(|text| detect_framework(&text))
+        .unwrap_or(Framework::Sdk)
 }
 
 /// Decide the events mode. An explicit `--events` flag wins. A `--key` implies
 /// cloud (a key is meaningless for custom mode — that combination is a hard
-/// error). Otherwise, on an interactive terminal, prompt; in any non-interactive
-/// context (`--json`, piped stdin, CI) default to cloud rather than block on a
-/// prompt that can't be answered.
-fn resolve_events_mode(
-    flag: Option<EventsModeArg>,
-    has_key: bool,
-    json: bool,
-) -> Result<EventsMode, CmdError> {
-    let mode = match flag {
-        Some(m) => m.into(),
-        None if has_key => EventsMode::Cloud,
-        None if json || !Term::stdout().is_term() => EventsMode::Cloud,
-        None => {
-            let items = [
-                "cloud — built-in delivery to dif.sh Cloud",
-                "custom — you write exposure/track handlers in dif/events/",
-            ];
-            match Select::new()
-                .with_prompt("How should dif deliver events?")
-                .items(&items)
-                .default(0)
-                .interact_opt()
-            {
-                Ok(Some(1)) => EventsMode::Custom,
-                _ => EventsMode::Cloud,
-            }
-        }
-    };
+/// error). Otherwise default to cloud; on a TTY the product prompt in
+/// [`ui::ask`] replaces this default.
+fn resolve_events_mode(flag: Option<EventsModeArg>, has_key: bool) -> Result<EventsMode, CmdError> {
+    let mode = flag.map_or(EventsMode::Cloud, Into::into);
     if has_key && mode == EventsMode::Custom {
         return Err(CmdError::Other(
             "--key only applies to cloud events; drop --key or pass --events cloud",
@@ -247,6 +253,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     };
 
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
+    let framework = args.framework.unwrap_or_else(|| detect_framework_in(cwd));
     let project = cwd
         .file_name()
         .and_then(|s| s.to_str())
@@ -322,6 +329,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     let already_initialized = plain_files
         .iter()
         .all(|(p, content)| file_matches(p, content));
+    let progress = ui::is_interactive(json).then(ui::start_writing);
     if !args.force {
         let collisions: Vec<&Path> = plain_files
             .iter()
@@ -329,33 +337,67 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
             .map(|(p, _)| p.as_path())
             .collect();
         if !collisions.is_empty() {
-            report_collisions(&collisions, json);
+            match progress {
+                Some(p) => {
+                    let rel: Vec<String> = collisions.iter().map(|c| relative(cwd, c)).collect();
+                    ui::report_collisions(p, &rel)?;
+                }
+                None => report_collisions(&collisions, json),
+            }
             return Ok(ExitCode::from(2));
         }
     }
 
-    for dir in &dirs {
-        std::fs::create_dir_all(dir)?;
-    }
-    // Skip files that already hold exactly this content, so a re-run really is
-    // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
-    for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+    let written = (|| -> Result<(), CmdError> {
+        for dir in &dirs {
+            std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(path, content).map_err(|e| {
-            CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
-        })?;
+        // Skip files that already hold exactly this content, so a re-run really is
+        // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
+        for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, content).map_err(|e| {
+                CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
+            })?;
+        }
+        // Managed-block merge — preserve any user content already in the file, even
+        // under `--force`. Force re-scaffolds the structural files, but must never
+        // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
+        for mf in &merge_files {
+            write_managed(mf)?;
+        }
+        Ok(())
+    })();
+    if let (Err(_), Some(p)) = (&written, &progress) {
+        p.fail();
     }
-    // Managed-block merge — preserve any user content already in the file, even
-    // under `--force`. Force re-scaffolds the structural files, but must never
-    // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
-    for mf in &merge_files {
-        write_managed(mf)?;
-    }
+    written?;
 
-    report_success(&surface, json, sel, mode, already_initialized);
+    let summary = Summary {
+        surface: &surface,
+        sel,
+        mode,
+        framework,
+        has_key: args.key.is_some(),
+        already_initialized,
+    };
+    match progress {
+        Some(p) => ui::report_success(p, &summary, &next_steps(&surface, framework))?,
+        None => report_success(&summary, json),
+    }
     Ok(ExitCode::from(0))
+}
+
+/// What `dif init` did, for the success report.
+struct Summary<'a> {
+    surface: &'a str,
+    sel: AgentSelection,
+    mode: EventsMode,
+    framework: Framework,
+    has_key: bool,
+    already_initialized: bool,
 }
 
 /// True when `cwd` is the user's home directory ($HOME, or %USERPROFILE% on
@@ -560,22 +602,23 @@ fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<St
 
 /// The "next steps" block appended to a successful `dif init`, shared between
 /// the pretty text output and the `next` JSON array so they can't drift.
-fn next_steps(surface: &str) -> [String; 3] {
+fn next_steps(surface: &str, framework: Framework) -> [String; 3] {
     [
-        "npm install @dif.sh/sdk".to_string(),
+        format!("npm install {}", framework.packages().join(" ")),
         format!("dif new <id> --surface {surface} — then edit the file and set status: active"),
         "dif build".to_string(),
     ]
 }
 
-fn report_success(
-    surface: &str,
-    json: bool,
-    sel: AgentSelection,
-    mode: EventsMode,
-    already_initialized: bool,
-) {
-    let next = next_steps(surface);
+fn report_success(s: &Summary, json: bool) {
+    let Summary {
+        surface,
+        sel,
+        mode,
+        already_initialized,
+        ..
+    } = *s;
+    let next = next_steps(surface, s.framework);
     if json {
         let payload = serde_json::json!({
             "ok": true,
@@ -1135,6 +1178,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1185,6 +1229,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1217,6 +1262,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1241,6 +1287,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1256,27 +1303,21 @@ mod tests {
     #[test]
     fn resolve_events_mode_key_implies_cloud() {
         // json=true keeps this non-interactive (no TTY prompt).
-        assert_eq!(
-            resolve_events_mode(None, true, true).unwrap(),
-            EventsMode::Cloud
-        );
+        assert_eq!(resolve_events_mode(None, true).unwrap(), EventsMode::Cloud);
     }
 
     #[test]
     fn resolve_events_mode_key_with_custom_is_error() {
-        assert!(resolve_events_mode(Some(EventsModeArg::Custom), true, true).is_err());
+        assert!(resolve_events_mode(Some(EventsModeArg::Custom), true).is_err());
     }
 
     #[test]
     fn resolve_events_mode_explicit_flags_without_key() {
         assert_eq!(
-            resolve_events_mode(Some(EventsModeArg::Custom), false, true).unwrap(),
+            resolve_events_mode(Some(EventsModeArg::Custom), false).unwrap(),
             EventsMode::Custom
         );
-        assert_eq!(
-            resolve_events_mode(None, false, true).unwrap(),
-            EventsMode::Cloud
-        );
+        assert_eq!(resolve_events_mode(None, false).unwrap(), EventsMode::Cloud);
     }
 
     #[test]
@@ -1292,6 +1333,7 @@ mod tests {
                 force: false,
                 no_agent_files: true,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Custom,
             true,
@@ -1334,6 +1376,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1366,6 +1409,7 @@ mod tests {
             force: true,
             no_agent_files: false,
             agents_only: false,
+            framework: None,
         };
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
         run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
@@ -1438,6 +1482,7 @@ mod tests {
                 force: true,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1478,6 +1523,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1510,6 +1556,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1544,6 +1591,7 @@ mod tests {
                 force: true,
                 no_agent_files: true,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1632,6 +1680,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1659,6 +1708,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1688,6 +1738,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -1718,6 +1769,7 @@ mod tests {
                 force: false,
                 no_agent_files: false,
                 agents_only: false,
+                framework: None,
             },
             EventsMode::Cloud,
             true,
@@ -2010,6 +2062,18 @@ mod tests {
 
     // -- re-runs + Cursor / Copilot targets ----------------------------------
 
+    #[test]
+    fn next_steps_install_the_framework_adapter() {
+        let [install, new, build] = next_steps("home", Framework::Svelte);
+        assert_eq!(install, "npm install @dif.sh/sdk @dif.sh/svelte");
+        assert!(new.starts_with("dif new <id> --surface home"));
+        assert_eq!(build, "dif build");
+        assert_eq!(
+            next_steps("home", Framework::Sdk)[0],
+            "npm install @dif.sh/sdk"
+        );
+    }
+
     fn default_args() -> Args {
         Args {
             surface: None,
@@ -2019,6 +2083,7 @@ mod tests {
             force: false,
             no_agent_files: false,
             agents_only: false,
+            framework: None,
         }
     }
 
@@ -2236,8 +2301,54 @@ mod tests {
     fn agents_only_args() -> Args {
         Args {
             agents_only: true,
+            framework: None,
             ..default_args()
         }
+    }
+
+    #[test]
+    fn rerun_reuses_existing_events_settings() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let keyed = Args {
+            key: Some("dif_pk_live_xyz".into()),
+            ..default_args()
+        };
+        run_in(tmp.path(), keyed, EventsMode::Cloud, true).expect("init");
+
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Cloud)));
+        assert_eq!(args.key.as_deref(), Some("dif_pk_live_xyz"));
+    }
+
+    #[test]
+    fn rerun_reuses_custom_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Custom)));
+        assert!(args.key.is_none());
+    }
+
+    #[test]
+    fn explicit_flags_beat_existing_events_settings() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init");
+        let mut args = Args {
+            events: Some(EventsModeArg::Cloud),
+            ..default_args()
+        };
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Cloud)));
+    }
+
+    #[test]
+    fn fresh_directory_leaves_args_alone() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(args.events.is_none() && args.key.is_none());
     }
 
     fn init_workspace() -> tempfile::TempDir {
