@@ -25,8 +25,6 @@ export interface ResolvedState {
   publishableKey: string | null;
   apiUrl: string;
   userId: () => string | null;
-  /** The userId resolver gives an app-minted anonymous id. */
-  anonymousUserId: boolean;
   attributes: () => AttributeBag;
   sinks: Sink[];
   /** Where `dif.track()` metrics go — cloud POST or the user's custom handler. */
@@ -162,7 +160,6 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     publishableKey,
     apiUrl,
     userId: () => identifiedUserId() ?? resolve(),
-    anonymousUserId: merged.anonymousUserId === true,
     attributes: merged.attributes ?? (() => ({})),
     sinks,
     trackHandler,
