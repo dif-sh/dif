@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { cleanPageUrl, cleanReferrer, KEPT_PARAMS } from "./url.js";
+import { CLICK_IDS, cleanPageUrl, cleanReferrer, KEPT_PARAMS } from "./url.js";
 
 describe("cleanPageUrl", () => {
   it("drops the fragment", () => {
@@ -17,10 +17,20 @@ describe("cleanPageUrl", () => {
     );
   });
 
-  it("drops click ids", () => {
+  it("keeps a click id's name and drops its value", () => {
     assert.equal(
-      cleanPageUrl("https://example.com/pricing/?utm_source=News&gclid=x&fbclid=y"),
-      "https://example.com/pricing/?utm_source=News",
+      cleanPageUrl("https://example.com/pricing/?utm_source=News&gclid=x&fbclid=y&q=1"),
+      "https://example.com/pricing/?utm_source=News&gclid=&fbclid=",
+    );
+    assert.equal(cleanPageUrl("https://example.com/?msclkid"), "https://example.com/?msclkid=");
+    assert.equal(cleanPageUrl("https://example.com/?gclidx=1"), "https://example.com/");
+  });
+
+  it("keeps dif-db's click id names", () => {
+    assert.deepEqual(
+      [...CLICK_IDS],
+      ["gclid", "gbraid", "wbraid", "dclid", "fbclid", "msclkid", "ttclid", "twclid",
+        "li_fat_id", "yclid", "mc_eid"],
     );
   });
 

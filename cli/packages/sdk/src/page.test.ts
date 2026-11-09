@@ -64,7 +64,7 @@ describe("dif.page", () => {
     assert.deepEqual(rest, {
       type: "page",
       source: SOURCE,
-      url: "https://shop.example/pricing/?utm_source=News",
+      url: "https://shop.example/pricing/?utm_source=News&gclid=",
       referrer: "https://news.ycombinator.com/item",
       screen: "390x844",
       lang: "fr-CA",
