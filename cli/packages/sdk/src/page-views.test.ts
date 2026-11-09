@@ -154,6 +154,25 @@ describe("pageViews", () => {
     assert.equal(warnings.length, 1);
   });
 
+  it("waits for a prerendered page to be shown", () => {
+    browser = installBrowser({ href: "https://shop.example/", prerendering: true });
+    auto();
+    assert.equal(sent.length, 0);
+    browser.activate();
+    assert.equal(pages().length, 1);
+    assert.equal(pages()[0]!.url, "https://shop.example/");
+    browser.activate();
+    assert.equal(pages().length, 1);
+  });
+
+  it("sends no page view at activation when turned off before", () => {
+    browser = installBrowser({ href: "https://shop.example/", prerendering: true });
+    auto();
+    dif.init({ publishableKey: KEY, userId: () => null, pageViews: "off" });
+    browser.activate();
+    assert.equal(sent.length, 0);
+  });
+
   it("does not throw from init when the resolver throws", () => {
     open();
     const userId = () => {
