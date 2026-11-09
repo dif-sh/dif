@@ -5,6 +5,8 @@
 // intentional — there is only one "current user" per app instance.
 
 import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
+import { batchSender, type BatchSender } from "./sinks/batch.js";
+import { setElementSink } from "./elements.js";
 import { identifiedUserId } from "./identify.js";
 import type {
   AttributeBag,
@@ -30,6 +32,8 @@ export interface ResolvedState {
   overrides: Record<string, string>;
   /** Sends the events the cloud queues hold. */
   flush: () => Promise<void>;
+  /** Tracks with no user id go to `/v1/batch`. Cloud mode only. */
+  anonymous: boolean;
 }
 
 let state: ResolvedState | null = null;
@@ -37,9 +41,11 @@ let state: ResolvedState | null = null;
 /** Cloud delivery from the last init. */
 interface CloudDelivery {
   apiUrl: string;
+  ingestUrl: string;
   publishableKey: string | null;
   sink: Sink | null;
   track: CloudTrack;
+  batch: BatchSender | null;
 }
 
 let cloud: CloudDelivery | null = null;
@@ -49,6 +55,7 @@ function closeCloud(): void {
   cloud = null;
   void old?.sink?.close?.();
   void old?.track.close();
+  void old?.batch?.close();
 }
 
 // One-shot warnings for cloud-mode misconfiguration — fire once per bundle
@@ -60,6 +67,9 @@ let noUserIdWarned = false;
 // the cloud rewrites to its `/api/v1/*` handlers. (api.dif.sh is not a real
 // host — point at cloud.dif.sh, or your own deployment via `apiUrl`.)
 const DEFAULT_API_URL = "https://cloud.dif.sh";
+
+// dif-db's collector. Page views skip dif.sh Cloud.
+const DEFAULT_INGEST_URL = "https://ingest.difdb.com";
 
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;
@@ -87,20 +97,30 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     closeCloud();
     sinks = [{ kind: "custom", emit: events.exposure }];
     trackHandler = events.track;
+    setElementSink(null);
   } else {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
+    const ingestUrl = stripTrailing(events?.ingestUrl ?? merged.ingestUrl ?? DEFAULT_INGEST_URL);
     // A repeat init keeps its queues, so batching holds.
-    if (!cloud || cloud.apiUrl !== apiUrl || cloud.publishableKey !== publishableKey) {
+    if (
+      !cloud ||
+      cloud.apiUrl !== apiUrl ||
+      cloud.ingestUrl !== ingestUrl ||
+      cloud.publishableKey !== publishableKey
+    ) {
       closeCloud();
       cloud = {
         apiUrl,
+        ingestUrl,
         publishableKey,
         sink: publishableKey ? cloudSink({ apiUrl, publishableKey }) : null,
         track: cloudTrack({ apiUrl, publishableKey }),
+        batch: publishableKey ? batchSender({ ingestUrl, publishableKey }) : null,
       };
     }
     sinks = cloud.sink ? [cloud.sink] : [];
     trackHandler = cloud.track;
+    setElementSink(cloud.batch);
 
     if (merged.enabled !== false) {
       if (!publishableKey && !noKeyWarned) {
@@ -137,12 +157,16 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     enabled: merged.enabled !== false,
     overrides: merged.overrides ?? {},
     flush: flushCloud,
+    // A custom track handler takes a user id.
+    anonymous: merged.anonymous === true && events?.mode !== "custom",
   };
 }
 
 function flushCloud(): Promise<void> {
   if (!cloud) return Promise.resolve();
-  return Promise.all([cloud.sink?.flush?.(), cloud.track.flush()]).then(() => undefined);
+  return Promise.all([cloud.sink?.flush?.(), cloud.track.flush(), cloud.batch?.flush()]).then(
+    () => undefined,
+  );
 }
 
 export function getState(): ResolvedState | null {

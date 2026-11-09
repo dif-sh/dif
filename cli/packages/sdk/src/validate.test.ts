@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { validateExposure, validateTrack } from "./validate.js";
+import { validateElement, validateExposure, validateTrack } from "./validate.js";
 
 const exposure = (over: Record<string, unknown> = {}) => ({
   event: "dif.exposure",
@@ -155,5 +155,92 @@ describe("validateTrack", () => {
 
   it("ignores props that are not an object", () => {
     assert.equal(validateTrack(track({ props: "\ud800" })), null);
+  });
+});
+
+describe("validateElement", () => {
+  const ID = "01933f2e-7c4a-7b3e-8f21-5d6a9c0e4b17";
+  const page = (over: Record<string, unknown> = {}) => ({
+    type: "page",
+    event_id: ID,
+    fired_at: 1700000000000,
+    source: "test",
+    url: "https://shop.example/",
+    ...over,
+  });
+  const trackEl = (over: Record<string, unknown> = {}) => ({
+    type: "track",
+    event_id: ID,
+    fired_at: 1700000000000,
+    event: "signup",
+    url: "https://shop.example/",
+    ...over,
+  });
+  const identifyEl = (over: Record<string, unknown> = {}) => ({
+    type: "identify",
+    event_id: ID,
+    fired_at: 1700000000000,
+    user_id: "u-1",
+    traits: {},
+    ...over,
+  });
+
+  it("accepts good elements", () => {
+    assert.equal(validateElement(page()), null);
+    assert.equal(validateElement(page({ user_id: "u-1", props: { a: 1 } })), null);
+    assert.equal(validateElement(trackEl({ value: 2 })), null);
+    assert.equal(validateElement(identifyEl()), null);
+  });
+
+  it("refuses an unknown type", () => {
+    assert.equal(validateElement(page({ type: "screen" })), 'unknown type "screen"');
+  });
+
+  it("needs an event_id that is a UUID", () => {
+    assert.equal(validateElement(page({ event_id: undefined })), "event_id is required");
+    assert.equal(validateElement(page({ event_id: "nope" })), "event_id is required");
+  });
+
+  it("needs a user_id that is a non-empty string when sent", () => {
+    const msg = "user_id must be a non-empty string";
+    assert.equal(validateElement(page({ user_id: "" })), msg);
+    assert.equal(validateElement(page({ user_id: 7 })), msg);
+    assert.equal(validateElement(page({ user_id: null })), null);
+    assert.equal(validateElement(page({ user_id: "a\u0000b" })), "user_id must not contain U+0000");
+    assert.equal(validateElement(identifyEl({ user_id: undefined })), "user_id is required");
+  });
+
+  it("needs a page url of at most 8,192 bytes", () => {
+    assert.equal(validateElement(page({ url: "" })), "url is required");
+    assert.equal(
+      validateElement(page({ url: `https://a.example/${"a".repeat(8192)}` })),
+      "url is over 8192 bytes",
+    );
+  });
+
+  it("needs a track's event and a finite value", () => {
+    assert.equal(validateElement(trackEl({ event: "" })), "event is required");
+    assert.equal(validateElement(trackEl({ value: "3" })), "value must be a finite number");
+  });
+
+  it("needs an identify's traits object", () => {
+    assert.equal(validateElement(identifyEl({ traits: [] })), "traits is required");
+  });
+
+  it("refuses a fired_at out of range", () => {
+    assert.match(validateElement(page({ fired_at: 9e15 })) ?? "", /fired_at/);
+  });
+
+  it("refuses unpaired surrogates and deep props", () => {
+    assert.equal(validateElement(trackEl({ event: "a\ud800" })), "event must be valid Unicode");
+    assert.equal(validateElement(page({ props: { a: "\udc00" } })), "props must be valid Unicode");
+    assert.equal(
+      validateElement(page({ props: nested(65) })),
+      "props is nested more than 64 deep",
+    );
+    assert.equal(
+      validateElement(identifyEl({ traits: { a: "\udc00" } })),
+      "traits must be valid Unicode",
+    );
   });
 });

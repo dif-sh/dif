@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { dif, __reset, __register } from "./index.js";
 import { getState } from "./config.js";
-import { setElementSink, type BatchElement } from "./elements.js";
+import { __tapElements, type BatchElement } from "./elements.js";
 import { SOURCE } from "./version.js";
 import { installBrowser, type FakeBrowser } from "./fake-browser.test.js";
 
@@ -17,7 +17,7 @@ let originalFetch: typeof fetch;
 beforeEach(() => {
   __reset();
   sent = [];
-  setElementSink((e) => sent.push(e));
+  __tapElements((e) => sent.push(e));
   browser = installBrowser({ href: "https://shop.example/" });
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("{}", { status: 202 })) as typeof fetch;

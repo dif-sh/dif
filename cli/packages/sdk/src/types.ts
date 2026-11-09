@@ -44,7 +44,7 @@ export interface DifConfig {
  *   `dif/events/exposure.ts` and `dif/events/track.ts`.
  */
 export type EventsConfig =
-  | { mode: "cloud"; apiUrl?: string; publishableKey?: string }
+  | { mode: "cloud"; apiUrl?: string; publishableKey?: string; ingestUrl?: string }
   | {
       mode: "custom";
       exposure: (event: ExposureEvent) => void;
@@ -79,6 +79,13 @@ export interface DifInitConfig {
    * Defaults to `"off"`: every page view is billed.
    */
   pageViews?: "auto" | "off";
+  /**
+   * Sends `track()` with no user id to `ingestUrl` in cloud mode.
+   * Defaults to false: such tracks are dropped.
+   */
+  anonymous?: boolean;
+  /** Where page views go. Defaults to https://ingest.difdb.com. */
+  ingestUrl?: string;
 }
 
 /** Anything that can receive an exposure event. */

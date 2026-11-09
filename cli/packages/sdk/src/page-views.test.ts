@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset } from "./index.js";
-import { setElementSink, type BatchElement, type PageElement } from "./elements.js";
+import { __tapElements, type BatchElement, type PageElement } from "./elements.js";
 import { installBrowser, type FakeBrowser } from "./fake-browser.test.js";
 
 const KEY = "dif_pk_live_aaaaaaaa_secret-secret-secret";
@@ -16,7 +16,7 @@ let originalWarn: typeof console.warn;
 beforeEach(() => {
   __reset();
   sent = [];
-  setElementSink((e) => sent.push(e));
+  __tapElements((e) => sent.push(e));
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("{}", { status: 202 })) as typeof fetch;
   warnings = [];
