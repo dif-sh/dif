@@ -6,6 +6,7 @@
 
 import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
 import { batchSender, type BatchSender } from "./sinks/batch.js";
+import { customElementSink } from "./custom-elements.js";
 import { setElementSink } from "./elements.js";
 import { identifiedUserId } from "./identify.js";
 import { warnName, warnProps } from "./props.js";
@@ -105,7 +106,7 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
       warnProps(event.props);
       handler(event);
     };
-    setElementSink(null);
+    setElementSink(customElementSink(events));
   } else {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
     const ingestUrl = stripTrailing(events?.ingestUrl ?? merged.ingestUrl ?? DEFAULT_INGEST_URL);

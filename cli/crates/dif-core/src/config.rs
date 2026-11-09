@@ -157,6 +157,9 @@ pub struct EventsConfig {
     /// key, never the secret server key. Ignored for custom mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Where `/v1/batch` goes (page views and identify). Unset: the SDK default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingest_url: Option<String>,
 }
 
 impl Default for EventsConfig {
@@ -165,6 +168,7 @@ impl Default for EventsConfig {
             mode: EventsMode::Cloud,
             url: None,
             key: None,
+            ingest_url: None,
         }
     }
 }
@@ -240,6 +244,19 @@ mod tests {
         assert!(config.audience_attributes.is_empty());
         assert!(config.events.is_none());
         assert!(config.exposure.is_none());
+    }
+
+    #[test]
+    fn events_ingest_url_reads_from_yaml_and_round_trips() {
+        let yaml = "project: p\ndefault_surface: home\nevents:\n  mode: custom\n  ingest_url: https://ingest.example.com\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        let events = config.events();
+        assert_eq!(
+            events.ingest_url.as_deref(),
+            Some("https://ingest.example.com")
+        );
+        let back = serde_yaml::to_string(&config).unwrap();
+        assert!(back.contains("ingest_url: https://ingest.example.com"));
     }
 
     #[test]

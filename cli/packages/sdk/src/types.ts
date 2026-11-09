@@ -2,6 +2,8 @@
 // Kept in their own file so customer code can import them without dragging
 // in the runtime.
 
+import type { IdentifyElement, PageElement } from "./elements.js";
+
 /** A user-id resolver. Returns null when no user is identified. */
 export type UserIdFn = () => string | null;
 
@@ -41,7 +43,11 @@ export interface DifConfig {
  *   via `dif connect` / `dif init --key`, so no env var is needed. An explicit
  *   top-level `publishableKey` on `dif.init` still overrides it.
  * - `custom`: the SDK calls your handlers — author them in
- *   `dif/events/exposure.ts` and `dif/events/track.ts`.
+ *   `dif/events/exposure.ts` and `dif/events/track.ts`. Page views and
+ *   identify go to the optional `dif/events/page.ts` and `identify.ts`.
+ *
+ * `ingestUrl` is where `/v1/batch` goes. `dif build` emits it only when
+ * `events.ingest_url` is set in `dif/config.yaml`.
  */
 export type EventsConfig =
   | { mode: "cloud"; apiUrl?: string; publishableKey?: string; ingestUrl?: string }
@@ -49,7 +55,15 @@ export type EventsConfig =
       mode: "custom";
       exposure: (event: ExposureEvent) => void;
       track: (event: MetricEvent) => void;
+      page?: (event: PageEvent) => void;
+      identify?: (event: IdentifyEvent) => void;
+      ingestUrl?: string;
     };
+
+/** A page view element, as `dif.page()` builds it. */
+export type PageEvent = PageElement;
+/** An identify element, sent only when `dif.identify()` has traits. */
+export type IdentifyEvent = IdentifyElement;
 
 /** Configuration passed to `dif.init(...)`. Superset of {@link DifConfig}. */
 export interface DifInitConfig {
