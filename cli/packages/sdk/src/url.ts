@@ -64,6 +64,13 @@ function clean(u: URL): string {
     .split("&")
     .map(keep)
     .filter((s): s is string => s !== null);
+  // `;jsessionid=` and its kind carry session tokens.
+  if (u.pathname.includes(";")) {
+    u.pathname = u.pathname
+      .split("/")
+      .map((segment) => segment.split(";")[0])
+      .join("/");
+  }
   u.hash = "";
   u.username = "";
   u.password = "";

@@ -34,6 +34,15 @@ describe("cleanPageUrl", () => {
     );
   });
 
+  it("drops the ; parameters of each path segment", () => {
+    assert.equal(
+      cleanPageUrl("https://example.com/cart;jsessionid=AB12/item;v=2;x=3/?ref=a"),
+      "https://example.com/cart/item/?ref=a",
+    );
+    assert.equal(cleanPageUrl("https://example.com/;s=1"), "https://example.com/");
+    assert.equal(cleanPageUrl("https://example.com/a%3Bb"), "https://example.com/a%3Bb");
+  });
+
   it("removes the query mark when nothing is kept", () => {
     assert.equal(cleanPageUrl("https://example.com/?reset=t0k3n#x"), "https://example.com/");
   });
