@@ -79,6 +79,12 @@ export interface DifInitConfig {
    * Defaults to `"off"`: every page view is billed.
    */
   pageViews?: "auto" | "off";
+  /**
+   * `true` when `userId` returns an id the app minted for a visitor,
+   * such as a cookie value, and not a signed-in user. Page views then
+   * carry `anon: true`, so dif counts a visitor, not a known user.
+   */
+  anonymousUserId?: boolean;
 }
 
 /** Anything that can receive an exposure event. */
