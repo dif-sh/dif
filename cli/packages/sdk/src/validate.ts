@@ -1,6 +1,8 @@
 // Copies of the cloud handlers' rules, run before queueing.
 // A bad event then drops alone, not with its batch.
 
+import { warnName, warnProps } from "./props.js";
+
 /** The most ms from the epoch that Date holds. */
 const MAX_TIME_MS = 8.64e15;
 
@@ -120,5 +122,7 @@ export function validateTrack(raw: unknown): string | null {
     if (fault === "nul") return "props must not contain U+0000";
     if (fault === "deep") return `props is nested more than ${PROPS_DEPTH} deep`;
   }
+  warnName("track", e.metric);
+  warnProps(e.props);
   return null;
 }

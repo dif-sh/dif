@@ -94,6 +94,8 @@ export type {
   AudienceFn,
   DifConfig,
   DifInitConfig,
+  DifProps,
+  DifPropValue,
   EventsConfig,
   ExperimentSpec,
   ExposureEvent,

@@ -113,6 +113,12 @@ export interface ExposureEvent {
   source: string;
 }
 
+/** A value in {@link DifProps}. dif-db keeps strings, numbers and booleans. */
+export type DifPropValue = string | number | boolean | null | DifProps | DifPropValue[];
+
+/** Properties for `page()` and `identify()`. dif-db flattens one level, as `a.b`. */
+export type DifProps = { [key: string]: DifPropValue };
+
 /** Optional properties on a `dif.track(metric, props)` call. */
 export interface TrackProps {
   /** Numeric value carried by the metric (revenue cents, duration ms, etc.). */
