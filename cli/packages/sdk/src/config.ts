@@ -5,6 +5,8 @@
 // intentional — there is only one "current user" per app instance.
 
 import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
+import { customElementSink } from "./custom-elements.js";
+import { setElementSink } from "./elements.js";
 import { identifiedUserId } from "./identify.js";
 import type {
   AttributeBag,
@@ -87,6 +89,7 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     closeCloud();
     sinks = [{ kind: "custom", emit: events.exposure }];
     trackHandler = events.track;
+    setElementSink(customElementSink(events));
   } else {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
     // A repeat init keeps its queues, so batching holds.
