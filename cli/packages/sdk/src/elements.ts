@@ -11,6 +11,8 @@ export interface PageElement {
   source: string;
   /** Absent: the collector gives the visitor id. */
   user_id?: string;
+  /** True when `user_id` is an app-minted anonymous id. */
+  anon?: true;
   /** Cleaned: no fragment, and only the kept query params. */
   url: string;
   referrer?: string;

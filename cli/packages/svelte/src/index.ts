@@ -16,7 +16,7 @@
 // from +*.server.ts never pulls client code into the server bundle.
 
 import { dif } from "@dif.sh/sdk";
-import type { TrackProps } from "@dif.sh/sdk";
+import type { DifProps, PageOptions, TrackProps } from "@dif.sh/sdk";
 
 export { initDif } from "./init.js";
 export type { InitDifOptions } from "./init.js";
@@ -25,9 +25,19 @@ export type { ExperimentValue } from "./experiment.js";
 export { DIF_CONTEXT_KEY } from "./context.js";
 export type { DifData, SerializedAssignment } from "./context.js";
 
+/** Send one page view. Thin re-export of `dif.page`. */
+export function page(opts?: PageOptions): void {
+  dif.page(opts);
+}
+
+/** Set the user id. Traits also send an identify event. */
+export function identify(userId: string, traits?: DifProps): void {
+  dif.identify(userId, traits);
+}
+
 /** Fire a metric event. Thin re-export of `dif.track`. */
 export function track(metric: string, opts?: TrackProps): void {
   dif.track(metric, opts);
 }
 
-export type { DifInitConfig, TrackProps } from "@dif.sh/sdk";
+export type { DifInitConfig, DifProps, PageOptions, TrackProps } from "@dif.sh/sdk";

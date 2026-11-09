@@ -20,7 +20,7 @@ import { identify, __resetIdentity } from "./identify.js";
 import { startPageViews, __resetPageViews } from "./page-views.js";
 import { __tapElements, setElementSink } from "./elements.js";
 import { __resetBatchState } from "./sinks/batch.js";
-import type { DifConfig, TrackProps } from "./types.js";
+import type { DifConfig, DifProps, TrackProps } from "./types.js";
 
 /** Public type of the `dif` export. Function call signature + method bag. */
 export interface DifFn {
@@ -35,7 +35,7 @@ export interface DifFn {
    * Set the user id. Null clears it.
    * Traits also send an identify event.
    */
-  identify(userId: string | null, traits?: Record<string, unknown>): void;
+  identify(userId: string | null, traits?: DifProps): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */

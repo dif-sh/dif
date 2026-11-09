@@ -4,6 +4,7 @@
 import { getState } from "./config.js";
 import { handOff } from "./elements.js";
 import { uuidv7 } from "./event-id.js";
+import type { DifProps } from "./types.js";
 import { SOURCE } from "./version.js";
 
 let identified: string | null = null;
@@ -26,7 +27,7 @@ function isTraits(v: unknown): v is Record<string, unknown> {
  * Sets the id for the page load.
  * Null clears it, as on logout.
  */
-export function identify(userId: string | null, traits?: Record<string, unknown>): void {
+export function identify(userId: string | null, traits?: DifProps): void {
   if (userId === null) {
     identified = null;
     return;

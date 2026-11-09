@@ -3,6 +3,7 @@
 import { getState } from "./config.js";
 import { handOff, type PageElement } from "./elements.js";
 import { uuidv7 } from "./event-id.js";
+import { identifiedUserId } from "./identify.js";
 import { cleanPageUrl, cleanReferrer } from "./url.js";
 import {
   currentHref,
@@ -11,6 +12,7 @@ import {
   screenSize,
   webdriver,
 } from "./stamp.js";
+import type { DifProps } from "./types.js";
 import { SOURCE } from "./version.js";
 
 /** Options of a `dif.page()` call. */
@@ -21,9 +23,11 @@ export interface PageOptions {
   referrer?: string;
   /** Overrides the configured userId resolver for this call. */
   userId?: string;
+  /** Marks the user id as an app-minted anonymous id. */
+  anon?: boolean;
   /** Unix milliseconds. Defaults to now. */
   firedAt?: number;
-  props?: Record<string, unknown>;
+  props?: DifProps;
 }
 
 /** Sends one page view. Gives true when an element left. */
@@ -39,6 +43,10 @@ export function sendPage(opts: PageOptions = {}): boolean {
   const rawReferrer = opts.referrer ?? documentReferrer();
   const referrer = rawReferrer ? cleanReferrer(rawReferrer) : null;
   const userId = opts.userId ?? state.userId();
+  // Only the resolver's own id can be the minted one.
+  const anon =
+    opts.anon ??
+    (opts.userId === undefined && identifiedUserId() === null && state.anonymousUserId);
   const screen = screenSize();
   const lang = language();
 
@@ -48,6 +56,7 @@ export function sendPage(opts: PageOptions = {}): boolean {
     fired_at: opts.firedAt ?? Date.now(),
     source: SOURCE,
     ...(userId ? { user_id: userId } : {}),
+    ...(userId && anon && { anon: true as const }),
     url,
     ...(referrer !== null && { referrer }),
     ...(screen !== null && { screen }),

@@ -4,7 +4,8 @@ import { dif, syncOverrides, mountDifPreview } from "@dif.sh/sdk";
 import type { DifInitConfig } from "@dif.sh/sdk";
 import type { DifData } from "./context.js";
 
-export interface InitDifOptions extends Omit<DifInitConfig, "userId" | "attributes"> {
+export interface InitDifOptions
+  extends Omit<DifInitConfig, "userId" | "attributes" | "anonymousUserId"> {
   /** The `DifData` returned by `difLoad` (gives the stable `difUid` + server attributes). */
   data?: DifData;
   /** Cookie name. Default `"dif_uid"`. */
@@ -49,6 +50,8 @@ export function initDif(opts: InitDifOptions): void {
   dif.init({
     ...rest,
     userId: () => seeded ?? readCookie(cookieName),
+    // The cookie id is minted here, so it is a visitor and not a user.
+    anonymousUserId: true,
     attributes: () => ({ ...attrs }),
     overrides: data?.overrides ?? {},
   } as DifInitConfig);
