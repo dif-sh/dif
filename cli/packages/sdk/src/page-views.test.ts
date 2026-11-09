@@ -154,6 +154,15 @@ describe("pageViews", () => {
     assert.equal(warnings.length, 1);
   });
 
+  it("does not throw from init when the resolver throws", () => {
+    open();
+    const userId = () => {
+      throw new Error("no session");
+    };
+    assert.doesNotThrow(() => dif.init({ publishableKey: KEY, userId, pageViews: "auto" }));
+    assert.equal(sent.length, 0);
+  });
+
   it("does nothing on a server", () => {
     assert.doesNotThrow(auto);
     assert.equal(sent.length, 0);

@@ -42,7 +42,11 @@ export function startPageViews(mode: DifInitConfig["pageViews"]): void {
     return;
   }
   stop ??= onNavigate(autoPage);
-  autoPage();
+  try {
+    autoPage();
+  } catch {
+    // A throwing userId resolver must not break init.
+  }
 }
 
 /** Test-only. */
