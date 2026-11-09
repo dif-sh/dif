@@ -48,6 +48,24 @@ describe("cleanProps against dif-db's vectors", () => {
   });
 });
 
+describe("cleanProps at the stored byte limit", () => {
+  const fill = (): Record<string, unknown> => {
+    const p: Record<string, unknown> = {};
+    for (let i = 0; i < 7; i++) p[`k${i}`] = "x".repeat(1024);
+    return p;
+  };
+  it("keeps the last key at exactly 8192 bytes and drops it at 8193", () => {
+    assert.equal(cleanProps({ ...fill(), z: "x".repeat(960) }).dropped.length, 0);
+    const over = cleanProps({ ...fill(), z: "x".repeat(961) });
+    assert.deepEqual(over.dropped, [{ key: "z", why: "props over 8192 bytes" }]);
+  });
+  it("counts -0 as two bytes", () => {
+    assert.equal(cleanProps({ ...fill(), y: -0, z: "x".repeat(953) }).dropped.length, 0);
+    const over = cleanProps({ ...fill(), y: -0, z: "x".repeat(954) });
+    assert.deepEqual(over.dropped, [{ key: "z", why: "props over 8192 bytes" }]);
+  });
+});
+
 describe("warnings", () => {
   const lines: string[] = [];
   const original = console.warn;
@@ -90,5 +108,17 @@ describe("warnings", () => {
     assert.equal(validateTrack(e), null);
     restore();
     assert.equal(lines.length, 2);
+  });
+
+  it("does not throw on a non-string name or a throwing getter", () => {
+    const hostile = {
+      get a(): string {
+        throw new Error("boom");
+      },
+    };
+    warnName("track", undefined as unknown as string);
+    warnProps(hostile);
+    restore();
+    assert.equal(lines.length, 0);
   });
 });

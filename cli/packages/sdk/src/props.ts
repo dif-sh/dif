@@ -154,14 +154,21 @@ function warnOnce(id: string, message: string): void {
 
 /** Warns once per key that dif-db drops. The event is still sent. */
 export function warnProps(props: unknown): void {
-  for (const { key, why } of cleanProps(props).dropped) {
+  let dropped: Dropped[];
+  try {
+    dropped = cleanProps(props).dropped;
+  } catch {
+    // A getter that throws must not stop the event.
+    return;
+  }
+  for (const { key, why } of dropped) {
     warnOnce(`prop:${key}`, `[dif] prop "${key}" is dropped: ${why}`);
   }
 }
 
 /** Warns once about a name that starts with $. */
-export function warnName(kind: string, name: string): void {
-  if (!name.startsWith("$")) return;
+export function warnName(kind: string, name: unknown): void {
+  if (typeof name !== "string" || !name.startsWith("$")) return;
   warnOnce(
     `name:${kind}:${name}`,
     `[dif] ${kind} name "${name}" starts with $, which dif reserves for itself`,
