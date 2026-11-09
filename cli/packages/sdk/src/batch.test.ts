@@ -183,6 +183,28 @@ describe("the /v1/batch queue", () => {
     }
   });
 
+  it("sends the props dif-db stores, and warns once per dropped key", () => {
+    dif.init({ publishableKey: KEY, userId: () => null, anonymous: true });
+    const props = { plan: "pro", $bad: 1, team: { size: 3, deep: { x: 1 } }, tags: ["a"] };
+    dif.page({ props });
+    dif.track("signup", { props });
+    dif.identify("u-9", props);
+    const cleaned = { plan: "pro", "team.size": 3 };
+    assert.deepEqual(elements()[0]!.props, cleaned);
+    assert.deepEqual(elements()[1]!.props, cleaned);
+    assert.deepEqual(elements()[2]!.traits, cleaned);
+    assert.deepEqual(warnings.filter((w) => w.includes("$bad")).length, 1);
+    assert.deepEqual(warnings.filter((w) => w.includes("team.deep")).length, 1);
+  });
+
+  it("sends no props when none are stored, but always traits", () => {
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.page({ props: { $bad: 1 } });
+    dif.identify("u-9", { $bad: 1 });
+    assert.equal("props" in elements()[0]!, false);
+    assert.deepEqual(elements()[1]!.traits, {});
+  });
+
   it("lets three queues hold 36 KB at page hide", () => {
     assert.equal(FLUSH_BYTES, 12_000);
   });

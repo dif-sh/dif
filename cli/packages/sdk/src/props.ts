@@ -152,17 +152,32 @@ function warnOnce(id: string, message: string): void {
   if (typeof console !== "undefined") console.warn(message);
 }
 
-/** Warns once per key that dif-db drops. The event is still sent. */
-export function warnProps(props: unknown): void {
-  let dropped: Dropped[];
-  try {
-    dropped = cleanProps(props).dropped;
-  } catch {
-    // A getter that throws must not stop the event.
-    return;
-  }
+function warnDropped(dropped: Dropped[]): void {
   for (const { key, why } of dropped) {
     warnOnce(`prop:${key}`, `[dif] prop "${key}" is dropped: ${why}`);
+  }
+}
+
+/** Warns once per key that dif-db drops. The event is still sent. */
+export function warnProps(props: unknown): void {
+  try {
+    warnDropped(cleanProps(props).dropped);
+  } catch {
+    // A getter that throws must not stop the event.
+  }
+}
+
+/**
+ * The props dif-db stores, as an object. Warns as `warnProps` does.
+ * Null when reading the props throws.
+ */
+export function storedProps(props: unknown): Record<string, CleanValue> | null {
+  try {
+    const clean = cleanProps(props);
+    warnDropped(clean.dropped);
+    return Object.fromEntries(clean.props);
+  } catch {
+    return null;
   }
 }
 

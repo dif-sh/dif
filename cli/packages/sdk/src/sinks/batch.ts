@@ -2,6 +2,7 @@
 // go to dif-db's `/v1/batch`.
 
 import type { BatchElement } from "../elements.js";
+import { storedProps } from "../props.js";
 import { EventQueue, canObservePageHide } from "../queue.js";
 import { validateElement } from "../validate.js";
 
@@ -35,6 +36,17 @@ function onGiveUp(url: string, status: number | null): void {
     failedWarned = true;
     console.warn(`[dif] the collector refused events (HTTP ${status}). Further failures are silent.`);
   }
+}
+
+// dif-db cleans props too. Sent clean, they cost fewer bytes.
+function cleaned(element: BatchElement): BatchElement {
+  if (element.type === "identify") {
+    return { ...element, traits: storedProps(element.traits) ?? {} };
+  }
+  if (element.props === undefined) return element;
+  const { props, ...rest } = element;
+  const kept = storedProps(props);
+  return kept && Object.keys(kept).length > 0 ? { ...rest, props: kept } : rest;
 }
 
 export interface BatchSenderConfig {
@@ -73,7 +85,7 @@ export function batchSender(cfg: BatchSenderConfig): BatchSender {
   const sender = ((element: BatchElement) => {
     if (refused.has(url)) return;
     queue ??= create();
-    void queue.add(element);
+    void queue.add(cleaned(element));
   }) as BatchSender;
   sender.flush = () => (queue ? queue.flush() : Promise.resolve());
   sender.close = () => (queue ? queue.close() : Promise.resolve());
