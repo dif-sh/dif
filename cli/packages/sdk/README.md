@@ -298,6 +298,38 @@ useEffect(() => track("completed_checkout"), []);
 `config` to send a page view on load and on each route change (Next.js App
 Router and React Router both use `history.pushState`).
 
+## Tracking script
+
+For site analytics without a build step, the package ships `dist/script.js`
+(also `@dif.sh/sdk/script.js`), at most 2,000 bytes gzipped. dif.sh Cloud
+serves it at `https://cdn.dif.sh/s/v1.js`; you can also host this file on
+your own origin.
+
+```html
+<script defer src="https://cdn.dif.sh/s/v1.js"
+        data-key="dif_pk_live_…"></script>
+```
+
+| Attribute | Default | Meaning |
+|---|---|---|
+| `data-key` | required | Publishable key |
+| `data-host` | `https://ingest.difdb.com` | Collector base URL |
+| `data-auto` | `true` | Send a page view on load and on SPA navigation |
+| `data-spa` | `history` | `history`, `hash` (`#/route` becomes the path) or `off` |
+| `data-domains` | none | Comma list of hostnames. Elsewhere the script sends nothing |
+| `data-user-id` | none | The signed-in user's id |
+| `data-consent` | `none` | `required`: hold up to 50 events until `dif.consent(true)` |
+| `data-respect-dnt` | `false` | `true`: send nothing under Do Not Track or Global Privacy Control |
+
+It adds `window.dif.page()`, `window.dif.track(name, props)`,
+`window.dif.identify(id | null, traits?)` and `window.dif.consent(bool)`, and
+does not replace a `window.dif` that is already there. A click on an element
+with `data-dif-event="signup"` sends a `signup` track, with the element's
+`data-dif-prop-*` attributes as props. The script sets no cookie and uses no
+storage. Each event is one request; a network error or a 5xx is tried once
+more after 2 seconds. With the script on the page, the SDK's
+`pageViews: "auto"` stays off, so page views are not counted twice.
+
 ## What this package does, what it doesn't
 
 **Does:**

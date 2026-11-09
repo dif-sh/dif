@@ -1,10 +1,13 @@
 // The limits of dif-db's docs/limits.json, copied by hand.
 // Copied from dif-db commit 0ec293f. A test checks the copy.
 
+// A const of its own keeps LIMITS out of the script.
+export const EVENTS_PER_REQUEST_PUBLISHABLE = 50;
+
 export const LIMITS = {
   body_bytes: 1048576,
   events_per_request: 500,
-  events_per_request_publishable: 50,
+  events_per_request_publishable: EVENTS_PER_REQUEST_PUBLISHABLE,
   props_depth: 64,
   flatten_levels: 1,
   keys_per_event: 64,
