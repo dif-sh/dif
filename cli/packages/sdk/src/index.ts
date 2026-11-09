@@ -17,6 +17,7 @@ import {
 import { track } from "./track.js";
 import { page, type PageOptions } from "./page.js";
 import { identify, __resetIdentity } from "./identify.js";
+import { startPageViews, __resetPageViews } from "./page-views.js";
 import { setElementSink } from "./elements.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
@@ -50,10 +51,12 @@ function flush(): Promise<void> {
 
 function init(config: DifInitConfig): void {
   setState(config);
+  startPageViews(config.pageViews);
 }
 
 function configure(config: DifConfig | DifInitConfig): void {
   setState(config);
+  startPageViews((config as DifInitConfig).pageViews);
 }
 
 export const dif: DifFn = Object.assign(difCall, {
@@ -79,6 +82,7 @@ export function __reset(): void {
   resetState();
   setElementSink(null);
   __resetIdentity();
+  __resetPageViews();
 }
 
 // SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)
