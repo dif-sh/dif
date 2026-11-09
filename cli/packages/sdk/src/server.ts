@@ -91,7 +91,7 @@ export class DifServer {
   // A queue is made on the first page call, so a
   // server that never sends a page view holds none.
   private makePageQueue(opts: DifServerBatchOptions): EventQueue {
-    return this.newQueue(opts, `${this.ingestUrl}/v1/batch`, "batch", validateElement);
+    return this.newQueue(opts, `${this.ingestUrl}/v1/batch`, "page", validateElement);
   }
 
   private newQueue(

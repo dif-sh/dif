@@ -81,6 +81,13 @@ describe("DifServer.page", () => {
     assert.deepEqual(body.props, { plan: "pro" });
   });
 
+  it("keeps a firedAt of 0 and uses the time now only when it is absent", async () => {
+    await make().page({ url: "https://example.com/", userId: "u", firedAt: 0 });
+    await make().page({ url: "https://example.com/", userId: "u" });
+    assert.equal(JSON.parse(calls[0]!.init.body as string).fired_at, 0);
+    assert.ok(JSON.parse(calls[1]!.init.body as string).fired_at > 0);
+  });
+
   it("drops a url that is not http(s), with one warning, and sends nothing", async () => {
     await make().page({ url: "/pricing", userId: "u" });
     await make().page({ url: "ftp://example.com/", userId: "u" });
