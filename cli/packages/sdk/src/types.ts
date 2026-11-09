@@ -74,6 +74,11 @@ export interface DifInitConfig {
   /** QA/preview forces (experiment id → variant). Usually populated from the
    *  `?_dif=` URL param / `_dif` cookie rather than set by hand. */
   overrides?: Record<string, string>;
+  /**
+   * `"auto"` sends page views at init and on SPA navigation.
+   * Defaults to `"off"`: every page view is billed.
+   */
+  pageViews?: "auto" | "off";
 }
 
 /** Anything that can receive an exposure event. */
