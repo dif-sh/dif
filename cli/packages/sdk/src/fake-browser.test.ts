@@ -1,5 +1,5 @@
 // A small fake browser for the tests.
-// It has no tests. The build skips files with this name.
+// The build skips this file because of its name.
 
 type Listener = (event: { type: string }) => void;
 

@@ -46,11 +46,13 @@ describe("onNavigate", () => {
     const original = b.history.pushState;
     b.history.pushState = function (this: unknown, ...args: unknown[]) {
       got.push([this, ...args]);
-      return original.apply(b.history, args as Parameters<typeof original>);
+      original.apply(b.history, args as Parameters<typeof original>);
+      return "result";
     } as typeof original;
     onNavigate(() => {});
-    history.pushState({ n: 1 }, "t", "/x");
+    const result: unknown = history.pushState({ n: 1 }, "t", "/x");
     assert.deepEqual(got, [[b.history, { n: 1 }, "t", "/x"]]);
+    assert.equal(result, "result");
   });
 
   it("wraps the history methods once", () => {

@@ -75,7 +75,7 @@ export interface DifInitConfig {
    *  `?_dif=` URL param / `_dif` cookie rather than set by hand. */
   overrides?: Record<string, string>;
   /**
-   * `"auto"` sends a page view at init and on each SPA navigation.
+   * `"auto"` sends page views at init and on SPA navigation.
    * Defaults to `"off"`: every page view is billed.
    */
   pageViews?: "auto" | "off";
