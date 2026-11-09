@@ -37,7 +37,10 @@ key into `dif/config.yaml`, and `dif build` bakes it into
 `dif/generated/events.ts`, so nothing secret is pasted into app code and no env
 var is needed. Get the key from your project's Settings → Keys tab in dif.sh
 Cloud; publishable keys are safe to embed in browser bundles (they can only
-write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist).
+write to `/v1/track`, `/v1/exposure` and `/v1/batch`, and are scoped by origin
+allowlist). A key used for page views needs a non-empty origin allowlist.
+Secret keys (`dif_live_…`, `dif_test_…`) are for servers only. They go in
+the `Authorization` header, and `/v1/batch` refuses one in the URL.
 
 Passing an explicit top-level `publishableKey` to `dif.init` still works and
 overrides the one baked into `events` — handy for per-environment keys.
@@ -280,6 +283,10 @@ import { DifProvider, useDif } from "@dif.sh/react";
 const { track } = useDif();
 useEffect(() => track("completed_checkout"), []);
 ```
+
+`useDif()` also returns `page` and `identify`. Pass `pageViews: "auto"` in
+`config` to send a page view on load and on each route change (Next.js App
+Router and React Router both use `history.pushState`).
 
 ## What this package does, what it doesn't
 

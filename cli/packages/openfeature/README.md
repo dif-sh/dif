@@ -99,6 +99,11 @@ The provider does not send exposures anywhere itself. `DifServer` in
 `@dif.sh/sdk/server` sends metrics (`track()`), not exposures, so forward
 `onExposure` to your own analytics pipeline or warehouse.
 
+### Page views
+
+This provider does not send page views. Add the dif tracking script to the
+page, or call `dif.page()` from `@dif.sh/sdk` in the client.
+
 ### `overrides`
 
 A fixed map, or a function of the evaluation context. A forced evaluation

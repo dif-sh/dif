@@ -16,6 +16,16 @@ It does the SSR-safe parts for you:
 npm i @dif.sh/sdk @dif.sh/svelte
 ```
 
+## Cookie
+
+This package sets a first-party cookie, `dif_uid` (a random id, one year, not
+`httpOnly`). It is the id that experiment bucketing uses, so the server and the
+client assign the same variant. Page views from `initDif({ pageViews: "auto" })`
+carry it as the user id, marked anonymous (`anon`): dif counts it as a visitor,
+not as a signed-in user. If you need no cookie, use the dif tracking script for
+page views and do not call `difLoad()`. Decide with your own legal advice
+whether the cookie needs consent in your market.
+
 ## Usage
 
 **`src/routes/+layout.server.ts`** (assign on the server):
@@ -113,7 +123,9 @@ stripped from the address bar. Works in production too. Pass
 
 - `difLoad(event, opts?)` → `DifData`: server load helper (`@dif.sh/svelte/server`).
 - `attributesFromHeaders(headers)` → `AttributeBag`: default header mapping; override via `opts.deriveAttributes`.
-- `initDif(opts)`: client init; call once in the root layout. `opts.allowOverrides` / `opts.preview` (default true).
+- `initDif(opts)`: client init; call once in the root layout. `opts.allowOverrides` / `opts.preview` (default true). `opts.pageViews: "auto"` sends a page view on load and on each SvelteKit navigation.
+- `page(opts?)`: send one page view.
+- `identify(userId, traits?)`: set the user id. Traits also send an identify event.
 - `experiment(id, branches)` → `Readable<{ value, variant }>`.
 - `track(metric, opts?)`: fire a metric event.
 - `DIF_CONTEXT_KEY`: the context key for `DifData`.

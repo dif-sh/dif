@@ -90,7 +90,7 @@ the link with `dif qa --force <exp>=<variant> --preview-url <url>`.
 
 **Does:**
 - Provide `<DifProvider>` to initialize the SDK at the root of your tree.
-- Provide `useDif()` to read `{ track, exposure }` from anywhere.
+- Provide `useDif()` to read `{ track, exposure, page, identify }` from anywhere.
 
 **Does not:**
 - Re-initialize on prop changes in v0; pass a stable config.
