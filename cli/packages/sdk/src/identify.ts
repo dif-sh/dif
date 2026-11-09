@@ -23,6 +23,9 @@ function isTraits(v: unknown): v is Record<string, unknown> {
 }
 
 export function identify(userId: string, traits?: Record<string, unknown>): void {
+  // A server renders pages for many users.
+  // There, one id would go to all of them.
+  if (typeof document === "undefined") return;
   // The collector refuses an empty user_id.
   if (typeof userId !== "string" || userId === "") return;
   identified = userId;

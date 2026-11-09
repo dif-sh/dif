@@ -121,6 +121,15 @@ describe("dif.identify", () => {
     assert.equal(sent.length, 0);
   });
 
+  it("keeps no id and sends nothing on a server", () => {
+    // One server process renders for many users.
+    browser.uninstall();
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.identify("u-9", { plan: "pro" });
+    assert.equal(getState()!.userId(), null);
+    assert.equal(sent.length, 0);
+  });
+
   it("forgets the id on reset", () => {
     dif.identify("u-9");
     __reset();
