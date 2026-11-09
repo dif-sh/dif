@@ -168,8 +168,8 @@ export function warnProps(props: unknown): void {
 }
 
 /**
- * The props dif-db stores, as an object. Warns as `warnProps` does.
- * Null when reading the props throws.
+ * The props dif-db stores, as an object.
+ * Warns as `warnProps` does. Null if reading them throws.
  */
 export function storedProps(props: unknown): Record<string, CleanValue> | null {
   try {

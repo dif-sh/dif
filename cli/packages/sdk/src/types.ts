@@ -80,7 +80,7 @@ export interface DifInitConfig {
    */
   pageViews?: "auto" | "off";
   /**
-   * Sends `track()` with no user id to `ingestUrl` in cloud mode.
+   * Cloud mode: `track()` with no user id goes to `ingestUrl`.
    * Defaults to false: such tracks are dropped.
    */
   anonymous?: boolean;

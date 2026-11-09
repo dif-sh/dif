@@ -22,7 +22,10 @@ function isTraits(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-/** Sets the id for the page load. Null clears it, as on logout. */
+/**
+ * Sets the id for the page load.
+ * Null clears it, as on logout.
+ */
 export function identify(userId: string | null, traits?: Record<string, unknown>): void {
   if (userId === null) {
     identified = null;

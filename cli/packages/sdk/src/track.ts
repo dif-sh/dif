@@ -24,7 +24,8 @@ import type { MetricEvent, TrackProps } from "./types.js";
 function sendAnonymous(name: string, opts: TrackProps): void {
   const href = currentHref();
   const url = href === null ? null : cleanPageUrl(href);
-  // A server has no page, and its IP is not the visitor's.
+  // A server has no page.
+  // Its IP is not the visitor's IP.
   if (url === null) return;
   const rawReferrer = documentReferrer();
   const referrer = rawReferrer ? cleanReferrer(rawReferrer) : null;

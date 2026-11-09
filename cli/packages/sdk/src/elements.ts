@@ -32,7 +32,7 @@ export interface IdentifyElement {
   traits: Record<string, unknown>;
 }
 
-/** A `track` element of `/v1/batch`: a track with no user id. */
+/** A `track` element of `/v1/batch`. It has no user id. */
 export interface TrackElement {
   type: "track";
   event_id: string;

@@ -31,7 +31,10 @@ export interface DifFn {
   track(metric: string, opts?: TrackProps): void;
   /** Send one page view. */
   page(opts?: PageOptions): void;
-  /** Set the user id. Traits also send an identify event. Null clears it. */
+  /**
+   * Set the user id. Null clears it.
+   * Traits also send an identify event.
+   */
   identify(userId: string | null, traits?: Record<string, unknown>): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;

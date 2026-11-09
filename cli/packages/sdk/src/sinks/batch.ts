@@ -9,7 +9,7 @@ import { validateElement } from "../validate.js";
 const BATCH_SIZE = 20;
 const BATCH_INTERVAL_MS = 2000;
 
-// A 403 says analytics is off, or the origin is not allowed.
+// A 403: analytics is off, or the origin is not allowed.
 // Later requests get the same answer, so stop sending.
 const refused = new Set<string>();
 let refusedWarned = false;

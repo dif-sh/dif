@@ -33,7 +33,7 @@ export interface ResolvedState {
   overrides: Record<string, string>;
   /** Sends the events the cloud queues hold. */
   flush: () => Promise<void>;
-  /** Tracks with no user id go to `/v1/batch`. Cloud mode only. */
+  /** Tracks with no user id go to `/v1/batch`. Cloud only. */
   anonymous: boolean;
 }
 
@@ -97,7 +97,8 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
     closeCloud();
     sinks = [{ kind: "custom", emit: events.exposure }];
-    // The cloud queue warns in validateTrack. Custom mode has no queue.
+    // The cloud queue warns in validateTrack.
+    // Custom mode has no queue, so warn here.
     const handler = events.track;
     trackHandler = (event) => {
       warnName("track", event.metric);

@@ -24,7 +24,8 @@ function prerenderingDocument(): PrerenderDocument | null {
   return typeof d.removeEventListener === "function" ? (d as PrerenderDocument) : null;
 }
 
-// A prerendered page can stay unseen. Then it gets no page view.
+// A prerendered page can stay unseen.
+// Then it gets no page view.
 function waitForActivation(doc: PrerenderDocument): void {
   if (stopWaiting) return;
   const onChange = () => {
