@@ -247,6 +247,19 @@ mod tests {
     }
 
     #[test]
+    fn events_ingest_url_reads_from_yaml_and_round_trips() {
+        let yaml = "project: p\ndefault_surface: home\nevents:\n  mode: custom\n  ingest_url: https://ingest.example.com\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("config parses");
+        let events = config.events();
+        assert_eq!(
+            events.ingest_url.as_deref(),
+            Some("https://ingest.example.com")
+        );
+        let back = serde_yaml::to_string(&config).unwrap();
+        assert!(back.contains("ingest_url: https://ingest.example.com"));
+    }
+
+    #[test]
     fn config_without_features_block_turns_all_features_on() {
         let yaml = "project: acme-shop\ndefault_surface: home\n";
         let config: Config = serde_yaml::from_str(yaml).expect("config parses");
