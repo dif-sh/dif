@@ -9,7 +9,7 @@ import { validateElement } from "../validate.js";
 const BATCH_SIZE = 20;
 const BATCH_INTERVAL_MS = 2000;
 
-// A 403 says site analytics is off for this key or node.
+// A 403 says analytics is off, or the origin is not allowed.
 // Later requests get the same answer, so stop sending.
 const refused = new Set<string>();
 let refusedWarned = false;
@@ -29,8 +29,8 @@ function onGiveUp(url: string, status: number | null): void {
     if (refusedWarned) return;
     refusedWarned = true;
     console.warn(
-      "[dif] the collector refused events (HTTP 403): site analytics is not on for " +
-        "this key. No more page views are sent from this page.",
+      "[dif] the collector refused events (HTTP 403): site analytics is off for this " +
+        "key, or the key does not allow this origin. This page sends it no more events.",
     );
   } else if (status !== null && !failedWarned) {
     failedWarned = true;
