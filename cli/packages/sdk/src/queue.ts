@@ -4,9 +4,10 @@
 /** Keeps a keepalive fetch inside the 64 KiB browser quota. */
 export const MAX_BODY_BYTES = 60_000;
 
-// Two queues and some retries share 64 KiB at hide.
+// Three queues and some retries share 64 KiB at hide.
+// They hold 36 KB, so retries keep 28 KB.
 /** A queue flushes before it holds more bytes than this. */
-export const FLUSH_BYTES = 16_000;
+export const FLUSH_BYTES = 12_000;
 
 /** Most retries for one batch: one send plus three retries. */
 export const MAX_RETRIES = 3;

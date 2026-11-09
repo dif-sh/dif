@@ -9,6 +9,8 @@ export interface BrowserOptions {
   screen?: { width: number; height: number };
   language?: string;
   webdriver?: boolean;
+  /** `document.prerendering` at the start. */
+  prerendering?: boolean;
 }
 
 export interface FakeBrowser {
@@ -21,6 +23,8 @@ export interface FakeBrowser {
   calls: string[];
   /** Moves to `href` as the back button does. */
   pop(href: string): void;
+  /** Ends prerendering, as when the user opens the page. */
+  activate(): void;
   uninstall(): void;
 }
 
@@ -50,7 +54,19 @@ export function installBrowser(opts: BrowserOptions): FakeBrowser {
     Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   set("location", location);
   set("history", history);
-  set("document", { referrer: opts.referrer ?? "" });
+  const docListeners = new Map<string, Set<Listener>>();
+  const document = {
+    referrer: opts.referrer ?? "",
+    prerendering: opts.prerendering ?? false,
+    addEventListener(type: string, fn: Listener) {
+      if (!docListeners.has(type)) docListeners.set(type, new Set());
+      docListeners.get(type)!.add(fn);
+    },
+    removeEventListener(type: string, fn: Listener) {
+      docListeners.get(type)?.delete(fn);
+    },
+  };
+  set("document", document);
   set("screen", opts.screen ?? { width: 1440, height: 900 });
   set("navigator", { language: opts.language ?? "en-GB", webdriver: opts.webdriver ?? false });
   set("addEventListener", (type: string, fn: Listener) => {
@@ -67,6 +83,12 @@ export function installBrowser(opts: BrowserOptions): FakeBrowser {
     pop(href: string) {
       location.href = href;
       for (const fn of listeners.get("popstate") ?? []) fn({ type: "popstate" });
+    },
+    activate() {
+      document.prerendering = false;
+      for (const fn of [...(docListeners.get("prerenderingchange") ?? [])]) {
+        fn({ type: "prerenderingchange" });
+      }
     },
     uninstall() {
       for (const [name, desc] of saved) {

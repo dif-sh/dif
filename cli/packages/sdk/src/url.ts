@@ -11,6 +11,22 @@ export const KEPT_PARAMS: readonly string[] = [
   "ref",
 ];
 
+// The collector keeps the name in `$click_id`.
+/** Query params sent with no value. dif-db's `CLICK_IDS`. */
+export const CLICK_IDS: readonly string[] = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "dclid",
+  "fbclid",
+  "msclkid",
+  "ttclid",
+  "twclid",
+  "li_fat_id",
+  "yclid",
+  "mc_eid",
+];
+
 /** The collector refuses a longer page URL. */
 export const MAX_URL_BYTES = 8192;
 
@@ -33,14 +49,28 @@ function paramName(segment: string): string | null {
 }
 
 // Kept segments keep their bytes, so values stay as sent.
+function keep(segment: string): string | null {
+  const name = paramName(segment);
+  if (name === null) return null;
+  if (KEPT_PARAMS.includes(name)) return segment;
+  if (!CLICK_IDS.includes(name)) return null;
+  const eq = segment.indexOf("=");
+  return `${eq === -1 ? segment : segment.slice(0, eq)}=`;
+}
+
 function clean(u: URL): string {
   const kept = u.search
     .slice(1)
     .split("&")
-    .filter((s) => {
-      const name = paramName(s);
-      return name !== null && KEPT_PARAMS.includes(name);
-    });
+    .map(keep)
+    .filter((s): s is string => s !== null);
+  // `;jsessionid=` and its kind carry session tokens.
+  if (u.pathname.includes(";")) {
+    u.pathname = u.pathname
+      .split("/")
+      .map((segment) => segment.split(";")[0])
+      .join("/");
+  }
   u.hash = "";
   u.username = "";
   u.password = "";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { dif, __reset, __register } from "./index.js";
 import { getState } from "./config.js";
-import { setElementSink, type BatchElement } from "./elements.js";
+import { __tapElements, type BatchElement } from "./elements.js";
 import { SOURCE } from "./version.js";
 import { installBrowser, type FakeBrowser } from "./fake-browser.test.js";
 
@@ -17,7 +17,7 @@ let originalFetch: typeof fetch;
 beforeEach(() => {
   __reset();
   sent = [];
-  setElementSink((e) => sent.push(e));
+  __tapElements((e) => sent.push(e));
   browser = installBrowser({ href: "https://shop.example/" });
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("{}", { status: 202 })) as typeof fetch;
@@ -113,6 +113,14 @@ describe("dif.identify", () => {
     dif.identify(7 as unknown as string, { plan: "pro" });
     assert.equal(sent.length, 0);
     assert.equal(getState()!.userId(), "anon-1");
+  });
+
+  it("clears the id on null, and sends nothing", () => {
+    dif.init({ publishableKey: KEY, userId: () => "anon-1" });
+    dif.identify("u-9");
+    dif.identify(null, { plan: "pro" });
+    assert.equal(getState()!.userId(), "anon-1");
+    assert.equal(sent.length, 0);
   });
 
   it("sends nothing when enabled is false", () => {
