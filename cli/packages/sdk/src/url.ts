@@ -11,6 +11,9 @@ export const KEPT_PARAMS: readonly string[] = [
   "ref",
 ];
 
+/** The collector refuses a longer page URL. */
+export const MAX_URL_BYTES = 8192;
+
 function parse(href: string, base?: string): URL | null {
   try {
     return new URL(href, base);
@@ -47,12 +50,14 @@ function clean(u: URL): string {
 
 /**
  * The URL with no fragment and only the kept params.
- * Null when it is not an http(s) URL.
+ * Null when it is not http(s) or is too long.
  */
 export function cleanPageUrl(href: string, base?: string): string | null {
   const u = parse(href, base);
   if (!u || (u.protocol !== "http:" && u.protocol !== "https:")) return null;
-  return clean(u);
+  const url = clean(u);
+  // An http(s) href is ASCII, so its length is its bytes.
+  return url.length > MAX_URL_BYTES ? null : url;
 }
 
 /**

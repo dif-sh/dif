@@ -67,6 +67,14 @@ describe("cleanPageUrl", () => {
     assert.equal(cleanPageUrl(""), null);
   });
 
+  it("refuses a URL over 8,192 bytes after cleaning", () => {
+    const base = "https://example.com/";
+    const fits = base + "a".repeat(8192 - base.length);
+    assert.equal(cleanPageUrl(fits), fits);
+    assert.equal(cleanPageUrl(fits + "a"), null);
+    assert.equal(cleanPageUrl(`${fits}?token=${"t".repeat(9000)}`), fits);
+  });
+
   it("keeps the documented param list", () => {
     assert.deepEqual(
       [...KEPT_PARAMS],
