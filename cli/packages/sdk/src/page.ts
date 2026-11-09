@@ -12,6 +12,7 @@ import {
   screenSize,
   webdriver,
 } from "./stamp.js";
+import type { DifProps } from "./types.js";
 import { SOURCE } from "./version.js";
 
 /** Options of a `dif.page()` call. */
@@ -26,7 +27,7 @@ export interface PageOptions {
   anon?: boolean;
   /** Unix milliseconds. Defaults to now. */
   firedAt?: number;
-  props?: Record<string, unknown>;
+  props?: DifProps;
 }
 
 /** Sends one page view. Gives true when an element left. */
