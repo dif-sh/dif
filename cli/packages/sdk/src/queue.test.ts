@@ -282,7 +282,7 @@ describe("EventQueue validation", () => {
 
   it("drops one event over the body limit, alone", async () => {
     const q = make();
-    const big = q.add(ev(1, { props: { blob: "x".repeat(MAX_BODY_BYTES) } }));
+    const big = q.add(ev(1, { props: { blob: ["x".repeat(MAX_BODY_BYTES)] } }));
     const small = q.add(ev(2));
     await q.flush();
     assert.equal(await big, false);

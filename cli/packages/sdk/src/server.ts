@@ -11,6 +11,7 @@
 import { uuidv7 } from "./event-id.js";
 import { warnIfEventLimit } from "./limit.js";
 import { EventQueue } from "./queue.js";
+import { warnName, warnProps } from "./props.js";
 import { validateTrack } from "./validate.js";
 import { SOURCE } from "./version.js";
 
@@ -115,6 +116,8 @@ export class DifServer {
       void this.queue.add(payload);
       return;
     }
+    warnName("track", input.metric);
+    warnProps(input.props);
     try {
       const res = await fetch(url, {
         method: "POST",
