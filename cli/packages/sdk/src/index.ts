@@ -15,6 +15,8 @@ import {
   type DifInitConfig,
 } from "./config.js";
 import { track } from "./track.js";
+import { page, type PageOptions } from "./page.js";
+import { setElementSink } from "./elements.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
 /** Public type of the `dif` export. Function call signature + method bag. */
@@ -24,6 +26,8 @@ export interface DifFn {
   init(config: DifInitConfig): void;
   /** Fire a metric event. */
   track(metric: string, opts?: TrackProps): void;
+  /** Send one page view. */
+  page(opts?: PageOptions): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
@@ -52,6 +56,7 @@ function configure(config: DifConfig | DifInitConfig): void {
 export const dif: DifFn = Object.assign(difCall, {
   init,
   track,
+  page,
   flush,
   setOverrides,
   getOverrides,
@@ -68,6 +73,7 @@ export function __reset(): void {
   __resetRegistry();
   __resetExposures();
   resetState();
+  setElementSink(null);
 }
 
 // SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)
@@ -102,4 +108,5 @@ export type {
   TrackProps,
   UserIdFn,
 } from "./types.js";
+export type { PageOptions } from "./page.js";
 export { cloudSink, cloudTrack } from "./sinks/cloud.js";
