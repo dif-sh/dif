@@ -1,5 +1,5 @@
 // Automatic page views: at init and on SPA navigation.
-// Every page view is billed, so a URL is sent once in a row.
+// Page views are billed. Do not send one URL twice.
 
 import { onNavigate, __resetHistory } from "./history.js";
 import { sendPage } from "./page.js";

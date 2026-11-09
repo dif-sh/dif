@@ -1,5 +1,5 @@
-// `dif.identify()`: sets the user id for the rest of the page load.
-// Only traits make an element, as `$identify` rows are not billed.
+// The identified id lasts for the page load.
+// Only traits make an element. `$identify` rows are not billed.
 
 import { getState } from "./config.js";
 import { handOff } from "./elements.js";

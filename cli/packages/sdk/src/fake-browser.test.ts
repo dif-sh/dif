@@ -1,5 +1,5 @@
-// A small browser for tests: location, history, document, screen and navigator.
-// It holds no tests. The name keeps it out of the build.
+// A small fake browser for the tests.
+// It has no tests. The build skips files with this name.
 
 type Listener = (event: { type: string }) => void;
 

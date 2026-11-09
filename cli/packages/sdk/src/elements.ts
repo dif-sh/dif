@@ -1,5 +1,5 @@
-// The /v1/batch elements and the point where they leave the SDK.
-// The batch queue sets the sink. Until then, elements stop here.
+// Elements of /v1/batch leave the SDK through one sink.
+// The batch queue sets it. Until then, elements stop here.
 
 /** A `page` element of `/v1/batch`. */
 export interface PageElement {
@@ -43,7 +43,7 @@ export function setElementSink(next: ElementSink | null): void {
   sink = next;
 }
 
-/** Hands one element on. It never throws at the call site. */
+/** Hands one element on. It never throws. */
 export function handOff(element: BatchElement): void {
   try {
     sink?.(element);

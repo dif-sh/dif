@@ -1,5 +1,5 @@
 // Reads the browser fields a page element carries.
-// Each read is safe on a server, where the globals are absent.
+// Servers do not have these globals. Each read allows for that.
 
 interface BrowserGlobals {
   location?: { href?: unknown };
