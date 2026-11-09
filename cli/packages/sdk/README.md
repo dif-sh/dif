@@ -256,6 +256,16 @@ retries](#batching-and-retries). `track()` resolves when the event is queued, so
 call `flush()` or `close()` before the process ends, or the last events can be
 lost. After `close()`, each `track()` is one request again.
 
+Page views from a server go through `page()`. It needs a `userId`, and the
+`url` must be an absolute http(s) URL. The SDK drops the fragment and keeps
+only the UTM params, `ref` and click-id names. It sends to
+`ingestUrl` (default `https://ingest.difdb.com`) at `/v1/batch`, one awaited
+request, or queued when `batch` is on. `track()` still goes to `apiUrl`.
+
+```ts
+await dif.page({ url: "https://example.com/pricing", userId: user.id });
+```
+
 Mint the secret key (`dif_live_…` / `dif_test_…`) in dif.sh Cloud under
 Settings → Keys → Server keys. Cloud shows it once. Never put it in a
 browser bundle: it writes events as the project. If one leaks, revoke it
