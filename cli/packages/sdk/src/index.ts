@@ -18,7 +18,8 @@ import { track } from "./track.js";
 import { page, type PageOptions } from "./page.js";
 import { identify, __resetIdentity } from "./identify.js";
 import { startPageViews, __resetPageViews } from "./page-views.js";
-import { setElementSink } from "./elements.js";
+import { __tapElements, setElementSink } from "./elements.js";
+import { __resetBatchState } from "./sinks/batch.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
 /** Public type of the `dif` export. Function call signature + method bag. */
@@ -30,8 +31,11 @@ export interface DifFn {
   track(metric: string, opts?: TrackProps): void;
   /** Send one page view. */
   page(opts?: PageOptions): void;
-  /** Set the user id. Traits also send an identify event. */
-  identify(userId: string, traits?: Record<string, unknown>): void;
+  /**
+   * Set the user id. Null clears it.
+   * Traits also send an identify event.
+   */
+  identify(userId: string | null, traits?: Record<string, unknown>): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
@@ -81,6 +85,8 @@ export function __reset(): void {
   __resetExposures();
   resetState();
   setElementSink(null);
+  __tapElements(null);
+  __resetBatchState();
   __resetIdentity();
   __resetPageViews();
 }

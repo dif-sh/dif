@@ -12,9 +12,40 @@
 // site — analytics must not crash a render.
 
 import { getState } from "./config.js";
+import { handOff } from "./elements.js";
 import { uuidv7 } from "./event-id.js";
+import { currentHref, documentReferrer, webdriver } from "./stamp.js";
+import { cleanPageUrl, cleanReferrer } from "./url.js";
 import { SOURCE } from "./version.js";
 import type { MetricEvent, TrackProps } from "./types.js";
+
+// Only `anonymous: true` gets here.
+// The collector gives the visitor id from the page's request.
+function sendAnonymous(name: string, opts: TrackProps): void {
+  const href = currentHref();
+  const url = href === null ? null : cleanPageUrl(href);
+  // A server has no page.
+  // Its IP is not the visitor's IP.
+  if (url === null) return;
+  const rawReferrer = documentReferrer();
+  const referrer = rawReferrer ? cleanReferrer(rawReferrer) : null;
+  handOff({
+    type: "track",
+    event_id: uuidv7(),
+    fired_at: opts.firedAt ?? Date.now(),
+    source: opts.source ?? SOURCE,
+    event: name,
+    ...(opts.value !== undefined && { value: opts.value }),
+    ...(opts.currency !== undefined && { currency: opts.currency }),
+    ...(opts.unit !== undefined && { unit: opts.unit }),
+    ...(opts.idempotencyKey !== undefined && { idempotency_key: opts.idempotencyKey }),
+    url,
+    ...(referrer !== null && { referrer }),
+    // The collector, not the SDK, decides on bots.
+    ...(webdriver() && { wd: true as const }),
+    ...(opts.props !== undefined && { props: opts.props }),
+  });
+}
 
 export function track(metric: string, opts: TrackProps = {}): void {
   const state = getState();
@@ -22,7 +53,8 @@ export function track(metric: string, opts: TrackProps = {}): void {
 
   const userId = opts.userId ?? state.userId();
   if (!userId) {
-    // Can't attribute; drop. Every event needs a user_id.
+    // No user id: drop it, unless the app opts in.
+    if (state.anonymous) sendAnonymous(metric, opts);
     return;
   }
 

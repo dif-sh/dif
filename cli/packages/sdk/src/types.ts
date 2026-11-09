@@ -93,6 +93,13 @@ export interface DifInitConfig {
    * Defaults to `"off"`: every page view is billed.
    */
   pageViews?: "auto" | "off";
+  /**
+   * Cloud mode: `track()` with no user id goes to `ingestUrl`.
+   * Defaults to false: such tracks are dropped.
+   */
+  anonymous?: boolean;
+  /** Where page views go. Defaults to https://ingest.difdb.com. */
+  ingestUrl?: string;
 }
 
 /** Anything that can receive an exposure event. */
