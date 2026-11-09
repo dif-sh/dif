@@ -29,6 +29,7 @@ let calls: Call[] = [];
 let answer: () => Promise<Response> = async () => new Response(null, { status: 202 });
 let beacons: Array<{ url: string; body: string }> = [];
 let docListeners: Map<string, Listener[]>;
+let docOptions: Map<string, unknown[]>;
 let winListeners: Map<string, Listener[]>;
 let browser: FakeBrowser | null = null;
 let originalFetch: typeof fetch;
@@ -50,6 +51,7 @@ function open(href = "https://shop.example/pricing?utm_source=news&token=t", ref
   const add = doc.addEventListener.bind(doc);
   doc.addEventListener = (type, fn, o) => {
     docListeners.set(type, [...(docListeners.get(type) ?? []), fn]);
+    docOptions.set(type, [...(docOptions.get(type) ?? []), o]);
     add(type, fn, o);
   };
   const addWindow = g.addEventListener as (t: string, fn: Listener) => void;
@@ -77,6 +79,7 @@ beforeEach(() => {
   calls = [];
   beacons = [];
   docListeners = new Map();
+  docOptions = new Map();
   winListeners = new Map();
   answer = async () => new Response(null, { status: 202 });
   originalFetch = globalThis.fetch;
@@ -114,6 +117,11 @@ describe("hashRoute", () => {
   it("keeps a URL with no #/ route", () => {
     assert.equal(hashRoute("https://a.example/a#top"), "https://a.example/a#top");
     assert.equal(hashRoute("https://a.example/a"), "https://a.example/a");
+  });
+
+  it("does not throw on a URL with no origin", () => {
+    assert.equal(hashRoute("file:///app/index.html#/x"), "file:///app/index.html/x");
+    assert.equal(hashRoute("about:blank#/x"), "about:blank");
   });
 });
 
@@ -225,6 +233,21 @@ describe("the tracking script", () => {
     assert.equal(calls.length, 1);
   });
 
+  it("takes an empty data-domains as no list", () => {
+    open();
+    load({ "data-domains": "" });
+    assert.equal(calls.length, 1);
+  });
+
+  it("sends no page view on a page that is not http(s)", () => {
+    open("file:///site/index.html#/home", "");
+    load({ "data-spa": "hash" });
+    assert.doesNotThrow(() => site().track("a"));
+    assert.equal(calls.length, 1);
+    assert.equal(elements()[0]!.type, "track");
+    assert.equal("url" in elements()[0]!, false);
+  });
+
   it("ignores Do Not Track unless data-respect-dnt is true", () => {
     open();
     (g.navigator as Record<string, unknown>).doNotTrack = "1";
@@ -306,6 +329,8 @@ describe("the tracking script", () => {
     fire("click", { target: inner });
     fire("click", { target: { closest: () => null } });
     fire("click", { target: null });
+    // Capture, so an app's stopPropagation() does not hide the click.
+    assert.deepEqual(docOptions.get("click"), [true]);
     assert.equal(calls.length, 1);
     const e = elements()[0]!;
     assert.equal(e.event, "signup");
@@ -337,6 +362,17 @@ describe("the tracking script", () => {
     assert.deepEqual(e.traits, { plan: "pro" });
     assert.match(String(e.event_id), UUID_V7);
     assert.equal("url" in e, false);
+  });
+
+  it("sends no identify element when traits are not an object", () => {
+    open();
+    load({ "data-auto": "false" });
+    const identify = site().identify as (id: string, traits: unknown) => void;
+    identify("u1", ["pro"]);
+    identify("u1", "pro");
+    assert.equal(calls.length, 0);
+    site().track("a");
+    assert.equal(elements()[0]!.user_id, "u1");
   });
 
   it("ignores an id the collector refuses", () => {

@@ -43,7 +43,9 @@ interface SiteGlobals {
 export function hashRoute(href: string): string {
   const u = new URL(href);
   if (!u.hash.startsWith("#/")) return href;
-  const route = new URL(u.hash.slice(1), u.origin);
+  // Only the route's path and query are used, so any base is correct.
+  // file: and about: URLs are not a base.
+  const route = new URL(u.hash.slice(1), "http://x");
   u.pathname = u.pathname.replace(/\/$/, "") + route.pathname;
   if (route.search) u.search = u.search ? `${u.search}&${route.search.slice(1)}` : route.search;
   u.hash = "";
@@ -78,7 +80,7 @@ export function start(tag: ScriptTag | null): void {
   let off =
     (attr("respect-dnt") === "true" &&
       (nav.doNotTrack === "1" || nav.globalPrivacyControl === true)) ||
-    (domains !== null && !domains.split(",").some((d) => d.trim() === w.location.hostname));
+    (!!domains && !domains.split(",").some((d) => d.trim() === w.location.hostname));
 
   // A prerendered page can stay unseen.
   // Send only when the user sees it.
@@ -176,7 +178,8 @@ export function start(tag: ScriptTag | null): void {
     consent = granted === true;
     const list = held;
     held = [];
-    if (consent && list.length > 0 && !off) send(list);
+    // Nothing is held while off is true.
+    if (consent && list.length > 0) send(list);
   };
 
   if (!w.dif) w.dif = { page: () => page(), track, identify, consent: setConsent };
