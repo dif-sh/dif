@@ -93,7 +93,8 @@ pub fn render_audiences(workspace: &Workspace, out_dir: &Path) -> String {
 }
 
 /// Emit the wired events module to `out_dir/events.ts`. Custom mode imports the
-/// user's `dif/events/{exposure,track}.ts` handlers; cloud mode records the
+/// user's `dif/events/{exposure,track}.ts` handlers, plus `page.ts` and
+/// `identify.ts` when they exist; cloud mode records the
 /// cloud base URL. Either way the app passes `events` to `dif.init()`.
 pub fn emit_events(workspace: &Workspace, out_dir: &Path) -> std::io::Result<()> {
     let source = render_events(workspace, out_dir);
@@ -107,32 +108,48 @@ pub fn emit_events(workspace: &Workspace, out_dir: &Path) -> std::io::Result<()>
 /// handler import paths back to `events/*.ts` can be computed.
 pub fn render_events(workspace: &Workspace, out_dir: &Path) -> String {
     let events = workspace.config.events();
+    let ingest_field = match events.ingest_url.as_deref() {
+        Some(url) => format!(", ingestUrl: \"{}\"", js_escape(url)),
+        None => String::new(),
+    };
     let mut out = String::new();
     out.push_str(&events_banner());
 
     match events.mode {
         crate::config::EventsMode::Custom => {
             let prefix = relative_import_prefix(out_dir, &workspace.root);
-            let exposure_path = format!("{prefix}{}/exposure", paths::EVENTS_DIR);
-            let track_path = format!("{prefix}{}/track", paths::EVENTS_DIR);
+            let optional: Vec<&str> = ["page", "identify"]
+                .into_iter()
+                .filter(|name| {
+                    workspace
+                        .root
+                        .join(paths::EVENTS_DIR)
+                        .join(format!("{name}.ts"))
+                        .is_file()
+                })
+                .collect();
             out.push('\n');
-            out.push_str(&format!(
-                "import exposure from \"{}\";\n",
-                js_escape(&exposure_path)
-            ));
-            out.push_str(&format!(
-                "import track from \"{}\";\n",
-                js_escape(&track_path)
-            ));
+            for name in ["exposure", "track"]
+                .into_iter()
+                .chain(optional.iter().copied())
+            {
+                let path = format!("{prefix}{}/{name}", paths::EVENTS_DIR);
+                out.push_str(&format!("import {name} from \"{}\";\n", js_escape(&path)));
+            }
             out.push('\n');
             out.push_str("/**\n");
             out.push_str(
                 " * Wired custom event handlers. Pass `events` to `dif.init()` so the SDK\n",
             );
             out.push_str(" * routes exposures to your `events/exposure.ts` and `dif.track()`\n");
-            out.push_str(" * metrics to your `events/track.ts`.\n");
+            out.push_str(" * metrics to your `events/track.ts`. Page views and identify go to\n");
+            out.push_str(" * `events/page.ts` and `events/identify.ts` when those files exist.\n");
             out.push_str(" */\n");
-            out.push_str("export const events = { mode: \"custom\", exposure, track } as const;\n");
+            let handlers: String = optional.iter().map(|name| format!(", {name}")).collect();
+            out.push_str(&format!(
+                "export const events = {{ mode: \"custom\", exposure, track{handlers}{} }} as const;\n",
+                ingest_field
+            ));
         }
         crate::config::EventsMode::Cloud => {
             let url = events.url.as_deref().unwrap_or("https://cloud.dif.sh");
@@ -149,9 +166,10 @@ pub fn render_events(workspace: &Workspace, out_dir: &Path) -> String {
                 None => String::new(),
             };
             out.push_str(&format!(
-                "export const events = {{ mode: \"cloud\", apiUrl: \"{}\"{} }} as const;\n",
+                "export const events = {{ mode: \"cloud\", apiUrl: \"{}\"{}{} }} as const;\n",
                 js_escape(url),
-                key_field
+                key_field,
+                ingest_field
             ));
         }
     }
@@ -788,6 +806,7 @@ created: 2026-01-01",
             mode: crate::config::EventsMode::Cloud,
             url: Some("https://cloud.example.com".into()),
             key: None,
+            ingest_url: None,
         });
         let out_dir = root.join("dif").join("generated");
         let rendered = render_events(&ws, &out_dir);
@@ -821,6 +840,7 @@ created: 2026-01-01",
             mode: crate::config::EventsMode::Cloud,
             url: None,
             key: Some("dif_pk_live_abc123".into()),
+            ingest_url: None,
         });
         let out_dir = root.join("dif").join("generated");
         let rendered = render_events(&ws, &out_dir);
@@ -836,6 +856,7 @@ created: 2026-01-01",
             mode: crate::config::EventsMode::Custom,
             url: None,
             key: None,
+            ingest_url: None,
         });
         let out_dir = root.join("dif").join("generated");
         let rendered = render_events(&ws, &out_dir);
@@ -853,10 +874,85 @@ created: 2026-01-01",
             mode: crate::config::EventsMode::Custom,
             url: None,
             key: None,
+            ingest_url: None,
         });
         let out_dir = root.join("dif").join("generated");
         let a = render_events(&ws, &out_dir);
         let b = render_events(&ws, &out_dir);
         assert_eq!(a, b, "events codegen must be deterministic");
+    }
+
+    fn custom_ws(root: &Path, ingest_url: Option<&str>) -> Workspace {
+        let mut ws = ws_with(vec![], vec![], root.to_path_buf());
+        ws.config.events = Some(crate::config::EventsConfig {
+            mode: crate::config::EventsMode::Custom,
+            url: None,
+            key: None,
+            ingest_url: ingest_url.map(String::from),
+        });
+        ws
+    }
+
+    #[test]
+    fn events_custom_mode_imports_page_and_identify_when_files_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("dif/events")).unwrap();
+        std::fs::write(root.join("dif/events/page.ts"), "export default () => {};").unwrap();
+        std::fs::write(
+            root.join("dif/events/identify.ts"),
+            "export default () => {};",
+        )
+        .unwrap();
+        let rendered = render_events(&custom_ws(&root, None), &root.join("dif/generated"));
+        assert!(rendered.contains("import page from \"../../dif/events/page\""));
+        assert!(rendered.contains("import identify from \"../../dif/events/identify\""));
+        assert!(rendered.contains(
+            "export const events = { mode: \"custom\", exposure, track, page, identify }"
+        ));
+    }
+
+    #[test]
+    fn events_custom_mode_imports_only_the_handler_files_that_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("dif/events")).unwrap();
+        std::fs::write(root.join("dif/events/page.ts"), "export default () => {};").unwrap();
+        let rendered = render_events(&custom_ws(&root, None), &root.join("dif/generated"));
+        assert!(rendered.contains("import page from"));
+        assert!(!rendered.contains("import identify"));
+        assert!(rendered.contains("{ mode: \"custom\", exposure, track, page }"));
+    }
+
+    #[test]
+    fn events_custom_mode_without_the_files_keeps_two_handlers() {
+        let root = PathBuf::from("/tmp/dif-test-ws-none");
+        let rendered = render_events(&custom_ws(&root, None), &root.join("dif/generated"));
+        assert!(!rendered.contains("import page"));
+        assert!(!rendered.contains("ingestUrl"));
+        assert!(rendered.contains("{ mode: \"custom\", exposure, track } as const"));
+    }
+
+    #[test]
+    fn events_emit_ingest_url_only_when_set() {
+        let root = PathBuf::from("/tmp/dif-test-ws-none");
+        let out_dir = root.join("dif/generated");
+        let custom = render_events(
+            &custom_ws(&root, Some("https://ingest.example.com")),
+            &out_dir,
+        );
+        assert!(custom.contains("ingestUrl: \"https://ingest.example.com\""));
+
+        let mut cloud = ws_with(vec![], vec![], root.clone());
+        cloud.config.events = Some(crate::config::EventsConfig {
+            mode: crate::config::EventsMode::Cloud,
+            url: None,
+            key: None,
+            ingest_url: Some("https://ingest.example.com".into()),
+        });
+        let rendered = render_events(&cloud, &out_dir);
+        assert!(rendered.contains("ingestUrl: \"https://ingest.example.com\""));
+        let unset = render_events(&ws_with(vec![], vec![], root.clone()), &out_dir);
+        assert!(!unset.contains("ingestUrl"));
     }
 }

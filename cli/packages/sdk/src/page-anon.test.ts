@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset } from "./index.js";
-import { setElementSink, type BatchElement } from "./elements.js";
+import { __tapElements, type BatchElement } from "./elements.js";
 import { installBrowser, type FakeBrowser } from "./fake-browser.test.js";
 
 const KEY = "dif_pk_live_aaaaaaaa_secret-secret-secret";
@@ -13,7 +13,7 @@ let browser: FakeBrowser | null = null;
 beforeEach(() => {
   __reset();
   sent = [];
-  setElementSink((e) => sent.push(e));
+  __tapElements((e) => sent.push(e));
   browser = installBrowser({ href: "https://shop.example/" });
 });
 

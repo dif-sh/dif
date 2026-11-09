@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { dif, __reset } from "./index.js";
-import { setElementSink, type BatchElement, type PageElement } from "./elements.js";
+import { __tapElements, type BatchElement, type PageElement } from "./elements.js";
 import { installBrowser, type FakeBrowser } from "./fake-browser.test.js";
 
 const KEY = "dif_pk_live_aaaaaaaa_secret-secret-secret";
@@ -16,7 +16,7 @@ let originalWarn: typeof console.warn;
 beforeEach(() => {
   __reset();
   sent = [];
-  setElementSink((e) => sent.push(e));
+  __tapElements((e) => sent.push(e));
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("{}", { status: 202 })) as typeof fetch;
   warnings = [];
@@ -152,6 +152,34 @@ describe("pageViews", () => {
     history.pushState({}, "", "/a");
     assert.equal(pages().length, 1);
     assert.equal(warnings.length, 1);
+  });
+
+  it("waits for a prerendered page to be shown", () => {
+    browser = installBrowser({ href: "https://shop.example/", prerendering: true });
+    auto();
+    assert.equal(sent.length, 0);
+    browser.activate();
+    assert.equal(pages().length, 1);
+    assert.equal(pages()[0]!.url, "https://shop.example/");
+    browser.activate();
+    assert.equal(pages().length, 1);
+  });
+
+  it("sends no page view at activation when turned off before", () => {
+    browser = installBrowser({ href: "https://shop.example/", prerendering: true });
+    auto();
+    dif.init({ publishableKey: KEY, userId: () => null, pageViews: "off" });
+    browser.activate();
+    assert.equal(sent.length, 0);
+  });
+
+  it("does not throw from init when the resolver throws", () => {
+    open();
+    const userId = () => {
+      throw new Error("no session");
+    };
+    assert.doesNotThrow(() => dif.init({ publishableKey: KEY, userId, pageViews: "auto" }));
+    assert.equal(sent.length, 0);
   });
 
   it("does nothing on a server", () => {

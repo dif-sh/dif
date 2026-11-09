@@ -2,6 +2,8 @@
 // A bad event then drops alone, not with its batch.
 
 import { warnName, warnProps } from "./props.js";
+import { utf8Length } from "./queue.js";
+import { MAX_URL_BYTES } from "./url.js";
 
 /** The most ms from the epoch that Date holds. */
 const MAX_TIME_MS = 8.64e15;
@@ -59,21 +61,27 @@ function badText(f: Fields, names: readonly string[]): string | null {
   return null;
 }
 
-function propsFault(v: unknown, depth: number): "lone" | "nul" | "deep" | null {
-  if (typeof v === "string") return textFault(v);
+// dif-db stores U+0000 in props. Postgres does not.
+function propsFault(
+  v: unknown,
+  depth: number,
+  nulOk = false,
+): "lone" | "nul" | "deep" | null {
+  const text = (s: string) => (nulOk ? (hasLoneSurrogate(s) ? "lone" : null) : textFault(s));
+  if (typeof v === "string") return text(v);
   if (v === null || typeof v !== "object") return null;
   if (depth > PROPS_DEPTH) return "deep";
   if (Array.isArray(v)) {
     for (const item of v) {
-      const fault = propsFault(item, depth + 1);
+      const fault = propsFault(item, depth + 1, nulOk);
       if (fault) return fault;
     }
     return null;
   }
   for (const [key, item] of Object.entries(v as Fields)) {
-    const keyFault = textFault(key);
+    const keyFault = text(key);
     if (keyFault) return keyFault;
-    const fault = propsFault(item, depth + 1);
+    const fault = propsFault(item, depth + 1, nulOk);
     if (fault) return fault;
   }
   return null;
@@ -124,5 +132,53 @@ export function validateTrack(raw: unknown): string | null {
   }
   warnName("track", e.metric);
   warnProps(e.props);
+  return null;
+}
+
+const ELEMENT_TYPES: readonly string[] = ["track", "page", "identify"];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isObject(v: unknown): v is Fields {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+// The rules of dif-db's `/v1/batch` parser that give a 400.
+// Bad text there fails only after the other rules.
+/** Takes a parsed `/v1/batch` element. Gives a message, or null. */
+export function validateElement(raw: unknown): string | null {
+  const e = fieldsOf(raw);
+  if (e.type === undefined || e.type === null) return "type is required";
+  if (typeof e.type !== "string") return 'unknown type "<not a string>"';
+  if (!ELEMENT_TYPES.includes(e.type)) return `unknown type "${e.type.slice(0, 64)}"`;
+  const { type } = e;
+
+  if (type === "track" && !isText(e.event)) return "event is required";
+  if (e.user_id !== undefined && e.user_id !== null) {
+    if (!isText(e.user_id)) return "user_id must be a non-empty string";
+    if (e.user_id.includes("\u0000")) return "user_id must not contain U+0000";
+  } else if (type === "identify") {
+    return "user_id is required";
+  }
+  const url = type === "identify" || !isText(e.url) ? null : e.url;
+  if (type === "page" && url === null) return "url is required";
+  if (url !== null && utf8Length(url) > MAX_URL_BYTES) return `url is over ${MAX_URL_BYTES} bytes`;
+  if (typeof e.event_id !== "string" || !UUID.test(e.event_id)) return "event_id is required";
+
+  const what = type === "identify" ? "traits" : "props";
+  const tree = e[what];
+  if (type === "identify" && !isObject(tree)) return "traits is required";
+  const fault = tree !== null && typeof tree === "object" ? propsFault(tree, 1, true) : null;
+  if (fault === "deep") return `${what} is nested more than ${PROPS_DEPTH} deep`;
+  if (type === "track" && e.value !== undefined && !isFiniteNumber(e.value)) {
+    return "value must be a finite number";
+  }
+  if (isFiniteNumber(e.fired_at) && Math.abs(e.fired_at) > MAX_TIME_MS) return FIRED_AT_ERROR;
+
+  for (const name of ["event", "user_id", "currency", "unit", "idempotency_key"]) {
+    const v = e[name];
+    if (typeof v === "string" && hasLoneSurrogate(v)) return `${name} must be valid Unicode`;
+  }
+  if (fault === "lone") return `${what} must be valid Unicode`;
+  if (type === "track") warnName("track", e.event);
   return null;
 }

@@ -23,7 +23,15 @@ function isTraits(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-export function identify(userId: string, traits?: DifProps): void {
+/**
+ * Sets the id for the page load.
+ * Null clears it, as on logout.
+ */
+export function identify(userId: string | null, traits?: DifProps): void {
+  if (userId === null) {
+    identified = null;
+    return;
+  }
   // A server renders pages for many users.
   // There, one id would go to all of them.
   if (typeof document === "undefined") return;

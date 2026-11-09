@@ -10,6 +10,34 @@ import type { DifInitConfig } from "./types.js";
 let lastUrl: string | null = null;
 let stop: (() => void) | null = null;
 let scriptWarned = false;
+let stopWaiting: (() => void) | null = null;
+
+interface PrerenderDocument {
+  prerendering?: unknown;
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+}
+
+function prerenderingDocument(): PrerenderDocument | null {
+  const d = (globalThis as { document?: Partial<PrerenderDocument> }).document;
+  if (d?.prerendering !== true || typeof d.addEventListener !== "function") return null;
+  return typeof d.removeEventListener === "function" ? (d as PrerenderDocument) : null;
+}
+
+// A prerendered page can stay unseen.
+// Then it gets no page view.
+function waitForActivation(doc: PrerenderDocument): void {
+  if (stopWaiting) return;
+  const onChange = () => {
+    stopWaiting?.();
+    if (stop) safeAutoPage();
+  };
+  doc.addEventListener("prerenderingchange", onChange);
+  stopWaiting = () => {
+    doc.removeEventListener("prerenderingchange", onChange);
+    stopWaiting = null;
+  };
+}
 
 // The tracking script sends its own page views.
 function scriptOnPage(): boolean {
@@ -26,6 +54,8 @@ function scriptOnPage(): boolean {
 
 function autoPage(): void {
   if (scriptOnPage()) return;
+  const prerendering = prerenderingDocument();
+  if (prerendering) return waitForActivation(prerendering);
   const href = currentHref();
   const url = href === null ? null : cleanPageUrl(href);
   if (url === null || url === lastUrl) return;
@@ -34,21 +64,31 @@ function autoPage(): void {
   if (sent) lastUrl = url;
 }
 
+function safeAutoPage(): void {
+  try {
+    autoPage();
+  } catch {
+    // A throwing userId resolver must not break init.
+  }
+}
+
 /** Starts or stops automatic page views. The default is off. */
 export function startPageViews(mode: DifInitConfig["pageViews"]): void {
   if (mode !== "auto") {
     stop?.();
     stop = null;
+    stopWaiting?.();
     return;
   }
   stop ??= onNavigate(autoPage);
-  autoPage();
+  safeAutoPage();
 }
 
 /** Test-only. */
 export function __resetPageViews(): void {
   stop?.();
   stop = null;
+  stopWaiting?.();
   lastUrl = null;
   scriptWarned = false;
   __resetHistory();
