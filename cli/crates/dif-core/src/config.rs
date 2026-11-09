@@ -157,6 +157,9 @@ pub struct EventsConfig {
     /// key, never the secret server key. Ignored for custom mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Where `/v1/batch` goes (page views and identify). Unset: the SDK default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingest_url: Option<String>,
 }
 
 impl Default for EventsConfig {
@@ -165,6 +168,7 @@ impl Default for EventsConfig {
             mode: EventsMode::Cloud,
             url: None,
             key: None,
+            ingest_url: None,
         }
     }
 }
