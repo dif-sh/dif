@@ -8,6 +8,7 @@ import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
 import { batchSender, type BatchSender } from "./sinks/batch.js";
 import { setElementSink } from "./elements.js";
 import { identifiedUserId } from "./identify.js";
+import { warnName, warnProps } from "./props.js";
 import type {
   AttributeBag,
   DifConfig,
@@ -96,7 +97,13 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     apiUrl = stripTrailing(merged.apiUrl ?? DEFAULT_API_URL);
     closeCloud();
     sinks = [{ kind: "custom", emit: events.exposure }];
-    trackHandler = events.track;
+    // The cloud queue warns in validateTrack. Custom mode has no queue.
+    const handler = events.track;
+    trackHandler = (event) => {
+      warnName("track", event.metric);
+      warnProps(event.props);
+      handler(event);
+    };
     setElementSink(null);
   } else {
     apiUrl = stripTrailing(events?.apiUrl ?? merged.apiUrl ?? DEFAULT_API_URL);
