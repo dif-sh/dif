@@ -16,6 +16,7 @@ import {
 } from "./config.js";
 import { track } from "./track.js";
 import { page, type PageOptions } from "./page.js";
+import { identify, __resetIdentity } from "./identify.js";
 import { setElementSink } from "./elements.js";
 import type { DifConfig, TrackProps } from "./types.js";
 
@@ -28,6 +29,8 @@ export interface DifFn {
   track(metric: string, opts?: TrackProps): void;
   /** Send one page view. */
   page(opts?: PageOptions): void;
+  /** Set the user id. Traits also send an identify event. */
+  identify(userId: string, traits?: Record<string, unknown>): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
@@ -57,6 +60,7 @@ export const dif: DifFn = Object.assign(difCall, {
   init,
   track,
   page,
+  identify,
   flush,
   setOverrides,
   getOverrides,
@@ -74,6 +78,7 @@ export function __reset(): void {
   __resetExposures();
   resetState();
   setElementSink(null);
+  __resetIdentity();
 }
 
 // SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)

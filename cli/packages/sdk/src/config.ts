@@ -5,6 +5,7 @@
 // intentional — there is only one "current user" per app instance.
 
 import { cloudSink, cloudTrack, type CloudTrack } from "./sinks/cloud.js";
+import { identifiedUserId } from "./identify.js";
 import type {
   AttributeBag,
   DifConfig,
@@ -124,11 +125,12 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
     }
   }
 
+  const resolve = merged.userId ?? (() => null);
   state = {
     project: merged.project ?? null,
     publishableKey,
     apiUrl,
-    userId: merged.userId ?? (() => null),
+    userId: () => identifiedUserId() ?? resolve(),
     attributes: merged.attributes ?? (() => ({})),
     sinks,
     trackHandler,
