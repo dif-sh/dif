@@ -38,24 +38,17 @@ function parse(href: string, base?: string): URL | null {
   }
 }
 
-function paramName(segment: string): string | null {
-  const eq = segment.indexOf("=");
-  const raw = eq === -1 ? segment : segment.slice(0, eq);
+// Kept segments keep their bytes, so values stay as sent.
+function keep(segment: string): string | null {
+  const raw = segment.split("=")[0]!;
+  let name: string;
   try {
-    return decodeURIComponent(raw.replace(/\+/g, " "));
+    name = decodeURIComponent(raw.replace(/\+/g, " "));
   } catch {
     return null;
   }
-}
-
-// Kept segments keep their bytes, so values stay as sent.
-function keep(segment: string): string | null {
-  const name = paramName(segment);
-  if (name === null) return null;
   if (KEPT_PARAMS.includes(name)) return segment;
-  if (!CLICK_IDS.includes(name)) return null;
-  const eq = segment.indexOf("=");
-  return `${eq === -1 ? segment : segment.slice(0, eq)}=`;
+  return CLICK_IDS.includes(name) ? `${raw}=` : null;
 }
 
 function clean(u: URL): string {
