@@ -47,6 +47,8 @@ export interface TrackElement {
   /** The page, cleaned as a page element's `url`. */
   url: string;
   referrer?: string;
+  /** Sent only when `navigator.webdriver` is true. */
+  wd?: true;
   props?: Record<string, unknown>;
 }
 

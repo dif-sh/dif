@@ -246,6 +246,14 @@ describe("anonymous tracks", () => {
     });
   });
 
+  it("carry wd when navigator.webdriver is true", () => {
+    browser!.uninstall();
+    browser = installBrowser({ href: "https://shop.example/", webdriver: true });
+    dif.init({ publishableKey: KEY, userId: () => null, anonymous: true });
+    dif.track("signup");
+    assert.equal(elements()[0]!.wd, true);
+  });
+
   it("keep a user id's track on /v1/track", () => {
     dif.init({ publishableKey: KEY, userId: () => "u-1", anonymous: true });
     dif.track("signup");

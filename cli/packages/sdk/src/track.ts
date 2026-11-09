@@ -14,7 +14,7 @@
 import { getState } from "./config.js";
 import { handOff } from "./elements.js";
 import { uuidv7 } from "./event-id.js";
-import { currentHref, documentReferrer } from "./stamp.js";
+import { currentHref, documentReferrer, webdriver } from "./stamp.js";
 import { cleanPageUrl, cleanReferrer } from "./url.js";
 import { SOURCE } from "./version.js";
 import type { MetricEvent, TrackProps } from "./types.js";
@@ -40,6 +40,8 @@ function sendAnonymous(name: string, opts: TrackProps): void {
     ...(opts.idempotencyKey !== undefined && { idempotency_key: opts.idempotencyKey }),
     url,
     ...(referrer !== null && { referrer }),
+    // The collector, not the SDK, decides on bots.
+    ...(webdriver() && { wd: true as const }),
     ...(opts.props !== undefined && { props: opts.props }),
   });
 }
