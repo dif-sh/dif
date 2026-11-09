@@ -114,6 +114,24 @@ describe("the /v1/batch queue", () => {
     assert.equal(elements()[0]!.user_id, "u-9");
   });
 
+  it("uses a new queue when ingestUrl changes", () => {
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.page();
+    dif.init({ publishableKey: KEY, userId: () => null, ingestUrl: "https://ingest.test" });
+    dif.page();
+    assert.equal(calls[1]!.url, `https://ingest.test/v1/batch?key=${KEY}`);
+  });
+
+  it("sends nothing after a switch to custom mode", () => {
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.init({
+      userId: () => null,
+      events: { mode: "custom", exposure: () => {}, track: () => {} },
+    });
+    dif.page();
+    assert.equal(calls.length, 0);
+  });
+
   it("sends nothing without a publishable key", () => {
     dif.init({ userId: () => null });
     dif.page();
@@ -152,6 +170,16 @@ describe("the /v1/batch queue", () => {
     assert.equal(batchCalls().length, 1);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /403/);
+  });
+
+  it("warns once when requests in flight all get a 403", async () => {
+    status = () => 403;
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.page({ url: "/a" });
+    dif.page({ url: "/b" });
+    await settle();
+    assert.equal(batchCalls().length, 2);
+    assert.equal(warnings.length, 1);
   });
 
   it("does not stop after another refusal", async () => {
@@ -252,6 +280,13 @@ describe("anonymous tracks", () => {
     dif.init({ publishableKey: KEY, userId: () => null, anonymous: true });
     dif.track("signup");
     assert.equal(elements()[0]!.wd, true);
+  });
+
+  it("warn about a $ name and are still sent", () => {
+    dif.init({ publishableKey: KEY, userId: () => null, anonymous: true });
+    dif.track("$anon_name");
+    assert.equal(elements().length, 1);
+    assert.equal(warnings.filter((w) => w.includes('"$anon_name"')).length, 1);
   });
 
   it("keep a user id's track on /v1/track", () => {

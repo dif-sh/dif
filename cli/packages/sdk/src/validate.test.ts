@@ -227,12 +227,21 @@ describe("validateElement", () => {
     assert.equal(validateElement(identifyEl({ traits: [] })), "traits is required");
   });
 
+  it("accepts U+0000 in props, which dif-db stores", () => {
+    assert.equal(validateElement(page({ props: { "a\u0000": "b\u0000" } })), null);
+    assert.equal(
+      validateElement(page({ props: { a: "\u0000", b: "\udc00" } })),
+      "props must be valid Unicode",
+    );
+  });
+
   it("refuses a fired_at out of range", () => {
     assert.match(validateElement(page({ fired_at: 9e15 })) ?? "", /fired_at/);
   });
 
   it("refuses unpaired surrogates and deep props", () => {
     assert.equal(validateElement(trackEl({ event: "a\ud800" })), "event must be valid Unicode");
+    assert.equal(validateElement(trackEl({ unit: "\udc00" })), "unit must be valid Unicode");
     assert.equal(validateElement(page({ props: { a: "\udc00" } })), "props must be valid Unicode");
     assert.equal(
       validateElement(page({ props: nested(65) })),
