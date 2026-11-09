@@ -115,6 +115,14 @@ describe("dif.identify", () => {
     assert.equal(getState()!.userId(), "anon-1");
   });
 
+  it("clears the id on null, and sends nothing", () => {
+    dif.init({ publishableKey: KEY, userId: () => "anon-1" });
+    dif.identify("u-9");
+    dif.identify(null, { plan: "pro" });
+    assert.equal(getState()!.userId(), "anon-1");
+    assert.equal(sent.length, 0);
+  });
+
   it("sends nothing when enabled is false", () => {
     dif.init({ publishableKey: KEY, userId: () => null, enabled: false });
     dif.identify("u-9", { plan: "pro" });
