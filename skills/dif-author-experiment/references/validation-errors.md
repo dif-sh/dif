@@ -1,6 +1,6 @@
 # dif validate error codes
 
-`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E010 are errors; W001-W004 are warnings.
+`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E010 are errors; W001-W005 are warnings.
 
 (There is intentionally no E002 — it was reserved during design and never used. The gap is preserved so existing codes don't renumber.)
 
@@ -92,3 +92,9 @@ A file under `experiments/active/` has `status:` set to something other than `ac
 **Fix** depends on which status it is:
 - `status: draft` — message: "status is `draft` — `dif build` will skip this experiment." Set `status: active` when it's ready to run.
 - `status: concluded` (or any other non-`active` value) — message: "status is `concluded` but the file is under experiments/active/." Run `dif conclude <id>` to archive it properly.
+
+### W005 — active experiment while experiments are off
+
+`dif/config.yaml` has `features.experiments: false`, but an experiment under `experiments/active/` has `status: active`. `dif build` leaves its registration out of the generated client.
+
+**Fix:** set `features.experiments: true`, or run `dif conclude <id>`.

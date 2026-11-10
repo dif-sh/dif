@@ -35,7 +35,7 @@ dif/context.json                            agent-facing summary of active exper
 | Verb | What it does |
 |---|---|
 | `dif init` | Scaffold the convention. Done once per repo. Add `--key <dif_pk_…>` to connect to dif.sh Cloud at the same time. |
-| `dif connect --key <dif_pk_…>` | Point an existing workspace at dif.sh Cloud: writes the publishable key + cloud mode into `dif/config.yaml`. Re-run `dif build` after. |
+| `dif connect --key <dif_pk_…>` | Point an existing workspace at dif.sh Cloud: writes the publishable key + cloud mode into `dif/config.yaml`. Re-run `dif build` after. Without `--key` it uses the `dif auth login` session to link or create the project; the `dif-connect-cloud` skill runs that flow. |
 | `dif new <id> --surface <name>` | Draft `dif/experiments/active/<id>.md`. Embeds the surface's last 3 learnings as an HTML comment in the Brief. |
 | `dif validate` | Schema, weights, audience, exclusion checks. Exit 1 on any error. |
 | `dif build` | Compile to `dif/generated/client.ts` + `dif/context.json`. Runs validate first. |
@@ -61,6 +61,7 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
+- **W005** — Active experiment while `features.experiments` is false in `dif/config.yaml` (warning).
 
 ## Before drafting an experiment
 
@@ -81,6 +82,7 @@ Bad: `"Inconclusive."`
 - `.claude/skills/dif-author-experiment/`: full authoring workflow + references (frontmatter schema, every validation error with its fix, audience grammar).
 - `.claude/skills/dif-conclude-experiment/`: get the result from dif cloud, check the verdict, and write a Decision that becomes a useful Learning.
 - `.claude/skills/dif-triage-experiments/`: review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR per experiment in autonomous mode.
+- `.claude/skills/dif-connect-cloud/`: sign the CLI in to dif cloud, link or create the project, write its publishable key, then `dif build`.
 - `.claude/skills/dif-generate-surfaces/`: for fresh repos, read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
 - https://dif.sh/docs/mcp/: connect dif cloud with a read token, over MCP or as `DIF_TOKEN` for REST. The conclude and triage skills need one of them.
 - https://dif.sh/docs: full documentation.

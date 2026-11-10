@@ -132,6 +132,22 @@ describe("cloudSink", () => {
     assert.ok(String(warnCalls[0]![0]).includes("HTTP 401"));
   });
 
+  it("warns once about the event limit on a 402, not about the key", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "event_limit" }), { status: 402 })) as typeof fetch;
+    const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });
+    const track = cloudTrack({ apiUrl: "https://x", publishableKey: "k" });
+    sink.emit(SAMPLE_EVENT);
+    await Promise.resolve();
+    await Promise.resolve();
+    track({ metric: "m", user_id: "u-1", fired_at: 1, source: "test" });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(warnCalls.length, 1);
+    assert.ok(String(warnCalls[0]![0]).includes("free monthly event limit"));
+    assert.ok(!String(warnCalls[0]![0]).includes("publishableKey"));
+  });
+
   it("shares its warn-once flag with cloudTrack", async () => {
     globalThis.fetch = (async () => new Response("nope", { status: 401 })) as typeof fetch;
     const sink = cloudSink({ apiUrl: "https://x", publishableKey: "k" });

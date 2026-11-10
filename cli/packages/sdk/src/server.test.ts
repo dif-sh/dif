@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { DifServer } from "./server.js";
 import { MAX_BODY_BYTES, utf8Length } from "./queue.js";
 import { SOURCE } from "./version.js";
+import { __resetLimitWarning } from "./limit.js";
 
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -18,6 +19,7 @@ let originalWarn: typeof console.warn;
 let warnCalls: unknown[][] = [];
 
 beforeEach(() => {
+  __resetLimitWarning();
   fetchCalls = [];
   warnCalls = [];
   originalFetch = globalThis.fetch;
@@ -83,6 +85,16 @@ describe("DifServer.track", () => {
     const server = new DifServer({ apiKey: "dif_live_aaaaaaaa_x" });
     await server.track({ metric: "m", userId: "u" });
     assert.ok(warnCalls.length >= 1, "expected at least one warn call");
+  });
+
+  it("warns once about the event limit on a 402", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "event_limit" }), { status: 402 })) as typeof fetch;
+    const server = new DifServer({ apiKey: "dif_live_aaaaaaaa_x" });
+    await server.track({ metric: "m", userId: "u" });
+    await server.track({ metric: "m", userId: "u" });
+    assert.equal(warnCalls.length, 1);
+    assert.ok(String(warnCalls[0]![0]).includes("free monthly event limit"));
   });
 
   it("warns on network failure without throwing", async () => {

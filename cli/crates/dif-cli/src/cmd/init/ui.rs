@@ -3,7 +3,9 @@
 //! `--json` and piped runs keep the plain output in [`super`].
 
 use super::choices::{events_mode_for, Framework, Product};
-use super::{validate_publishable_key, AgentSelection, Args, Summary, CURSOR_MDC_PATH};
+use super::{
+    validate_publishable_key, AgentSelection, Args, Summary, CLAUDE_FILE_PATHS, CURSOR_MDC_PATH,
+};
 use cliclack::{StringCursor, Theme, ThemeState};
 use console::{style, Term};
 use dif_core::config::EventsMode;
@@ -150,7 +152,7 @@ pub(super) fn report_success(progress: Progress, s: &Summary, next: &[String]) -
     if !agents.is_empty() {
         step("Added guidance for coding agents")?;
         for (path, hint) in agents {
-            row(path, hint)?;
+            row(path, &hint)?;
         }
         rail()?;
     }
@@ -223,24 +225,32 @@ fn project_rows(s: &Summary) -> Vec<(String, String)> {
     rows
 }
 
-fn agent_rows(sel: AgentSelection, already_initialized: bool) -> Vec<(&'static str, &'static str)> {
+fn agent_rows(sel: AgentSelection, already_initialized: bool) -> Vec<(&'static str, String)> {
     let mut rows = Vec::new();
     if sel.claude {
-        rows.push(("CLAUDE.md", "dif block merged"));
+        rows.push(("CLAUDE.md", "dif block merged".into()));
         if !already_initialized {
-            rows.push((".claude/skills/", "4 dif skills"));
+            rows.push((".claude/skills/", skills_hint()));
         }
     }
     if sel.general {
-        rows.push(("AGENTS.md", "dif block merged"));
+        rows.push(("AGENTS.md", "dif block merged".into()));
     }
     if sel.cursor && !already_initialized {
-        rows.push((CURSOR_MDC_PATH, "Cursor rule"));
+        rows.push((CURSOR_MDC_PATH, "Cursor rule".into()));
     }
     if sel.copilot {
-        rows.push((".github/copilot-instructions.md", "dif block merged"));
+        rows.push((".github/copilot-instructions.md", "dif block merged".into()));
     }
     rows
+}
+
+fn skills_hint() -> String {
+    let n = CLAUDE_FILE_PATHS
+        .iter()
+        .filter(|p| p.ends_with("/SKILL.md"))
+        .count();
+    format!("{n} dif skills")
 }
 
 fn bar() -> console::StyledObject<&'static str> {

@@ -29,6 +29,8 @@ regex       = "1"
 clap        = { version = "4", features = ["derive", "wrap_help"] }
 console     = "0.16"
 cliclack    = "0.5"
+# rustls only: no native-tls, no openssl.
+ureq        = { version = "3", default-features = false, features = ["rustls"] }
 
 # Internal crate refs
 dif-core    = { path = "crates/dif-core", version = "0.8.0" }
