@@ -78,6 +78,9 @@ jobs:
         run: npm test
       - name: build
         run: npm run build
+      # The tracking script must stay at most 2,000 bytes gzipped.
+      - name: script size
+        run: npm run size
 
   # react depends on the sdk via file:../sdk, so it needs sdk's dist/ to
   # exist before tsc can type-check the adapter.

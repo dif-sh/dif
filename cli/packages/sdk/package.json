@@ -14,7 +14,8 @@
     "./server": {
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
-    }
+    },
+    "./script.js": "./dist/script.js"
   },
   "files": [
     "dist",
@@ -23,10 +24,12 @@
   "sideEffects": false,
   "scripts": {
     "gen:version": "node scripts/gen-version.mjs",
-    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.json",
+    "build": "node scripts/gen-version.mjs && tsc -p tsconfig.json && npm run build:script",
+    "build:script": "esbuild src/script/index.ts --bundle --format=iife --minify --target=es2017 --outfile=dist/script.js",
+    "size": "node scripts/check-script-size.mjs",
     "test": "node --test --import tsx src/*.test.ts",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run lint && npm test && npm run build"
+    "prepublishOnly": "npm run lint && npm test && npm run build && npm run size"
   },
   "engines": {
     "node": ">=20.6"
@@ -53,7 +56,8 @@
     "typescript"
   ],
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "tsx": "^4.7.0"
+    "esbuild": "0.28.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
   }
 }

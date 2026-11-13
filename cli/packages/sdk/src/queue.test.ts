@@ -282,7 +282,7 @@ describe("EventQueue validation", () => {
 
   it("drops one event over the body limit, alone", async () => {
     const q = make();
-    const big = q.add(ev(1, { props: { blob: "x".repeat(MAX_BODY_BYTES) } }));
+    const big = q.add(ev(1, { props: { blob: ["x".repeat(MAX_BODY_BYTES)] } }));
     const small = q.add(ev(2));
     await q.flush();
     assert.equal(await big, false);
@@ -334,7 +334,7 @@ describe("EventQueue byte threshold", () => {
 
   it("flushes before a new event would pass the threshold", async () => {
     const q = make();
-    for (let i = 1; i <= 4; i++) void q.add(ev(i, kb(5)));
+    for (let i = 1; i <= 4; i++) void q.add(ev(i, kb(3.5)));
     await settle();
     assert.equal(calls.length, 1);
     assert.deepEqual(
@@ -685,7 +685,7 @@ describe("EventQueue page lifecycle", () => {
     for (let i = 0; i < 20; i++) void track.add(ev(i, { note }));
     track.flush();
     await settle();
-    for (let i = 100; i < 108; i++) void exposure.add(ev(i, { note }));
+    for (let i = 100; i < 106; i++) void exposure.add(ev(i, { note }));
     win.dispatchEvent(new Event("pagehide"));
     await settle();
     assert.equal(rejected.includes(exposureUrl), false);
@@ -723,7 +723,7 @@ describe("EventQueue page lifecycle", () => {
     };
     const q = make({ lifecycle: true });
     const all: string[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 7; i++) {
       all.push(String(ev(i).event_id));
       void q.add(ev(i, { props: { pad: "x".repeat(1400) } }));
     }

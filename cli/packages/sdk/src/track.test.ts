@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { dif, __reset } from "./index.js";
 import { SOURCE } from "./version.js";
+import { __resetPropWarnings } from "./props.js";
 
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -196,6 +197,26 @@ describe("dif.track", () => {
     assert.equal(seen[0]!.metric, "revenue");
     assert.equal(seen[0]!.value, 49);
     assert.equal(seen[0]!.user_id, "u-1");
+  });
+
+  it("custom mode warns about names and props, as DifServer.track does", () => {
+    __resetPropWarnings();
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(" "));
+    let called = 0;
+    try {
+      dif.init({
+        userId: () => "u-1",
+        events: { mode: "custom", exposure: () => {}, track: () => void called++ },
+      });
+      dif.track("$custom_name", { props: { $custom_key: 1 } });
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(called, 1);
+    assert.equal(warnings.filter((w) => w.includes('"$custom_name"')).length, 1);
+    assert.equal(warnings.filter((w) => w.includes('"$custom_key"')).length, 1);
   });
 
   it("custom mode needs no publishableKey", () => {

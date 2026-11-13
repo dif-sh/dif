@@ -15,7 +15,12 @@ import {
   type DifInitConfig,
 } from "./config.js";
 import { track } from "./track.js";
-import type { DifConfig, TrackProps } from "./types.js";
+import { page, type PageOptions } from "./page.js";
+import { identify, __resetIdentity } from "./identify.js";
+import { startPageViews, __resetPageViews } from "./page-views.js";
+import { __tapElements, setElementSink } from "./elements.js";
+import { __resetBatchState } from "./sinks/batch.js";
+import type { DifConfig, DifProps, TrackProps } from "./types.js";
 
 /** Public type of the `dif` export. Function call signature + method bag. */
 export interface DifFn {
@@ -24,6 +29,13 @@ export interface DifFn {
   init(config: DifInitConfig): void;
   /** Fire a metric event. */
   track(metric: string, opts?: TrackProps): void;
+  /** Send one page view. */
+  page(opts?: PageOptions): void;
+  /**
+   * Set the user id. Null clears it.
+   * Traits also send an identify event.
+   */
+  identify(userId: string | null, traits?: DifProps): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
@@ -43,15 +55,19 @@ function flush(): Promise<void> {
 
 function init(config: DifInitConfig): void {
   setState(config);
+  startPageViews(config.pageViews);
 }
 
 function configure(config: DifConfig | DifInitConfig): void {
   setState(config);
+  startPageViews((config as DifInitConfig).pageViews);
 }
 
 export const dif: DifFn = Object.assign(difCall, {
   init,
   track,
+  page,
+  identify,
   flush,
   setOverrides,
   getOverrides,
@@ -68,6 +84,11 @@ export function __reset(): void {
   __resetRegistry();
   __resetExposures();
   resetState();
+  setElementSink(null);
+  __tapElements(null);
+  __resetBatchState();
+  __resetIdentity();
+  __resetPageViews();
 }
 
 // SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)
@@ -94,12 +115,17 @@ export type {
   AudienceFn,
   DifConfig,
   DifInitConfig,
+  DifProps,
+  DifPropValue,
   EventsConfig,
   ExperimentSpec,
   ExposureEvent,
+  IdentifyEvent,
   MetricEvent,
+  PageEvent,
   Sink,
   TrackProps,
   UserIdFn,
 } from "./types.js";
+export type { PageOptions } from "./page.js";
 export { cloudSink, cloudTrack } from "./sinks/cloud.js";

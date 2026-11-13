@@ -38,6 +38,9 @@ import { difAdapter } from "@dif.sh/flags-sdk";
 - `difAdapter.isEnabled()` resolves to `true` when the assigned variant is not the first declared variant. `difAdapter.isEnabled({ on: "variant_b" })` resolves to `true` only for `variant_b`.
 - `difAdapter.identify` reads `userId` from the `dif_uid` cookie.
 
+This adapter does not send page views. Add the dif tracking script to the page,
+or call `dif.page()` from `@dif.sh/sdk` in the client.
+
 Use `createDifAdapter` to change the defaults:
 
 ```ts

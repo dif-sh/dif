@@ -2,6 +2,8 @@
 // Kept in their own file so customer code can import them without dragging
 // in the runtime.
 
+import type { IdentifyElement, PageElement } from "./elements.js";
+
 /** A user-id resolver. Returns null when no user is identified. */
 export type UserIdFn = () => string | null;
 
@@ -41,15 +43,27 @@ export interface DifConfig {
  *   via `dif connect` / `dif init --key`, so no env var is needed. An explicit
  *   top-level `publishableKey` on `dif.init` still overrides it.
  * - `custom`: the SDK calls your handlers — author them in
- *   `dif/events/exposure.ts` and `dif/events/track.ts`.
+ *   `dif/events/exposure.ts` and `dif/events/track.ts`. Page views and
+ *   identify go to the optional `dif/events/page.ts` and `identify.ts`.
+ *
+ * `ingestUrl` is where `/v1/batch` goes. `dif build` emits it only when
+ * `events.ingest_url` is set in `dif/config.yaml`.
  */
 export type EventsConfig =
-  | { mode: "cloud"; apiUrl?: string; publishableKey?: string }
+  | { mode: "cloud"; apiUrl?: string; publishableKey?: string; ingestUrl?: string }
   | {
       mode: "custom";
       exposure: (event: ExposureEvent) => void;
       track: (event: MetricEvent) => void;
+      page?: (event: PageEvent) => void;
+      identify?: (event: IdentifyEvent) => void;
+      ingestUrl?: string;
     };
+
+/** A page view element, as `dif.page()` builds it. */
+export type PageEvent = PageElement;
+/** An identify element, sent only when `dif.identify()` has traits. */
+export type IdentifyEvent = IdentifyElement;
 
 /** Configuration passed to `dif.init(...)`. Superset of {@link DifConfig}. */
 export interface DifInitConfig {
@@ -74,6 +88,24 @@ export interface DifInitConfig {
   /** QA/preview forces (experiment id → variant). Usually populated from the
    *  `?_dif=` URL param / `_dif` cookie rather than set by hand. */
   overrides?: Record<string, string>;
+  /**
+   * `"auto"` sends page views at init and on SPA navigation.
+   * Defaults to `"off"`: every page view is billed.
+   */
+  pageViews?: "auto" | "off";
+  /**
+   * Cloud mode: `track()` with no user id goes to `ingestUrl`.
+   * Defaults to false: such tracks are dropped.
+   */
+  anonymous?: boolean;
+  /** Where page views go. Defaults to https://ingest.difdb.com. */
+  ingestUrl?: string;
+  /**
+   * `true` when `userId` returns an id the app minted for a visitor,
+   * such as a cookie value, and not a signed-in user. Page views then
+   * carry `anon: true`, so dif counts a visitor, not a known user.
+   */
+  anonymousUserId?: boolean;
 }
 
 /** Anything that can receive an exposure event. */
@@ -112,6 +144,12 @@ export interface ExposureEvent {
   /** SDK version, e.g. `"@dif.sh/sdk@0.6.0"`. */
   source: string;
 }
+
+/** A value in {@link DifProps}. dif-db keeps strings, numbers and booleans. */
+export type DifPropValue = string | number | boolean | null | DifProps | DifPropValue[];
+
+/** Properties for `page()` and `identify()`. dif-db flattens one level, as `a.b`. */
+export type DifProps = { [key: string]: DifPropValue };
 
 /** Optional properties on a `dif.track(metric, props)` call. */
 export interface TrackProps {

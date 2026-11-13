@@ -37,7 +37,10 @@ key into `dif/config.yaml`, and `dif build` bakes it into
 `dif/generated/events.ts`, so nothing secret is pasted into app code and no env
 var is needed. Get the key from your project's Settings → Keys tab in dif.sh
 Cloud; publishable keys are safe to embed in browser bundles (they can only
-write to `/v1/track` and `/v1/exposure` and are scoped by origin allowlist).
+write to `/v1/track`, `/v1/exposure` and `/v1/batch`, and are scoped by origin
+allowlist). A key used for page views needs a non-empty origin allowlist.
+Secret keys (`dif_live_…`, `dif_test_…`) are for servers only. They go in
+the `Authorization` header, and `/v1/batch` refuses one in the URL.
 
 Passing an explicit top-level `publishableKey` to `dif.init` still works and
 overrides the one baked into `events` — handy for per-environment keys.
@@ -253,6 +256,16 @@ retries](#batching-and-retries). `track()` resolves when the event is queued, so
 call `flush()` or `close()` before the process ends, or the last events can be
 lost. After `close()`, each `track()` is one request again.
 
+Page views from a server go through `page()`. It needs a `userId`, and the
+`url` must be an absolute http(s) URL. The SDK drops the fragment and keeps
+only the UTM params, `ref` and click-id names. It sends to
+`ingestUrl` (default `https://ingest.difdb.com`) at `/v1/batch`, one awaited
+request, or queued when `batch` is on. `track()` still goes to `apiUrl`.
+
+```ts
+await dif.page({ url: "https://example.com/pricing", userId: user.id });
+```
+
 Mint the secret key (`dif_live_…` / `dif_test_…`) in dif.sh Cloud under
 Settings → Keys → Server keys. Cloud shows it once. Never put it in a
 browser bundle: it writes events as the project. If one leaks, revoke it
@@ -280,6 +293,42 @@ import { DifProvider, useDif } from "@dif.sh/react";
 const { track } = useDif();
 useEffect(() => track("completed_checkout"), []);
 ```
+
+`useDif()` also returns `page` and `identify`. Pass `pageViews: "auto"` in
+`config` to send a page view on load and on each route change (Next.js App
+Router and React Router both use `history.pushState`).
+
+## Tracking script
+
+For site analytics without a build step, the package ships `dist/script.js`
+(also `@dif.sh/sdk/script.js`), at most 2,000 bytes gzipped. dif.sh Cloud
+serves it at `https://cdn.dif.sh/s/v1.js`; you can also host this file on
+your own origin.
+
+```html
+<script defer src="https://cdn.dif.sh/s/v1.js"
+        data-key="dif_pk_live_…"></script>
+```
+
+| Attribute | Default | Meaning |
+|---|---|---|
+| `data-key` | required | Publishable key |
+| `data-host` | `https://ingest.difdb.com` | Collector base URL |
+| `data-auto` | `true` | Send a page view on load and on SPA navigation |
+| `data-spa` | `history` | `history`, `hash` (`#/route` becomes the path) or `off` |
+| `data-domains` | none | Comma list of hostnames. Elsewhere the script sends nothing |
+| `data-user-id` | none | The signed-in user's id |
+| `data-consent` | `none` | `required`: hold up to 50 events until `dif.consent(true)` |
+| `data-respect-dnt` | `false` | `true`: send nothing under Do Not Track or Global Privacy Control |
+
+It adds `window.dif.page()`, `window.dif.track(name, props)`,
+`window.dif.identify(id | null, traits?)` and `window.dif.consent(bool)`, and
+does not replace a `window.dif` that is already there. A click on an element
+with `data-dif-event="signup"` sends a `signup` track, with the element's
+`data-dif-prop-*` attributes as props. The script sets no cookie and uses no
+storage. Each event is one request; a network error or a 5xx is tried once
+more after 2 seconds. With the script on the page, the SDK's
+`pageViews: "auto"` stays off, so page views are not counted twice.
 
 ## What this package does, what it doesn't
 

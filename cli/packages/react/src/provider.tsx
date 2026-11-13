@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { dif, syncOverrides, mountDifPreview } from "@dif.sh/sdk";
-import type { DifInitConfig, TrackProps } from "@dif.sh/sdk";
+import type { DifInitConfig, DifProps, PageOptions, TrackProps } from "@dif.sh/sdk";
 
 interface ExperimentFn {
   <V extends string, R>(id: string, branches: Record<V, () => R>): () => R;
@@ -20,6 +20,10 @@ export interface DifContextValue {
   track: (metric: string, opts?: TrackProps) => void;
   /** Experiment assignment — same signature as the bare `dif(...)` function. */
   exposure: ExperimentFn;
+  /** Send one page view. Needed only with `pageViews: "off"` or for a custom route. */
+  page: (opts?: PageOptions) => void;
+  /** Set the user id. Traits also send an identify event. */
+  identify: (userId: string, traits?: DifProps) => void;
 }
 
 const DifContext = createContext<DifContextValue | null>(null);
@@ -59,12 +63,14 @@ export function DifProvider({ config, children, allowOverrides, preview }: DifPr
     if (preview !== false) mountDifPreview();
   }, [allowOverrides, preview]);
 
-  // Stable identity: both functions close over module-level state, so consumers
+  // Stable identity: all functions close over module-level state, so consumers
   // of useDif() must not re-render just because the provider did.
   const value = useMemo<DifContextValue>(
     () => ({
       track: (metric, opts) => dif.track(metric, opts),
       exposure: ((id, branches) => dif(id, branches)) as ExperimentFn,
+      page: (opts) => dif.page(opts),
+      identify: (userId, traits) => dif.identify(userId, traits),
     }),
     [],
   );
@@ -72,7 +78,7 @@ export function DifProvider({ config, children, allowOverrides, preview }: DifPr
   return <DifContext.Provider value={value}>{children}</DifContext.Provider>;
 }
 
-/** Hook returning `{ track, exposure }`. Must be called inside `<DifProvider>`. */
+/** Hook returning `{ track, exposure, page, identify }`. Must be called inside `<DifProvider>`. */
 export function useDif(): DifContextValue {
   const ctx = useContext(DifContext);
   if (!ctx) {
