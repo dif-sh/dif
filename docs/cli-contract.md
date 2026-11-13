@@ -291,7 +291,7 @@ Each successful authenticated call slides `expires_at` to now + 90 days.
 Scope: `project:create`. The caller must be an org owner or admin. A paid plan is **not** required; the dashboard needs one.
 ```json
 // request
-{ "org": "acme", "name": "acme-shop", "repo_full_name": "acme/shop" }
+{ "org": "acme", "name": "acme-shop", "repo_full_name": "acme/shop", "project_type": ["marketing", "ecommerce"] }
 // 201
 {
   "slug": "acme-shop",
@@ -301,6 +301,8 @@ Scope: `project:create`. The caller must be an org owner or admin. A paid plan i
 }
 ```
 `repo_full_name` is optional and only a hint. The GitHub App install binds the repo; the hint does not.
+
+`project_type` is optional: the project categories from `dif/config.yaml` (`marketing`, `app`, `ecommerce`). The CLI leaves it out when the config has none. `dif init` and `dif connect --create` both send it.
 
 Errors: `org_not_found` (404, also for an org the caller is not in) and `forbidden` (403, a member who is not owner or admin). `repo.github_install_url` can be `null` (see section 5).
 

@@ -20,7 +20,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 /// `dif connect` flags.
-#[derive(ClapArgs, Debug)]
+#[derive(ClapArgs, Debug, Clone)]
 pub struct Args {
     /// Publishable key (dif_pk_…) to write to dif/config.yaml.
     /// Without it, connect uses the dif auth login session.
@@ -47,17 +47,22 @@ pub struct Args {
     /// Name for --create. Defaults to the workspace folder name.
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Project categories sent when a project is created.
+    /// Read from dif/config.yaml or set by `dif init`. Not a flag.
+    #[arg(skip)]
+    pub project_type: Vec<String>,
 }
 
 /// The Cloud project that a logged-in connect selected.
 #[derive(Debug)]
-struct Link {
-    slug: String,
-    org: String,
-    created: bool,
-    key: String,
-    dashboard_url: String,
-    cloud_url: String,
+pub(crate) struct Link {
+    pub(crate) slug: String,
+    pub(crate) org: String,
+    pub(crate) created: bool,
+    pub(crate) key: String,
+    pub(crate) dashboard_url: String,
+    pub(crate) cloud_url: String,
     repo: Value,
 }
 
@@ -93,6 +98,10 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "app".to_string());
             let env = CloudEnv::from_process();
+            let args = Args {
+                project_type: workspace.config.project_type.clone().unwrap_or_default(),
+                ..args.clone()
+            };
             match link_project(&workspace.root, &args, &env, interactive, &folder) {
                 Ok(l) => (l.key.clone(), Some(l)),
                 Err(f) => return Ok(f.report(json)),
@@ -135,7 +144,7 @@ fn events_url(
     })
 }
 
-fn link_project(
+pub(crate) fn link_project(
     root: &Path,
     args: &Args,
     env: &CloudEnv,
@@ -221,6 +230,9 @@ fn link_project(
             let mut body = json!({ "org": org, "name": args.name.as_deref().unwrap_or(folder) });
             if let Some(repo) = &detected {
                 body["repo_full_name"] = json!(repo);
+            }
+            if !args.project_type.is_empty() {
+                body["project_type"] = json!(args.project_type);
             }
             let resp = client
                 .post("/v1/cli/projects", &body)
@@ -449,7 +461,48 @@ mod tests {
             project: None,
             create: false,
             name: None,
+            project_type: Vec::new(),
         }
+    }
+
+    fn create_body(project_type: Vec<String>) -> Value {
+        let server = FakeServer::start(|req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into()),
+            "/v1/cli/projects" => (
+                201,
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                ),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            project_type,
+            ..args()
+        };
+        link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        let requests = server.requests.lock().unwrap();
+        let create = requests
+            .iter()
+            .find(|r| r.method == "POST" && r.path == "/v1/cli/projects")
+            .expect("create request");
+        serde_json::from_str(&create.body).unwrap()
+    }
+
+    #[test]
+    fn creating_a_project_sends_its_categories() {
+        let body = create_body(vec!["marketing".into(), "ecommerce".into()]);
+        assert_eq!(body["project_type"], json!(["marketing", "ecommerce"]));
+        assert_eq!(body["name"], "shop");
+    }
+
+    #[test]
+    fn creating_a_project_without_categories_leaves_the_field_out() {
+        let body = create_body(Vec::new());
+        assert!(body.get("project_type").is_none());
     }
 
     fn env_with_token(url: Option<&str>) -> CloudEnv {

@@ -1,0 +1,41 @@
+# `dif init` dialog tree
+
+- **Before any question**
+  - `--agents-only` → refresh agent files only, then exit
+  - `--yes`, `--json` or not a terminal → no questions; use flags or defaults
+  - Run in your home folder → refuse, exit
+  - Existing `dif/config.yaml` → reuse its answers and skip those questions
+- **Intro:** logo, then "welcome to dif.sh! v0.8.0"
+- **Which features would you like to use?** Analytics, Flags, Experiments (all ticked)
+  - **Analytics unticked** → events go to Cloud with no key → *Framework*
+  - **Analytics ticked** → **Where should events go?**
+    - **Your own handlers** → creates `dif/events/` → *Framework*
+    - **dif.sh Cloud** → *Framework*, *Category*, then **Connect to dif.sh Cloud?** (below)
+- ***Framework:* Which framework does your app use?** pre-selected from `package.json`
+- ***Category:* What type of app are you building?** tick any, or none
+  - **Marketing**
+  - **Ecommerce**
+  - **Webapp**
+  - Saved as `project_type` in `dif/config.yaml`, for example `[marketing, ecommerce]`
+- **Connect to dif.sh Cloud?** (only with Analytics → dif.sh Cloud, new workspaces only; later, use `dif connect`)
+  - **Skip for now** → no key → *Write files*
+  - **Paste a publishable key**
+    - Valid `dif_pk_…` → key saved → *Write files*
+    - Invalid → error, ask again
+    - Empty → skipped → *Write files*
+  - **Sign in with your browser** (or **Use your dif.sh login** if already signed in)
+    - Not signed in → show code, open browser, wait for approval
+      - Approved → "Signed in as you@…"
+      - Denied, expired or failed → warning, no key → *Write files*
+    - Login expired → sign in again once
+    - **Which org?** (only if you're in more than one)
+    - **Which project?** existing projects, or Create a new project (sends the categories)
+      - Picked → "Linked org/project" → key saved → *Write files*
+      - Cancelled → "Run dif connect later" → *Write files*
+- **Write files**
+  - Files differ from what dif would write → list them, "Nothing was written", exit
+  - Files already match → "already up to date"
+  - New workspace → "Created your dif workspace" with a ✔ line per path
+- **Wrap-up:** "Added guidance for coding agents", then Next steps, then "You're all set"
+
+Press **Esc** at any question to cancel without writing anything.

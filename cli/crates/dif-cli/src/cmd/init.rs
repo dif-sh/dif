@@ -21,6 +21,7 @@
 //! stay at the repo root — those are editor/agent conventions, not dif content.
 
 use super::{validate_publishable_key, CmdError};
+use crate::cloud::DEFAULT_CLOUD_URL;
 use clap::{Args as ClapArgs, ValueEnum};
 use console::style;
 use dif_core::config::{EventsMode, Features, ProjectType};
@@ -101,6 +102,14 @@ pub struct Args {
     #[arg(long, value_delimiter = ',')]
     pub features: Option<Vec<String>>,
 
+    /// Cloud URL of the login that linked the project. Not a flag.
+    #[arg(skip)]
+    pub cloud_url: Option<String>,
+
+    /// Dashboard of the project that `dif init` linked. Not a flag.
+    #[arg(skip)]
+    pub dashboard_url: Option<String>,
+
     /// Accept the default for every prompt.
     #[arg(long)]
     pub yes: bool,
@@ -123,7 +132,7 @@ pub enum AgentTarget {
 }
 
 /// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum EventsModeArg {
     /// Built-in delivery to dif.sh Cloud.
     Cloud,
@@ -168,6 +177,9 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
         report_home_dir_refusal(json);
         return Ok(ExitCode::from(2));
     }
+    if !args.force {
+        reuse_existing_events(&cwd, &mut args);
+    }
     match ui::ask(&cwd, &mut args)? {
         Some(mode) => run_in(&cwd, args, mode, json),
         None => Ok(ExitCode::from(1)),
@@ -175,7 +187,37 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
 }
 
 /// Copy events settings from an existing config into unset flags.
-pub(crate) fn reuse_existing_events(_cwd: &Path, _args: &mut Args) {}
+/// A re-run then matches the files on disk and skips those questions.
+fn reuse_existing_events(cwd: &Path, args: &mut Args) {
+    let Ok(text) = std::fs::read_to_string(cwd.join(paths::CONFIG_FILE)) else {
+        return;
+    };
+    let Ok(config) = serde_yaml::from_str::<dif_core::config::Config>(&text) else {
+        return;
+    };
+    let events = config.events();
+    if args.events.is_none() {
+        args.events = Some(match events.mode {
+            EventsMode::Cloud => EventsModeArg::Cloud,
+            EventsMode::Custom => EventsModeArg::Custom,
+        });
+    }
+    if args.events == Some(EventsModeArg::Cloud) {
+        if args.key.is_none() {
+            args.key = events.key;
+        }
+        if args.cloud_url.is_none() {
+            args.cloud_url = events.url.filter(|u| u != DEFAULT_CLOUD_URL);
+        }
+    }
+    if args.features.is_none() {
+        args.features = Some(choices::feature_flag_values(config.features()));
+    }
+    // An empty list keeps the key out and skips the question.
+    if args.project_type.is_none() {
+        args.project_type = Some(config.project_type.unwrap_or_default());
+    }
+}
 
 /// The framework from `package.json` in `cwd`, or the plain SDK.
 fn detect_framework_in(cwd: &Path) -> Framework {
@@ -358,6 +400,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
                 &surface,
                 mode,
                 args.key.as_deref(),
+                args.cloud_url.as_deref().unwrap_or(DEFAULT_CLOUD_URL),
                 &project_type,
                 features,
             ),
@@ -465,6 +508,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         mode,
         framework,
         has_key: args.key.is_some(),
+        dashboard_url: args.dashboard_url.as_deref(),
         already_initialized,
         project_type: &project_type,
         features,
@@ -483,6 +527,7 @@ struct Summary<'a> {
     mode: EventsMode,
     framework: Framework,
     has_key: bool,
+    dashboard_url: Option<&'a str>,
     already_initialized: bool,
     project_type: &'a [ProjectType],
     features: Features,
@@ -774,15 +819,14 @@ fn default_config_yaml(
     surface: &str,
     mode: EventsMode,
     key: Option<&str>,
+    cloud_url: &str,
     project_type: &[ProjectType],
     features: Features,
 ) -> String {
     // The events block (comment + mapping) is rendered by dif-core so `dif init`
     // and `dif connect` stay byte-for-byte in agreement.
     let events_block = match mode {
-        EventsMode::Cloud => {
-            render_events_block(EventsMode::Cloud, Some("https://cloud.dif.sh"), key)
-        }
+        EventsMode::Cloud => render_events_block(EventsMode::Cloud, Some(cloud_url), key),
         EventsMode::Custom => render_events_block(EventsMode::Custom, None, None),
     };
     let project_type_block = if project_type.is_empty() {
@@ -1223,6 +1267,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -1252,6 +1297,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             Some("dif_pk_live_xyz"),
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -1268,6 +1314,7 @@ mod tests {
             "home",
             EventsMode::Custom,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -2222,6 +2269,8 @@ mod tests {
             no_agent_files: false,
             agents_only: false,
             framework: None,
+            cloud_url: None,
+            dashboard_url: None,
             project_type: None,
             features: None,
             yes: false,
@@ -2483,6 +2532,84 @@ mod tests {
     }
 
     #[test]
+    fn emitted_config_records_a_non_default_cloud_url() {
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            Some("dif_pk_live_xyz"),
+            "http://localhost:8787",
+            &[],
+            Features::default(),
+        );
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert_eq!(
+            config.events().url.as_deref(),
+            Some("http://localhost:8787")
+        );
+    }
+
+    #[test]
+    fn rerun_reuses_a_non_default_cloud_url() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let staging = Args {
+            key: Some("dif_pk_live_xyz".into()),
+            cloud_url: Some("http://localhost:8787".into()),
+            ..default_args()
+        };
+        run_in(tmp.path(), staging, EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.cloud_url.as_deref(), Some("http://localhost:8787"));
+    }
+
+    #[test]
+    fn rerun_with_default_cloud_url_leaves_it_unset() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(args.cloud_url.is_none());
+    }
+
+    #[test]
+    fn rerun_reuses_existing_project_type() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let shop = Args {
+            project_type: Some(vec!["ecommerce".into(), "marketing".into()]),
+            ..default_args()
+        };
+        run_in(tmp.path(), shop, EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.project_type,
+            Some(vec!["marketing".to_string(), "ecommerce".to_string()])
+        );
+    }
+
+    #[test]
+    fn rerun_without_project_type_skips_the_question() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.project_type, Some(vec![]));
+    }
+
+    #[test]
+    fn explicit_project_type_beats_the_existing_one() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let mut args = Args {
+            project_type: Some(vec!["app".into()]),
+            ..default_args()
+        };
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.project_type, Some(vec!["app".to_string()]));
+    }
+
+    #[test]
     fn rerun_reuses_custom_mode() {
         let tmp = tempfile::TempDir::new().unwrap();
         run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init");
@@ -2490,6 +2617,38 @@ mod tests {
         reuse_existing_events(tmp.path(), &mut args);
         assert!(matches!(args.events, Some(EventsModeArg::Custom)));
         assert!(args.key.is_none());
+    }
+
+    #[test]
+    fn rerun_reuses_existing_features() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let no_analytics = Args {
+            features: Some(vec!["flags".into(), "experiments".into()]),
+            ..default_args()
+        };
+        run_in(tmp.path(), no_analytics, EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.features,
+            Some(vec!["flags".to_string(), "experiments".to_string()])
+        );
+    }
+
+    #[test]
+    fn rerun_with_all_features_skips_the_features_prompt() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.features,
+            Some(vec![
+                "analytics".to_string(),
+                "flags".to_string(),
+                "experiments".to_string()
+            ])
+        );
     }
 
     #[test]
@@ -2640,6 +2799,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[ProjectType::App, ProjectType::Ecommerce],
             features,
         );
@@ -2658,6 +2818,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );

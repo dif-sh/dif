@@ -1,16 +1,32 @@
-//! What `dif init` asks for: products and the app framework.
+//! What `dif init` asks for: features and the app framework.
 //! Pure logic only; the prompts live in [`super::ui`].
 
 use clap::ValueEnum;
-use dif_core::config::EventsMode;
+use dif_core::config::Features;
 
-/// Opt-in products offered by the interactive product prompt.
+/// Opt-in features offered by the interactive features prompt.
+/// Each one is a key in the config `features` block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Product {
-    /// dif.sh Cloud: Pulse, Suggestions, History.
+pub enum Feature {
+    /// Exposure and metric events.
     Analytics,
-    /// Exposure and metric events sent to the user's own tool.
-    EventTracking,
+    /// Feature flags.
+    Flags,
+    /// A/B experiments.
+    Experiments,
+}
+
+impl Feature {
+    pub const ALL: [Feature; 3] = [Feature::Analytics, Feature::Flags, Feature::Experiments];
+
+    /// The `--features` value and config key.
+    pub fn flag_value(self) -> &'static str {
+        match self {
+            Feature::Analytics => "analytics",
+            Feature::Flags => "flags",
+            Feature::Experiments => "experiments",
+        }
+    }
 }
 
 /// The app framework. Picks the adapter package in the install step.
@@ -60,16 +76,24 @@ impl Framework {
     }
 }
 
-/// Map the chosen products onto an events mode.
-///
-/// Analytics needs events in dif.sh Cloud, so it wins over custom
-/// handlers. No products keeps cloud with no key: nothing is sent.
-pub fn events_mode_for(products: &[Product]) -> EventsMode {
-    if !products.contains(&Product::Analytics) && products.contains(&Product::EventTracking) {
-        EventsMode::Custom
-    } else {
-        EventsMode::Cloud
+/// Map the chosen features onto the config `features` block.
+pub fn features_for(picked: &[Feature]) -> Features {
+    Features {
+        analytics: picked.contains(&Feature::Analytics),
+        flags: picked.contains(&Feature::Flags),
+        experiments: picked.contains(&Feature::Experiments),
     }
+}
+
+/// The `--features` values for `features`, in a fixed order.
+pub fn feature_flag_values(features: Features) -> Vec<String> {
+    let on = [features.analytics, features.flags, features.experiments];
+    Feature::ALL
+        .into_iter()
+        .zip(on)
+        .filter(|(_, enabled)| *enabled)
+        .map(|(f, _)| f.flag_value().to_string())
+        .collect()
 }
 
 /// Guess the framework from the text of a `package.json`.
@@ -102,25 +126,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn analytics_selects_cloud_events() {
-        assert_eq!(events_mode_for(&[Product::Analytics]), EventsMode::Cloud);
+    fn each_feature_maps_to_its_config_key() {
+        assert_eq!(features_for(&Feature::ALL), Features::default());
+        let f = features_for(&[Feature::Flags, Feature::Experiments]);
+        assert!(!f.analytics && f.flags && f.experiments);
+        let f = features_for(&[Feature::Analytics]);
+        assert!(f.analytics && !f.flags && !f.experiments);
+    }
+
+    #[test]
+    fn feature_flag_values_list_the_enabled_features() {
         assert_eq!(
-            events_mode_for(&[Product::Analytics, Product::EventTracking]),
-            EventsMode::Cloud
+            feature_flag_values(Features::default()),
+            ["analytics", "flags", "experiments"]
+        );
+        assert_eq!(
+            feature_flag_values(features_for(&[Feature::Flags, Feature::Experiments])),
+            ["flags", "experiments"]
         );
     }
 
     #[test]
-    fn event_tracking_alone_selects_custom_handlers() {
-        assert_eq!(
-            events_mode_for(&[Product::EventTracking]),
-            EventsMode::Custom
-        );
-    }
-
-    #[test]
-    fn no_products_keeps_keyless_cloud_default() {
-        assert_eq!(events_mode_for(&[]), EventsMode::Cloud);
+    fn feature_flag_values_round_trip_through_features_for() {
+        let picked = [Feature::Analytics, Feature::Experiments];
+        let names = feature_flag_values(features_for(&picked));
+        let back: Vec<Feature> = Feature::ALL
+            .into_iter()
+            .filter(|f| names.iter().any(|n| n == f.flag_value()))
+            .collect();
+        assert_eq!(back, picked);
     }
 
     #[test]
