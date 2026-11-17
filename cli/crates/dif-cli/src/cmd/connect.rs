@@ -44,7 +44,7 @@ pub struct Args {
     #[arg(long)]
     pub create: bool,
 
-    /// Name for --create. Defaults to the workspace folder name.
+    /// Name for --create. Defaults to `project:` in dif/config.yaml.
     #[arg(long)]
     pub name: Option<String>,
 
@@ -92,11 +92,8 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         Some(k) => (k, None),
         None => {
             let interactive = !json && Term::stderr().is_term() && std::io::stdin().is_terminal();
-            let folder = workspace
-                .root
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "app".to_string());
+            // Same name as `project:` in the config, set by dif init.
+            let folder = workspace.config.project.clone();
             let env = CloudEnv::from_process();
             let args = Args {
                 project_type: workspace.config.project_type.clone().unwrap_or_default(),

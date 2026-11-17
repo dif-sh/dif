@@ -96,6 +96,30 @@ pub fn feature_flag_values(features: Features) -> Vec<String> {
         .collect()
 }
 
+/// The `project:` name for dif/config.yaml and new Cloud projects.
+/// An existing config wins, so a re-run keeps its name.
+pub fn project_name(
+    config_yaml: Option<&str>,
+    package_json: Option<&str>,
+    folder: Option<&str>,
+) -> String {
+    let existing = config_yaml
+        .and_then(|text| serde_yaml::from_str::<dif_core::config::Config>(text).ok())
+        .map(|config| config.project);
+    let from_package = package_json
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .and_then(|pkg| pkg["name"].as_str().map(String::from))
+        .map(|name| match name.rsplit_once('/') {
+            Some((_, bare)) => bare.trim().to_string(),
+            None => name.trim().to_string(),
+        });
+    [existing, from_package, folder.map(String::from)]
+        .into_iter()
+        .flatten()
+        .find(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "project".to_string())
+}
+
 /// Guess the framework from the text of a `package.json`.
 /// Falls back to the plain SDK when nothing matches or parsing fails.
 pub fn detect_framework(package_json: &str) -> Framework {
@@ -155,6 +179,60 @@ mod tests {
             .filter(|f| names.iter().any(|n| n == f.flag_value()))
             .collect();
         assert_eq!(back, picked);
+    }
+
+    #[test]
+    fn project_name_prefers_the_package_json_name() {
+        let pkg = r#"{"name": "acme-site"}"#;
+        assert_eq!(project_name(None, Some(pkg), Some("project")), "acme-site");
+    }
+
+    #[test]
+    fn project_name_drops_the_npm_scope() {
+        let pkg = r#"{"name": "@acme/site"}"#;
+        assert_eq!(project_name(None, Some(pkg), Some("x")), "site");
+    }
+
+    #[test]
+    fn project_name_falls_back_to_the_folder() {
+        assert_eq!(project_name(None, None, Some("shop")), "shop");
+        assert_eq!(project_name(None, Some("not json"), Some("shop")), "shop");
+        assert_eq!(
+            project_name(None, Some(r#"{"private": true}"#), Some("shop")),
+            "shop"
+        );
+        assert_eq!(
+            project_name(None, Some(r#"{"name": "  "}"#), Some("shop")),
+            "shop"
+        );
+        assert_eq!(
+            project_name(None, Some(r#"{"name": "@acme/"}"#), Some("shop")),
+            "shop"
+        );
+    }
+
+    #[test]
+    fn project_name_has_a_last_resort() {
+        assert_eq!(project_name(None, None, None), "project");
+    }
+
+    #[test]
+    fn existing_config_keeps_its_project_name() {
+        let config = "project: old-folder\ndefault_surface: home\n";
+        let pkg = r#"{"name": "acme-site"}"#;
+        assert_eq!(
+            project_name(Some(config), Some(pkg), Some("x")),
+            "old-folder"
+        );
+    }
+
+    #[test]
+    fn broken_existing_config_is_ignored() {
+        let pkg = r#"{"name": "acme-site"}"#;
+        assert_eq!(
+            project_name(Some(": : :"), Some(pkg), Some("x")),
+            "acme-site"
+        );
     }
 
     #[test]

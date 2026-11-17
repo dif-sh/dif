@@ -71,7 +71,7 @@ New flags (all optional):
 | `--framework` | one of `sdk`, `react`, `svelte`, `openfeature`, `flags-sdk` | Detected from `package.json` in the current folder; `sdk` when nothing matches |
 | `--yes` | – | Off. Accepts the default for every prompt. Implied by `--json` or a non-TTY. |
 
-Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
+Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. A new workspace takes its `project:` name from the `name` in `package.json` (without an `@scope/`), else the folder name. An existing config keeps its name. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
 
 Errors added: `usage` (exit 2) for an unknown value in `--project-type` or `--features`, or for an empty list.
 
@@ -197,7 +197,7 @@ When there is no `--key`, the command needs login. It writes the project's publi
 | `--org <slug>` | Org to use. Optional when the user has exactly one. |
 | `--project <slug>` | Link to an existing project. |
 | `--create` | Create a new project. Can't be combined with `--project`. |
-| `--name <name>` | Name for `--create`. The default is the workspace folder name. |
+| `--name <name>` | Name for `--create`. The default is `project:` in `dif/config.yaml`. |
 
 On a TTY with none of these flags, the CLI prompts. In JSON mode or on a non-TTY, it returns `needs_selection` so that the caller can ask the person:
 

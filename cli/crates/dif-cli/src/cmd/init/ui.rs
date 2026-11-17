@@ -251,10 +251,7 @@ fn sign_in(env: &CloudEnv) -> io::Result<Result<(), Failure>> {
 }
 
 fn link(cwd: &Path, env: &CloudEnv, init: &Args) -> Result<Link, Failure> {
-    let folder = cwd
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "app".to_string());
+    let name = super::project_name_in(cwd);
     let args = ConnectArgs {
         key: None,
         url: None,
@@ -264,7 +261,7 @@ fn link(cwd: &Path, env: &CloudEnv, init: &Args) -> Result<Link, Failure> {
         name: None,
         project_type: init.project_type.clone().unwrap_or_default(),
     };
-    link_project(cwd, &args, env, true, &folder)
+    link_project(cwd, &args, env, true, &name)
 }
 
 /// A spinner that covers the file writes.

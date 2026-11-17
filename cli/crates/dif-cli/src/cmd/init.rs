@@ -42,15 +42,13 @@ pub struct Args {
     #[arg(long)]
     pub surface: Option<String>,
 
-    /// How events are delivered: `cloud` (built-in dif.sh Cloud delivery) or
-    /// `custom` (you export exposure/track handlers in `dif/events/`). Omit to
-    /// be prompted on a TTY, or to default to cloud when non-interactive.
+    /// Where events go: `cloud` (dif.sh Cloud) or `custom` (your handlers in
+    /// `dif/events/`). Omit to be asked on a TTY, else defaults to cloud.
     #[arg(long, value_enum)]
     pub events: Option<EventsModeArg>,
 
-    /// Publishable key (dif_pk_…) from your dif.sh Cloud project. Implies cloud
-    /// events mode and writes the key into dif/config.yaml so the generated
-    /// client authenticates without an env var. Copy it from cloud onboarding.
+    /// Publishable key (dif_pk_…) for dif/config.yaml. Implies cloud events.
+    /// Omit on a TTY to sign in and pick or create a project instead.
     #[arg(long)]
     pub key: Option<String>,
 
@@ -93,12 +91,12 @@ pub struct Args {
     pub agents_only: bool,
 
     /// Kinds of project, comma-separated: `marketing`, `app`, `ecommerce`.
-    /// Omit to leave `project_type` out of dif/config.yaml.
+    /// Omit to be asked on a TTY, else left out of the config.
     #[arg(long, value_delimiter = ',')]
     pub project_type: Option<Vec<String>>,
 
     /// Enabled features, comma-separated: `analytics`, `flags`,
-    /// `experiments`. Omit to enable all three.
+    /// `experiments`. Omit to be asked on a TTY, else all three.
     #[arg(long, value_delimiter = ',')]
     pub features: Option<Vec<String>>,
 
@@ -110,7 +108,7 @@ pub struct Args {
     #[arg(skip)]
     pub dashboard_url: Option<String>,
 
-    /// Accept the default for every prompt.
+    /// Ask nothing and use the defaults. Implied by --json or a non-TTY.
     #[arg(long)]
     pub yes: bool,
 }
@@ -217,6 +215,16 @@ fn reuse_existing_events(cwd: &Path, args: &mut Args) {
     if args.project_type.is_none() {
         args.project_type = Some(config.project_type.unwrap_or_default());
     }
+}
+
+/// The project name for `cwd`. See [`choices::project_name`].
+fn project_name_in(cwd: &Path) -> String {
+    let read = |name: &str| std::fs::read_to_string(cwd.join(name)).ok();
+    choices::project_name(
+        read(paths::CONFIG_FILE).as_deref(),
+        read("package.json").as_deref(),
+        cwd.file_name().and_then(|s| s.to_str()),
+    )
 }
 
 /// The framework from `package.json` in `cwd`, or the plain SDK.
@@ -373,11 +381,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
 
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let framework = args.framework.unwrap_or_else(|| detect_framework_in(cwd));
-    let project = cwd
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("project")
-        .to_string();
+    let project = project_name_in(cwd);
 
     let mut dirs = vec![
         cwd.join(paths::EXPERIMENTS_ACTIVE),
@@ -2607,6 +2611,28 @@ mod tests {
         };
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(args.project_type, Some(vec!["app".to_string()]));
+    }
+
+    #[test]
+    fn rerun_after_adding_package_json_keeps_the_old_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let before = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
+
+        let code = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("rerun");
+        assert_eq!(code, ExitCode::from(0));
+        let after = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn fresh_init_names_the_project_from_package_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
+        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert!(config.contains("\nproject: acme-site\n"));
     }
 
     #[test]
