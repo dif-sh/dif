@@ -182,8 +182,21 @@ pub(crate) fn link_project(
     };
     let detected = detect_github_repo(root);
 
+    // Projects can exist with no org, but creating one needs an org.
+    let orgless = orgs.is_empty() && args.project.is_none();
+    let orgless_projects = if orgless {
+        let projects = list_projects(&client, None).map_err(fail)?;
+        if args.create || projects.is_empty() {
+            return Err(no_org(&session.cloud_url));
+        }
+        projects
+    } else {
+        Vec::new()
+    };
+
     let choice = match (&args.project, args.create, &org) {
         (Some(slug), _, _) => Some(Choice::Existing(slug.clone())),
+        _ if orgless && interactive => prompt_orgless(&orgless_projects),
         (None, true, Some(o)) => Some(Choice::Create(o.clone())),
         (None, true, None) if interactive => prompt_org(&orgs).map(Choice::Create),
         _ if interactive => prompt(&client, &orgs, org.clone()).map_err(fail)?,
@@ -265,6 +278,38 @@ pub(crate) fn link_project(
         cloud_url: base,
         repo,
     })
+}
+
+/// `org/slug`, or only the slug for a project with no org.
+pub(crate) fn project_label(org: &str, slug: &str) -> String {
+    if org.is_empty() {
+        slug.to_string()
+    } else {
+        format!("{org}/{slug}")
+    }
+}
+
+fn no_org(cloud_url: &str) -> Failure {
+    Failure::new(
+        "no_org",
+        2,
+        format!(
+            "your dif.sh login has no org, so dif can't create a project; \
+             create or join an org at {cloud_url}, then run dif connect"
+        ),
+    )
+}
+
+/// Pick from projects that have no org. `None` when cancelled.
+fn prompt_orgless(projects: &[Value]) -> Option<Choice> {
+    let slug = |v: &Value| v["slug"].as_str().unwrap_or_default().to_string();
+    let _ =
+        cliclack::log::remark("Your login has no org, so you can only link an existing project.");
+    let items: Vec<String> = projects
+        .iter()
+        .map(|p| format!("{} ({})", slug(p), p["repo"].as_str().unwrap_or("no repo")))
+        .collect();
+    pick("Which project?", &items).map(|i| Choice::Existing(slug(&projects[i])))
 }
 
 enum Choice {
@@ -487,6 +532,74 @@ mod tests {
             .find(|r| r.method == "POST" && r.path == "/v1/cli/projects")
             .expect("create request");
         serde_json::from_str(&create.body).unwrap()
+    }
+
+    fn no_org_server(projects: &'static str) -> FakeServer {
+        FakeServer::start(move |req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"user":{"email":"e"},"orgs":[]}"#.into()),
+            "/v1/cli/projects" => (200, projects.into()),
+            "/v1/cli/projects/niftic/key" => (
+                200,
+                format!(r#"{{"project_key":"{KEY}","repo":{{"status":"linked"}}}}"#),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        })
+    }
+
+    const ORGLESS: &str =
+        r#"{"projects":[{"slug":"niftic","name":"Niftic","org":null,"repo":"acme/site"}]}"#;
+
+    #[test]
+    fn no_orgs_and_no_projects_is_a_no_org_error() {
+        let server = no_org_server(r#"{"projects":[]}"#);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
+        assert_eq!((f.code, f.exit), ("no_org", 2));
+        assert!(f.message.contains("no org"), "{}", f.message);
+    }
+
+    #[test]
+    fn creating_with_no_orgs_is_a_no_org_error() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            ..args()
+        };
+        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
+        assert_eq!(f.code, "no_org");
+    }
+
+    #[test]
+    fn no_orgs_still_links_an_existing_project() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            project: Some("niftic".into()),
+            ..args()
+        };
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!((link.slug.as_str(), link.org.as_str()), ("niftic", ""));
+        assert_eq!(link.key, KEY);
+    }
+
+    #[test]
+    fn no_orgs_with_projects_still_needs_selection() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
+        assert_eq!(f.code, "needs_selection");
+        assert_eq!(f.to_json()["projects"][0]["slug"], "niftic");
+    }
+
+    #[test]
+    fn project_label_leaves_out_a_missing_org() {
+        assert_eq!(project_label("acme", "shop"), "acme/shop");
+        assert_eq!(project_label("", "niftic"), "niftic");
     }
 
     #[test]

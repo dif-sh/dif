@@ -8,7 +8,7 @@ use super::{
 };
 use crate::cloud::{CloudEnv, Failure, DEFAULT_CLOUD_URL};
 use crate::cmd::auth::{finish_login, open_browser, start_login};
-use crate::cmd::connect::{link_project, Args as ConnectArgs, Link};
+use crate::cmd::connect::{link_project, project_label, Args as ConnectArgs, Link};
 use cliclack::{StringCursor, Theme, ThemeState};
 use console::{style, Style, Term};
 use dif_core::config::{EventsMode, ProjectType};
@@ -161,7 +161,7 @@ fn connect_cloud(cwd: &Path, args: &mut Args) -> io::Result<()> {
         CloudStep::SignIn => match sign_in_and_link(cwd, &env, args)? {
             Ok(link) => {
                 let verb = if link.created { "Created" } else { "Linked" };
-                cliclack::log::success(format!("{verb} {}/{}", link.org, link.slug))?;
+                cliclack::log::success(format!("{verb} {}", project_label(&link.org, &link.slug)))?;
                 args.dashboard_url = Some(link.dashboard_url);
                 if link.cloud_url != DEFAULT_CLOUD_URL {
                     args.cloud_url = Some(link.cloud_url);

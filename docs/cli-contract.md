@@ -210,7 +210,7 @@ On a TTY with none of these flags, the CLI prompts. In JSON mode or on a non-TTY
 }
 ```
 
-`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing. `repo` is `null` for a project that has no repo yet. With `--create` and several orgs, the caller must add `--org <slug>`.
+`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing. `repo` is `null` for a project that has no repo yet. With `--create` and several orgs, the caller must add `--org <slug>`. With no orgs, `projects` lists the projects the login can see, which can have `org: null`.
 
 Success:
 
@@ -240,6 +240,7 @@ Success:
 |---|---|---|
 | `no_workspace` | 2 | No `dif/` here. This error is unchanged. |
 | `org_not_found` / `project_not_found` | 2 | An unknown slug was passed. |
+| `no_org` | 2 | The login has no org (`whoami` returns `orgs: []`), and there is no project to link, or `--create` was passed. Creating a project needs an org. Projects with `org: null` can still be linked with `--project <slug>`. |
 | `usage` | 2 | `--project` was combined with `--create`, or `--url` names a host other than the login's. |
 
 ---
