@@ -1264,7 +1264,7 @@ mod tests {
     #[test]
     fn scaffolds_agent_files_by_default() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1315,7 +1315,7 @@ mod tests {
     #[test]
     fn no_agent_files_flag_suppresses_them() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1348,7 +1348,7 @@ mod tests {
     #[test]
     fn cloud_mode_scaffolds_no_event_files() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1373,7 +1373,7 @@ mod tests {
     #[test]
     fn key_flag_writes_key_into_config() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1425,7 +1425,7 @@ mod tests {
     #[test]
     fn custom_mode_scaffolds_event_files() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1468,7 +1468,7 @@ mod tests {
         .unwrap();
 
         // A bare pre-existing CLAUDE.md must NOT block init (the bug we're fixing).
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1513,8 +1513,8 @@ mod tests {
             agents_only: false,
             ..default_args()
         };
-        run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
-        run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
+        let _ = run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("first");
+        let _ = run_in(tmp.path(), args(), EventsMode::Cloud, true).expect("second");
 
         let merged = std::fs::read_to_string(&claude).unwrap();
         assert_eq!(
@@ -1574,7 +1574,7 @@ mod tests {
         )
         .unwrap();
 
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1615,7 +1615,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("dif")).unwrap();
         std::fs::write(tmp.path().join("dif/config.yaml"), "project: x\n").unwrap();
 
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1704,7 +1704,7 @@ mod tests {
             None => std::env::remove_var("HOME"),
         }
 
-        result.expect("init --force should succeed even in $HOME");
+        let _ = result.expect("init --force should succeed even in $HOME");
         assert!(tmp.path().join("dif/config.yaml").exists());
     }
 
@@ -1772,7 +1772,7 @@ mod tests {
     #[test]
     fn agents_claude_only_writes_claude_files() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1800,7 +1800,7 @@ mod tests {
     #[test]
     fn agents_general_cursor_writes_those_only() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1830,7 +1830,7 @@ mod tests {
     #[test]
     fn agents_none_suppresses_all_agent_files() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -1861,7 +1861,7 @@ mod tests {
     #[test]
     fn agents_none_with_other_target_bails_without_writing() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 surface: None,
@@ -2126,7 +2126,7 @@ mod tests {
     #[test]
     fn claude_target_writes_triage_skill_and_cloud_references() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
         for rel in [
             ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
             ".claude/skills/dif-triage-experiments/SKILL.md",
@@ -2205,7 +2205,7 @@ mod tests {
     #[test]
     fn rerun_over_a_config_without_features_block_exits_zero() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+        let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
         let config = tmp.path().join(paths::CONFIG_FILE);
         assert!(!std::fs::read_to_string(&config)
             .unwrap()
@@ -2226,7 +2226,7 @@ mod tests {
     #[test]
     fn rerun_in_initialized_workspace_leaves_files_untouched() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+        let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
 
         // Backdate files dif would otherwise rewrite, so any write shows up as
         // an mtime change regardless of filesystem timestamp resolution.
@@ -2257,7 +2257,7 @@ mod tests {
     #[test]
     fn rerun_with_edited_owned_file_still_refuses() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
+        let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("first");
 
         let surface = tmp.path().join("dif/surfaces/home.md");
         std::fs::write(&surface, "# Surface: home\n\nHand-written description.\n").unwrap();
@@ -2282,7 +2282,7 @@ mod tests {
         )
         .unwrap();
 
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 agents: Some(vec![AgentTarget::Cursor]),
@@ -2371,7 +2371,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "Use pnpm, not npm.\n").unwrap();
 
-        run_in(
+        let _ = run_in(
             tmp.path(),
             Args {
                 agents: Some(vec![AgentTarget::Copilot]),
@@ -2421,7 +2421,7 @@ mod tests {
 
     fn init_workspace() -> tempfile::TempDir {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
         tmp
     }
 
@@ -2454,7 +2454,7 @@ mod tests {
         let existing = std::fs::read_to_string(&claude).unwrap();
         std::fs::write(&claude, format!("My notes.\n\n{existing}")).unwrap();
 
-        run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
+        let _ = run_agents_only(tmp.path(), agents_only_args(), true).expect("refresh");
 
         let after = std::fs::read_to_string(&claude).unwrap();
         assert!(after.starts_with("My notes."));
@@ -2483,7 +2483,7 @@ mod tests {
             ..agents_only_args()
         };
 
-        run_agents_only(tmp.path(), args, true).expect("refresh");
+        let _ = run_agents_only(tmp.path(), args, true).expect("refresh");
 
         assert!(tmp.path().join("AGENTS.md").exists());
         assert_eq!(std::fs::read_to_string(&skill).unwrap(), "old skill");

@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "dif-cli"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "clap",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "dif-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "miette",

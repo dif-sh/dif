@@ -302,8 +302,9 @@ Router and React Router both use `history.pushState`).
 
 For site analytics without a build step, the package ships `dist/script.js`
 (also `@dif.sh/sdk/script.js`), at most 2,000 bytes gzipped. dif.sh Cloud
-serves it at `https://cdn.dif.sh/s/v1.js`; you can also host this file on
-your own origin.
+will serve it at `https://cdn.dif.sh/s/v1.js`. That CDN is not live yet, so
+for now host the file on your own origin, as described in
+[Hosting the script yourself](#hosting-the-script-yourself).
 
 ```html
 <script defer src="https://cdn.dif.sh/s/v1.js"
@@ -329,6 +330,56 @@ with `data-dif-event="signup"` sends a `signup` track, with the element's
 storage. Each event is one request; a network error or a 5xx is tried once
 more after 2 seconds. With the script on the page, the SDK's
 `pageViews: "auto"` stays off, so page views are not counted twice.
+
+### Hosting the script yourself
+
+Until `cdn.dif.sh` is live, serve the file from your own site. Only the script
+file moves; its events still go straight to `https://ingest.difdb.com`.
+
+1. Copy the file out of the package and put the version in its name, so it
+   can be cached for good:
+
+   ```sh
+   npm install @dif.sh/sdk@0.9.0
+   cp node_modules/@dif.sh/sdk/dist/script.js public/js/dif-0.9.0.js
+   ```
+
+   Without a Node project, `npm pack @dif.sh/sdk@0.9.0` downloads the package
+   as a tarball; the file is `package/dist/script.js` inside it.
+
+2. Load it with the same `data-*` attributes as above:
+
+   ```html
+   <script defer src="/js/dif-0.9.0.js"
+           data-key="dif_pk_live_…"
+           data-domains="example.com,www.example.com"></script>
+   ```
+
+   `data-key` is required. `data-domains` keeps local and preview hosts from
+   sending billed page views. Add `data-spa="hash"`, `data-user-id`,
+   `data-consent="required"` or `data-respect-dnt="true"` as your site needs
+   (see the table above). Leave `data-host` unset in production.
+
+3. If your site sends a Content Security Policy, allow the collector. The
+   script is on your own origin, so `'self'` covers it:
+
+   ```
+   script-src 'self';
+   connect-src 'self' https://ingest.difdb.com;
+   ```
+
+   Both `fetch` and `navigator.sendBeacon` fall under `connect-src`. If you set
+   `data-host`, list that origin instead. Once you move to the CDN, add
+   `https://cdn.dif.sh` to `script-src`.
+
+The publishable key must list your site in its allowed origins, and site
+analytics must be on for the project: the collector answers 403 otherwise, and
+the script then stops sending for that page load. Do not proxy the collector
+through your own domain. Every visitor would then arrive from your server's IP,
+so distinct visitors would merge and the per-IP limit would flag their events.
+
+To upgrade, copy the new version's file under its new name and change the
+`src`. A file you serve with a long cache must never change in place.
 
 ## What this package does, what it doesn't
 
