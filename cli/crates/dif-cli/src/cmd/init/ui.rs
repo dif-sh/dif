@@ -75,7 +75,7 @@ fn ask_inner(cwd: &Path, args: &mut Args) -> io::Result<EventsMode> {
         None => cliclack::select("Where should events go?")
             .item(
                 EventsMode::Cloud,
-                "dif.sh Cloud",
+                "dif analytics",
                 "lift, confidence and suggestions",
             )
             .item(
@@ -150,7 +150,7 @@ fn connect_cloud(cwd: &Path, args: &mut Args) -> io::Result<()> {
             "pick or create a project".to_string(),
         ),
     };
-    let step = cliclack::select("Connect to dif.sh Cloud?")
+    let step = cliclack::select("Connect to dif analytics?")
         .item(CloudStep::SignIn, label, hint)
         .item(CloudStep::Paste, "Paste a publishable key", "dif_pk_…")
         .item(CloudStep::Skip, "Skip for now", "run dif connect later")
@@ -221,7 +221,7 @@ fn sign_in(env: &CloudEnv) -> io::Result<Result<(), Failure>> {
         Err(f) => return Ok(Err(f)),
     };
     cliclack::note(
-        "Sign in to dif.sh Cloud",
+        "Sign in to dif analytics",
         format!(
             "Open {}\nand confirm the code {}",
             style(&pending.verification_uri_complete)
@@ -374,8 +374,8 @@ pub(super) fn report_collisions(progress: Progress, paths: &[String]) -> io::Res
 
 fn project_rows(s: &Summary) -> Vec<(String, String)> {
     let events = match (s.mode, s.has_key) {
-        (EventsMode::Cloud, true) => "events → dif.sh Cloud, key set",
-        (EventsMode::Cloud, false) => "events → dif.sh Cloud",
+        (EventsMode::Cloud, true) => "events → dif analytics, key set",
+        (EventsMode::Cloud, false) => "events → dif analytics",
         (EventsMode::Custom, _) => "events → your handlers",
     };
     let mut rows = vec![

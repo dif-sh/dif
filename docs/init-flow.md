@@ -10,14 +10,14 @@
   - **Analytics unticked** → events go to Cloud with no key → *Framework*
   - **Analytics ticked** → **Where should events go?**
     - **Your own handlers** → creates `dif/events/` → *Framework*
-    - **dif.sh Cloud** → *Framework*, *Category*, then **Connect to dif.sh Cloud?** (below)
+    - **dif analytics** → *Framework*, *Category*, then **Connect to dif analytics?** (below)
 - ***Framework:* Which framework does your app use?** pre-selected from `package.json`
 - ***Category:* What type of app are you building?** tick any, or none
   - **Marketing**
   - **Ecommerce**
   - **Webapp**
   - Saved as `project_type` in `dif/config.yaml`, for example `[marketing, ecommerce]`
-- **Connect to dif.sh Cloud?** (only with Analytics → dif.sh Cloud, new workspaces only; later, use `dif connect`)
+- **Connect to dif analytics?** (only with Analytics → dif analytics, new workspaces only; later, use `dif connect`)
   - **Skip for now** → no key → *Write files*
   - **Paste a publishable key**
     - Valid `dif_pk_…` → key saved → *Write files*

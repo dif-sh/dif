@@ -1,6 +1,6 @@
 # Testing `dif init` from this branch
 
-How to build the CLI from source and try the new `dif init` flow against the real dif.sh Cloud, by hand or with Claude Code. For the question order, see [init-flow.md](init-flow.md). For the JSON and Cloud API contract, see [cli-contract.md](cli-contract.md).
+How to build the CLI from source and try the new `dif init` flow against the real dif analytics, by hand or with Claude Code. For the question order, see [init-flow.md](init-flow.md). For the JSON and Cloud API contract, see [cli-contract.md](cli-contract.md).
 
 ## 1. Set up once
 
@@ -8,7 +8,7 @@ You need:
 
 - **Rust:** install with [rustup](https://rustup.rs), then open a new terminal or run `source "$HOME/.cargo/env"`.
 - **Node 20 or later:** only for the SDK tests.
-- **A dif.sh Cloud account** at [cloud.dif.sh](https://cloud.dif.sh), in an org where you're an owner or admin, so you can create projects.
+- **A dif analytics account** at [cloud.dif.sh](https://cloud.dif.sh), in an org where you're an owner or admin, so you can create projects.
 
 Build the CLI from the repo root:
 
@@ -97,7 +97,7 @@ PATH="$DIF_BIN:$PATH" claude
 
 Then ask it what a real user would, for example:
 
-> Set up dif.sh feature flags and A/B testing in this repo. I want analytics connected to dif Cloud, so create a new Cloud project for it. It's our marketing site with a small shop.
+> Set up dif.sh feature flags and A/B testing in this repo. I want analytics connected to dif analytics, so create a new project for it. It's our marketing site with a small shop.
 
 Claude will show you a sign-in link and code. Approve it in your browser; it's waiting and carries on by itself.
 
@@ -112,7 +112,7 @@ Check that it:
 To run it headless and keep a transcript:
 
 ```sh
-PATH="$DIF_BIN:$PATH" claude -p "Set up dif.sh in this repo with analytics on dif Cloud. Create a new Cloud project. It's a marketing site with a small shop." \
+PATH="$DIF_BIN:$PATH" claude -p "Set up dif.sh in this repo with dif analytics. Create a new project. It's a marketing site with a small shop." \
   --output-format stream-json --verbose --max-turns 40 \
   --permission-mode acceptEdits \
   --allowedTools "Bash(dif:*)" "Bash(ls:*)" "Bash(cat:*)" "Read" "Glob" "Grep" \
