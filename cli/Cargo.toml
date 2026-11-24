@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/dif-sh/dif"
@@ -33,7 +33,7 @@ cliclack    = "0.5"
 ureq        = { version = "3", default-features = false, features = ["rustls"] }
 
 # Internal crate refs
-dif-core    = { path = "crates/dif-core", version = "0.8.0" }
+dif-core    = { path = "crates/dif-core", version = "0.9.0" }
 
 # Dev-only
 tempfile    = "3"

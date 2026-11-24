@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn writes_defaults_when_missing() {
         let tmp = TempDir::new().unwrap();
-        scaffold(tmp.path(), false, true).expect("scaffold");
+        let _ = scaffold(tmp.path(), false, true).expect("scaffold");
 
         let locale = tmp.path().join("dif/audiences/locale.ts");
         let device = tmp.path().join("dif/audiences/device_type.ts");
@@ -165,7 +165,7 @@ mod tests {
         let custom = "// user-authored\nexport default () => null;\n";
         fs::write(audiences_dir.join("locale.ts"), custom).unwrap();
 
-        scaffold(tmp.path(), false, true).expect("scaffold");
+        let _ = scaffold(tmp.path(), false, true).expect("scaffold");
 
         assert_eq!(
             fs::read_to_string(audiences_dir.join("locale.ts")).unwrap(),
@@ -182,7 +182,7 @@ mod tests {
         fs::create_dir_all(&audiences_dir).unwrap();
         fs::write(audiences_dir.join("locale.ts"), "old").unwrap();
 
-        scaffold(tmp.path(), true, true).expect("scaffold");
+        let _ = scaffold(tmp.path(), true, true).expect("scaffold");
 
         assert!(fs::read_to_string(audiences_dir.join("locale.ts"))
             .unwrap()

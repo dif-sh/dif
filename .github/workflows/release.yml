@@ -288,6 +288,96 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # -------------------------------------------------------------------------
+  # The CDN file comes from npm, so both copies are equal.
+  # A breaking script contract change needs v2.js, not v1.js.
+  # -------------------------------------------------------------------------
+  cdn-upload:
+    name: cdn upload (tracking script)
+    needs: npm-publish
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      BUCKET: dif-cdn
+      BASE: https://cdn.dif.sh/s
+      WRANGLER: wrangler@4.158.0
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: fetch script.js from npm
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          # The registry can lag behind the publish.
+          for i in 1 2 3 4 5 6; do
+            npm pack "@dif.sh/sdk@$version" --silent && break
+            sleep 10
+          done
+          tar xzf "dif.sh-sdk-$version.tgz"
+          test -s package/dist/script.js
+          sri="sha384-$(openssl dgst -sha384 -binary package/dist/script.js | openssl base64 -A)"
+          echo "SRI=$sri" >> "$GITHUB_ENV"
+
+      - name: upload versioned file
+        run: |
+          key="$BUCKET/s/$VERSION.js"
+          # Read R2, not the CDN, so no 404 goes into the cache.
+          if npx --yes "$WRANGLER" r2 object get "$key" --file existing.js --remote; then
+            if cmp -s existing.js package/dist/script.js; then
+              echo "$key already holds this build"
+              exit 0
+            fi
+            echo "::error::$key exists with different bytes; it is immutable"
+            exit 1
+          fi
+          npx --yes "$WRANGLER" r2 object put "$key" \
+            --file package/dist/script.js --remote \
+            --content-type "application/javascript; charset=utf-8" \
+            --cache-control "public, max-age=31536000, immutable"
+          curl -sf -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/purge_cache" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"files\":[\"$BASE/$VERSION.js\"]}"
+
+      - name: upload v1.js
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          npx --yes "$WRANGLER" r2 object put "$BUCKET/s/v1.js" \
+            --file package/dist/script.js --remote \
+            --content-type "application/javascript; charset=utf-8" \
+            --cache-control "public, max-age=3600"
+          curl -sf -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/purge_cache" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"files\":[\"$BASE/v1.js\"]}"
+
+      - name: verify
+        run: |
+          check() {
+            got="sha384-$(curl -sf "$1" | openssl dgst -sha384 -binary | openssl base64 -A)"
+            if [ "$got" != "$SRI" ]; then
+              echo "::error::$1 serves $got, want $SRI"
+              exit 1
+            fi
+          }
+          check "$BASE/$VERSION.js"
+          if [[ "$GITHUB_REF_NAME" != *-* ]]; then check "$BASE/v1.js"; fi
+          {
+            echo "### Tracking script on the CDN"
+            echo
+            echo "Set \`PINNED_SCRIPT\` in dif cloud (\`src/lib/site/snippet.ts\`) to:"
+            echo
+            echo '```ts'
+            echo "{ version: \"$VERSION\", integrity: \"$SRI\" }"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
   # Patch dist/homebrew-tap/Formula/dif.rb with the real SHA-256 of each
   # tarball we just released, then open a PR against main. main is a
   # protected branch (PRs + status checks required), so direct pushes from
