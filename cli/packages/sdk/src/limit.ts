@@ -13,8 +13,8 @@ export function warnIfEventLimit(status: number | null): boolean {
   if (!warned && typeof console !== "undefined") {
     warned = true;
     console.warn(
-      "[dif] dif.sh Cloud dropped events: this org reached its free monthly event limit. " +
-        "Events are dropped until you upgrade (dif.sh Cloud, Billing) or the month ends.",
+      "[dif] dif analytics dropped events: this org reached its free monthly event limit. " +
+        "Events are dropped until you upgrade (dif analytics, Billing) or the month ends.",
     );
   }
   return true;

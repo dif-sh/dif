@@ -37,7 +37,7 @@
 - [Using the CLI](#using-the-cli)
 - [Working with agents](#working-with-agents)
 - [Analytics](#analytics)
-- [dif.sh Cloud](#difsh-cloud)
+- [dif analytics](#dif-analytics)
 - [Development](#development)
 - [License](#license)
 
@@ -64,7 +64,7 @@ Then, in your repo:
 
 ```sh
 dif init                                # scaffold dif/, config, agent files
-dif connect --key dif_pk_live_...       # connect to dif.sh Cloud (optional)
+dif connect --key dif_pk_live_...       # connect to dif analytics (optional)
 dif new home-hero-cta --surface home    # draft an experiment file
 # open dif/experiments/active/home-hero-cta.md and set `status: active`
 dif validate                            # check everything
@@ -79,9 +79,9 @@ agent run the commands:
 | --- | --- | --- |
 | `dif-generate-surfaces` | *"Set up dif surfaces for this app"* | Reads your routes and pages, proposes the surface set, writes the files |
 | `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* | Drafts the frontmatter, picks weights, runs `dif validate` |
-| `dif-conclude-experiment` | *"Conclude checkout-cta-v2"* | Gets the result from dif.sh Cloud, writes the decision from its numbers, archives the file, logs the learning |
-| `dif-triage-experiments` | *"Triage my experiments"* | Reads the dif.sh Cloud overview, then ramps, turns off or concludes each experiment that needs action, one PR each |
-| `dif-connect-cloud` | *"Connect this repo to dif Cloud"* | Signs the CLI in with a browser code, links or creates the dif.sh Cloud project, writes its key, runs `dif build` |
+| `dif-conclude-experiment` | *"Conclude checkout-cta-v2"* | Gets the result from dif analytics, writes the decision from its numbers, archives the file, logs the learning |
+| `dif-triage-experiments` | *"Triage my experiments"* | Reads the dif analytics overview, then ramps, turns off or concludes each experiment that needs action, one PR each |
+| `dif-connect-cloud` | *"Connect this repo to dif analytics"* | Signs the CLI in with a browser code, links or creates the dif analytics project, writes its key, runs `dif build` |
 
 `dif new` drafts the file with your git email as owner. Open it, write the
 hypothesis, set `status: active`, and run `dif build`. Then install the
@@ -122,7 +122,7 @@ Full documentation lives at [www.dif.sh/docs](https://www.dif.sh/docs).
 | Command | What it does |
 | --- | --- |
 | `dif init` | Scaffold the dif.sh convention in the current directory. |
-| `dif connect` | Connect the workspace to dif.sh Cloud with a publishable key. |
+| `dif connect` | Connect the workspace to dif analytics with a publishable key. |
 | `dif new` | Draft a new experiment, informed by the surface's prior learnings. |
 | `dif validate` | Check the workspace: schema, owners, surface refs, exclusion graph. |
 | `dif build` | Compile active experiments into a typed TS client + context.json. |
@@ -260,7 +260,7 @@ the same failed idea does not get rebuilt by someone new in two years.
 `dif init` merges a managed block into `CLAUDE.md`, `AGENTS.md`, and
 `.github/copilot-instructions.md`, writes a Cursor project rule to
 `.cursor/rules/dif.mdc`, and installs Claude Code skills for authoring
-experiments, concluding them, triaging them from dif.sh Cloud results, and
+experiments, concluding them, triaging them from dif analytics results, and
 generating surfaces. `dif build` writes
 `dif/context.json`: every active experiment, plus the most recent learning on
 each surface. Re-running `dif init` is safe: when the files dif owns already
@@ -288,7 +288,7 @@ supports, without running `dif init` first:
 npx skills add dif-sh/dif
 ```
 
-The conclude and triage skills read results from dif.sh Cloud, through its
+The conclude and triage skills read results from dif analytics, through its
 MCP server at `https://cloud.dif.sh/mcp` (set up with a read token) or a read
 token in the `DIF_TOKEN` environment variable. The `dif` CLI itself makes no network calls. See
 [MCP and API](https://dif.sh/docs/mcp/).
@@ -302,12 +302,12 @@ gate the code path, and run `dif validate` to check its own work.
 
 You can run dif with no analytics at all. Assignment is local, so flags and
 ramps work with nothing configured. Cloud mode is opt-in too: without a
-publishable key, dif records nothing to Cloud until you run `dif connect`.
+publishable key, dif records nothing to dif analytics until you run `dif connect`.
 The SDK logs one console warning that exposures and `track()` will be dropped,
 and flags still evaluate.
 
-When you want more analysis, connect to dif.sh Cloud. Copy the command from
-cloud onboarding and run it in your repo:
+When you want more analysis, connect to dif analytics. Copy the command from
+dif analytics onboarding and run it in your repo:
 
 ```sh
 dif connect --key dif_pk_live_...   # writes the key to dif/config.yaml, turns on cloud mode
@@ -340,9 +340,9 @@ dif.track("completed_checkout");
 dif.track("revenue", { value: 49 });
 ```
 
-## dif.sh Cloud
+## dif analytics
 
-Cloud handles event ingest, metrics, and statistical analysis. It runs hosted
+dif analytics handles event ingest, metrics, and statistical analysis. It runs hosted
 at [cloud.dif.sh](https://cloud.dif.sh). Nothing in the core requires it — the
 files in your repo stay the source of truth.
 
