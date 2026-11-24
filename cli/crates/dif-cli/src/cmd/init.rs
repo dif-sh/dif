@@ -2527,7 +2527,10 @@ mod tests {
             key: Some("dif_pk_live_xyz".into()),
             ..default_args()
         };
-        run_in(tmp.path(), keyed, EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), keyed, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
 
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
@@ -2561,7 +2564,10 @@ mod tests {
             cloud_url: Some("http://localhost:8787".into()),
             ..default_args()
         };
-        run_in(tmp.path(), staging, EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), staging, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(args.cloud_url.as_deref(), Some("http://localhost:8787"));
@@ -2570,7 +2576,10 @@ mod tests {
     #[test]
     fn rerun_with_default_cloud_url_leaves_it_unset() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert!(args.cloud_url.is_none());
@@ -2583,7 +2592,10 @@ mod tests {
             project_type: Some(vec!["ecommerce".into(), "marketing".into()]),
             ..default_args()
         };
-        run_in(tmp.path(), shop, EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), shop, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(
@@ -2595,7 +2607,10 @@ mod tests {
     #[test]
     fn rerun_without_project_type_skips_the_question() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(args.project_type, Some(vec![]));
@@ -2604,7 +2619,10 @@ mod tests {
     #[test]
     fn explicit_project_type_beats_the_existing_one() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = Args {
             project_type: Some(vec!["app".into()]),
             ..default_args()
@@ -2616,7 +2634,10 @@ mod tests {
     #[test]
     fn rerun_after_adding_package_json_keeps_the_old_name() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let before = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
         std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
 
@@ -2630,7 +2651,10 @@ mod tests {
     fn fresh_init_names_the_project_from_package_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
         assert!(config.contains("\nproject: acme-site\n"));
     }
@@ -2638,7 +2662,10 @@ mod tests {
     #[test]
     fn rerun_reuses_custom_mode() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert!(matches!(args.events, Some(EventsModeArg::Custom)));
@@ -2652,7 +2679,10 @@ mod tests {
             features: Some(vec!["flags".into(), "experiments".into()]),
             ..default_args()
         };
-        run_in(tmp.path(), no_analytics, EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), no_analytics, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(
@@ -2664,7 +2694,10 @@ mod tests {
     #[test]
     fn rerun_with_all_features_skips_the_features_prompt() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert_eq!(
@@ -2680,7 +2713,10 @@ mod tests {
     #[test]
     fn explicit_flags_beat_existing_events_settings() {
         let tmp = tempfile::TempDir::new().unwrap();
-        run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init");
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init"),
+            ExitCode::from(0)
+        );
         let mut args = Args {
             events: Some(EventsModeArg::Cloud),
             ..default_args()
