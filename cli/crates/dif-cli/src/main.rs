@@ -27,9 +27,9 @@ struct Cli {
 enum Command {
     /// Scaffold the dif.sh convention in the current directory.
     Init(cmd::init::Args),
-    /// Connect the workspace to dif.sh Cloud.
+    /// Connect the workspace to dif analytics.
     Connect(cmd::connect::Args),
-    /// Sign in to dif.sh Cloud. Show or end the login.
+    /// Sign in to dif analytics. Show or end the login.
     Auth(cmd::auth::Args),
     /// Draft a new experiment, informed by the surface's prior learnings.
     New(cmd::new::Args),

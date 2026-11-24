@@ -44,12 +44,12 @@ impl ApiError {
             ApiError::Unreachable(msg) => Failure::new(
                 "cloud_unreachable",
                 1,
-                format!("could not reach dif.sh Cloud: {msg}"),
+                format!("could not reach dif analytics: {msg}"),
             ),
             ApiError::BadBody => Failure::new(
                 "cloud_error",
                 1,
-                "dif.sh Cloud returned a response the CLI can't read",
+                "dif analytics returned a response the CLI can't read",
             ),
             ApiError::Status {
                 status,
@@ -73,7 +73,7 @@ impl ApiError {
                     "cloud_error",
                     1,
                     format!(
-                        "dif.sh Cloud answered HTTP {status} ({})",
+                        "dif analytics answered HTTP {status} ({})",
                         code.as_deref().unwrap_or("no error code")
                     ),
                 ),

@@ -37,15 +37,15 @@ pub struct Args {
     #[arg(long)]
     pub surface: Option<String>,
 
-    /// How events are delivered: `cloud` (built-in dif.sh Cloud delivery) or
+    /// How events are delivered: `cloud` (built-in dif analytics delivery) or
     /// `custom` (you export exposure/track handlers in `dif/events/`). Omit to
     /// be prompted on a TTY, or to default to cloud when non-interactive.
     #[arg(long, value_enum)]
     pub events: Option<EventsModeArg>,
 
-    /// Publishable key (dif_pk_…) from your dif.sh Cloud project. Implies cloud
+    /// Publishable key (dif_pk_…) from your dif analytics project. Implies cloud
     /// events mode and writes the key into dif/config.yaml so the generated
-    /// client authenticates without an env var. Copy it from cloud onboarding.
+    /// client authenticates without an env var. Copy it from dif analytics onboarding.
     #[arg(long)]
     pub key: Option<String>,
 
@@ -114,7 +114,7 @@ pub enum AgentTarget {
 /// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum EventsModeArg {
-    /// Built-in delivery to dif.sh Cloud.
+    /// Built-in delivery to dif analytics.
     Cloud,
     /// User-authored handlers in `dif/events/{exposure,track}.ts`.
     Custom,
@@ -168,7 +168,7 @@ fn resolve_events_mode(
         None if no_prompt || !Term::stdout().is_term() => EventsMode::Cloud,
         None => {
             let items = [
-                "cloud — built-in delivery to dif.sh Cloud",
+                "cloud — built-in delivery to dif analytics",
                 "custom — you write exposure/track handlers in dif/events/",
             ];
             match Select::new()
