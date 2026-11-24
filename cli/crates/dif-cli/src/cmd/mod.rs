@@ -49,7 +49,7 @@ pub(crate) fn validate_publishable_key(raw: &str) -> Result<String, CmdError> {
             ));
         }
         return Err(CmdError::Other(
-            "not a publishable key — expected the dif_pk_… key from your dif.sh Cloud project",
+            "not a publishable key — expected the dif_pk_… key from your dif analytics project",
         ));
     }
     // Guard against truncated copy/pastes and placeholder text (`dif_pk_live_...`,
@@ -63,7 +63,7 @@ pub(crate) fn validate_publishable_key(raw: &str) -> Result<String, CmdError> {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
     if !complete {
         return Err(CmdError::Other(
-            "that isn't a complete publishable key — paste the exact dif_pk_… value from your dif.sh Cloud project (no placeholders)",
+            "that isn't a complete publishable key — paste the exact dif_pk_… value from your dif analytics project (no placeholders)",
         ));
     }
     Ok(key.to_string())

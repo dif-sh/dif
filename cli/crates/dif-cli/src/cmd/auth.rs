@@ -45,7 +45,7 @@ pub struct LoginArgs {
 
 #[derive(ClapArgs, Debug)]
 pub struct StatusArgs {
-    /// Ask dif.sh Cloud if the token is still valid.
+    /// Ask dif analytics if the token is still valid.
     #[arg(long)]
     pub verify: bool,
 }

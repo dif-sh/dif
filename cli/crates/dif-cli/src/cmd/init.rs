@@ -42,7 +42,7 @@ pub struct Args {
     #[arg(long)]
     pub surface: Option<String>,
 
-    /// Where events go: `cloud` (dif.sh Cloud) or `custom` (your handlers in
+    /// Where events go: `cloud` (dif analytics) or `custom` (your handlers in
     /// `dif/events/`). Omit to be asked on a TTY, else defaults to cloud.
     #[arg(long, value_enum)]
     pub events: Option<EventsModeArg>,
@@ -132,7 +132,7 @@ pub enum AgentTarget {
 /// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum EventsModeArg {
-    /// Built-in delivery to dif.sh Cloud.
+    /// Built-in delivery to dif analytics.
     Cloud,
     /// User-authored handlers in `dif/events/{exposure,track}.ts`.
     Custom,
