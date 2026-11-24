@@ -423,7 +423,7 @@ fn report_success(switched_from_custom: bool, link: Option<&Link>, json: bool) {
         return;
     }
     let check = style("✓").green().bold();
-    println!("{check} connected {config} to dif.sh Cloud");
+    println!("{check} connected {config} to dif analytics");
     if let Some(l) = link {
         let verb = if l.created { "created" } else { "linked" };
         println!("  {verb} project {} ({})", l.slug, l.dashboard_url);

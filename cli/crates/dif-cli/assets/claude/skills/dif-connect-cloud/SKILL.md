@@ -1,11 +1,11 @@
 ---
 name: dif-connect-cloud
-description: Connect a dif.sh workspace to dif cloud from the terminal. Signs the dif CLI in with a code the person approves in the browser, links or creates the dif cloud project, writes its publishable key into dif/config.yaml, shows the GitHub App install link and runs dif build. Use when the user wants to connect, link or set up dif cloud, log in or sign up to dif, send events to dif cloud, or mentions dif auth login, dif connect or needs_selection.
+description: Connect a dif.sh workspace to dif analytics from the terminal. Signs the dif CLI in with a code the person approves in the browser, links or creates the dif analytics project, writes its publishable key into dif/config.yaml, shows the GitHub App install link and runs dif build. Use when the user wants to connect, link or set up dif analytics, log in or sign up to dif, send events to dif analytics, or mentions dif cloud, dif auth login, dif connect or needs_selection.
 ---
 
-# Connecting to dif cloud
+# Connecting to dif analytics
 
-Use this skill to connect the `dif/` workspace in this repo to a dif cloud project. At the end, `dif/config.yaml` has `mode: cloud` and the project's publishable key under `events:`, and `dif build` has put the key into the generated client.
+Use this skill to connect the `dif/` workspace in this repo to a dif analytics project. At the end, `dif/config.yaml` has `mode: cloud` and the project's publishable key under `events:`, and `dif build` has put the key into the generated client.
 
 If the person gives you a publishable key (`dif_pk_...`), do not use the steps below. Run `dif connect --key <key> --json`, then `dif build`. That path needs no login and no network.
 
@@ -71,7 +71,7 @@ Add `--org <slug>` when `orgs` has more than one entry. A project whose `repo` i
 
 ## Step 5. Link the GitHub repo
 
-If `repo.status` is `"unlinked"`, show `repo.github_install_url` to the person. Tell them that dif cloud syncs the experiment files from the repo after they install the GitHub App. Events work before the install.
+If `repo.status` is `"unlinked"`, show `repo.github_install_url` to the person. Tell them that dif analytics syncs the experiment files from the repo after they install the GitHub App. Events work before the install.
 
 If `repo.status` is `"linked"`, there is nothing to do. Show `dashboard_url` in both cases.
 
@@ -100,4 +100,4 @@ This writes the key into `dif/generated/client.ts`. `dif connect` changed only `
 - Never print, ask for or write a token. The CLI keeps it in `~/.config/dif/credentials.json`.
 - Do not run `dif auth logout` unless the person asks.
 - Do not edit the `events:` block by hand. `dif connect` writes it.
-- Keep `DIF_CLOUD_URL` if the person set it. It points the CLI at a local or self-hosted dif cloud.
+- Keep `DIF_CLOUD_URL` if the person set it. It points the CLI at a local or self-hosted dif analytics.

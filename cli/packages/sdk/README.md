@@ -31,12 +31,12 @@ dif.init({
 });
 ```
 
-Connect the project once with the key from cloud onboarding — `dif connect
---key dif_pk_live_…` (or `dif init --key …` on a new project). That writes the
+Connect the project once with the key from dif analytics onboarding —
+`dif connect --key dif_pk_live_…` (or `dif init --key …` on a new project). That writes the
 key into `dif/config.yaml`, and `dif build` bakes it into
 `dif/generated/events.ts`, so nothing secret is pasted into app code and no env
-var is needed. Get the key from your project's Settings → Keys tab in dif.sh
-Cloud; publishable keys are safe to embed in browser bundles (they can only
+var is needed. Get the key from your project's Settings → Keys tab in dif
+analytics; publishable keys are safe to embed in browser bundles (they can only
 write to `/v1/track`, `/v1/exposure` and `/v1/batch`, and are scoped by origin
 allowlist). A key used for page views needs a non-empty origin allowlist.
 Secret keys (`dif_live_…`, `dif_test_…`) are for servers only. They go in
@@ -113,7 +113,7 @@ to accept.
 
 - An exposure fires when the entry is absent, expired, or names another
   variant. A reassignment still fires, so you can see it in the results.
-- The entry is written **only after the cloud answers 2xx** for the request
+- The entry is written **only after dif analytics answers 2xx** for the request
   that held the exposure. With [batching](#batching-and-retries) that is the
   batch, so the entry can follow the exposure by a few seconds. If the batch
   fails or the page closes first, nothing is written and the exposure fires
@@ -185,11 +185,12 @@ through one queue per endpoint (`/v1/exposure` and `/v1/track`).
   the same body, so the same `event_id`s. Browsers hide `Retry-After` from
   cross-origin responses unless the server lists it in
   `Access-Control-Expose-Headers`.
-- **Answers the SDK cannot read.** In the browser, dif cloud's 400, 401 and 503
-  answers carry no CORS headers, so a cross-origin page cannot read them. The
+- **Answers the SDK cannot read.** In the browser, the 400, 401 and 503
+  answers of dif analytics carry no CORS headers, so a cross-origin page
+  cannot read them. The
   `fetch` fails like a network error: the SDK sends the same body up to 3 more
   times and then drops the batch. This is why the checks before queueing
-  matter. The other answers of dif cloud (202, 403, 429 and 500) can be read.
+  matter. The other answers of dif analytics (202, 403, 429 and 500) can be read.
   Where the page can read a 4xx answer (for example `DifServer` on the same
   origin), it is not retried. A 400 for a batch that names the event drops that
   event and sends the rest. A 400 that names none sends the batch again in two
@@ -266,8 +267,8 @@ request, or queued when `batch` is on. `track()` still goes to `apiUrl`.
 await dif.page({ url: "https://example.com/pricing", userId: user.id });
 ```
 
-Mint the secret key (`dif_live_…` / `dif_test_…`) in dif.sh Cloud under
-Settings → Keys → Server keys. Cloud shows it once. Never put it in a
+Mint the secret key (`dif_live_…` / `dif_test_…`) in dif analytics under
+Settings → Keys → Server keys. dif analytics shows it once. Never put it in a
 browser bundle: it writes events as the project. If one leaks, revoke it
 in the same card and mint a new one.
 
@@ -300,16 +301,44 @@ Router and React Router both use `history.pushState`).
 
 ## Tracking script
 
-For site analytics without a build step, the package ships `dist/script.js`
-(also `@dif.sh/sdk/script.js`), at most 2,000 bytes gzipped. dif.sh Cloud
-will serve it at `https://cdn.dif.sh/s/v1.js`. That CDN is not live yet, so
-for now host the file on your own origin, as described in
-[Hosting the script yourself](#hosting-the-script-yourself).
+For site analytics without a build step, load the tracking script from
+`cdn.dif.sh`. It is the package's `dist/script.js` (also
+`@dif.sh/sdk/script.js`), at most 2,000 bytes gzipped.
 
 ```html
 <script defer src="https://cdn.dif.sh/s/v1.js"
         data-key="dif_pk_live_…"></script>
 ```
+
+`v1.js` gets each new stable release of the script, with a one-hour cache. A
+change that breaks the script's contract ships as `v2.js`, not in `v1.js`.
+
+To pin one version, load its file and check it with Subresource Integrity.
+Versioned files never change, so the hash stays valid:
+
+```html
+<script defer src="https://cdn.dif.sh/s/0.9.0.js"
+        integrity="sha384-6MrgwPHhCq0eFNXfC1QRFs2HjRSBOKmbgO0OMAcZQF+5VmEioFyomMnN0+X3yYas"
+        crossorigin="anonymous"
+        data-key="dif_pk_live_…"></script>
+```
+
+To upgrade a pinned script, change the version in `src` and the `integrity`
+hash together. For another version, compute the hash with:
+
+```sh
+curl -s https://cdn.dif.sh/s/<version>.js | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+If your site sends a Content Security Policy, allow the CDN and the collector:
+
+```
+script-src https://cdn.dif.sh;
+connect-src https://ingest.difdb.com;
+```
+
+Both `fetch` and `navigator.sendBeacon` fall under `connect-src`. If you set
+`data-host`, list that origin in `connect-src` instead.
 
 | Attribute | Default | Meaning |
 |---|---|---|
@@ -331,10 +360,16 @@ storage. Each event is one request; a network error or a 5xx is tried once
 more after 2 seconds. With the script on the page, the SDK's
 `pageViews: "auto"` stays off, so page views are not counted twice.
 
+The publishable key must list your site in its allowed origins, and site
+analytics must be on for the project: the collector answers 403 otherwise, and
+the script then stops sending for that page load. Do not proxy the collector
+through your own domain. Every visitor would then arrive from your server's IP,
+so distinct visitors would merge and the per-IP limit would flag their events.
+
 ### Hosting the script yourself
 
-Until `cdn.dif.sh` is live, serve the file from your own site. Only the script
-file moves; its events still go straight to `https://ingest.difdb.com`.
+You can also serve the file from your own site instead of the CDN. Only the
+script file moves; its events still go straight to `https://ingest.difdb.com`.
 
 1. Copy the file out of the package and put the version in its name, so it
    can be cached for good:
@@ -369,14 +404,7 @@ file moves; its events still go straight to `https://ingest.difdb.com`.
    ```
 
    Both `fetch` and `navigator.sendBeacon` fall under `connect-src`. If you set
-   `data-host`, list that origin instead. Once you move to the CDN, add
-   `https://cdn.dif.sh` to `script-src`.
-
-The publishable key must list your site in its allowed origins, and site
-analytics must be on for the project: the collector answers 403 otherwise, and
-the script then stops sending for that page load. Do not proxy the collector
-through your own domain. Every visitor would then arrive from your server's IP,
-so distinct visitors would merge and the per-IP limit would flag their events.
+   `data-host`, list that origin instead.
 
 To upgrade, copy the new version's file under its new name and change the
 `src`. A file you serve with a long cache must never change in place.
@@ -392,9 +420,9 @@ To upgrade, copy the new version's file under its new name and change the
 - One exposure event per `(experiment, user)` per page load, and in the
   browser with cloud delivery, once per 30 days until the variant changes.
   Delivered per the `events` config from `dif build`: cloud mode posts to
-  dif.sh Cloud, custom mode calls your `dif/events/exposure.ts` handler.
+  dif analytics, custom mode calls your `dif/events/exposure.ts` handler.
 - An `event_id` (UUIDv7) on every exposure and track.
-- Metric tracking (`dif.track`): to dif.sh Cloud in cloud mode, or your
+- Metric tracking (`dif.track`): to dif analytics in cloud mode, or your
   `dif/events/track.ts` handler in custom mode. Server tracking is cloud-only.
 
 - In the browser, batches events and retries failures (3 times, same body, same
@@ -403,7 +431,7 @@ To upgrade, copy the new version's file under its new name and change the
 **Does not:**
 - Buffer offline. After the retries fail, or when the page closes before a
   send, the event is gone.
-- Compute lift, p-values, or any analytics. That's the cloud's job.
+- Compute lift, p-values, or any analytics. That's the job of dif analytics.
 
 ## Preview & QA forcing
 
