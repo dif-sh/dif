@@ -548,7 +548,9 @@ mod tests {
             (_, "/v1/cli/whoami") => (200, r#"{"orgs":[]}"#.into()),
             ("POST", "/v1/cli/projects") => (
                 201,
-                format!(r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#),
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                ),
             ),
             (_, p) if p.starts_with("/v1/cli/projects") => (200, projects.into()),
             _ => (404, r#"{"error":"not_found"}"#.into()),
