@@ -1,6 +1,6 @@
 {
   "name": "create-dif",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Add dif.sh to an existing app: `npm create dif@latest` installs @dif.sh/cli and runs `dif init`.",
   "license": "MIT",
   "type": "module",
