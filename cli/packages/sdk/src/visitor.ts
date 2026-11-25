@@ -20,7 +20,7 @@ function readCookie(name: string): string | null {
     const all = (globalThis as { document?: { cookie?: string } }).document?.cookie ?? "";
     for (const part of all.split("; ")) {
       const i = part.indexOf("=");
-      if (part.slice(0, i) === name) return decodeURIComponent(part.slice(i + 1)) || null;
+      if (i >= 0 && part.slice(0, i) === name) return decodeURIComponent(part.slice(i + 1)) || null;
     }
   } catch {
     // An opaque origin throws on document.cookie.

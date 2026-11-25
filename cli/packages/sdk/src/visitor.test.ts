@@ -83,6 +83,23 @@ describe("anonymousUserId: true", () => {
     assert.equal(writes.length, 0);
   });
 
+  it("ignores a cookie part with no equals sign", () => {
+    installCookies();
+    const writes: string[] = [];
+    g.document = {
+      get cookie() {
+        return "dif_uidx";
+      },
+      set cookie(line: string) {
+        writes.push(line);
+      },
+    };
+    init({ anonymousUserId: true });
+    show();
+    assert.notEqual(exposures[0]?.user_id, "dif_uidx");
+    assert.equal(writes.length, 1);
+  });
+
   it("keeps one id across calls", () => {
     installCookies();
     init({ anonymousUserId: true });
