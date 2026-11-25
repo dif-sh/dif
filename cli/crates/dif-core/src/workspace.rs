@@ -72,6 +72,9 @@ pub enum WorkspaceError {
     /// `dif/config.yaml` was found but failed to parse.
     #[error("invalid dif/config.yaml: {0}")]
     Config(#[from] serde_yaml::Error),
+    /// A `build.ignore` glob in `dif/config.yaml` is not valid.
+    #[error("invalid build.ignore glob in dif/config.yaml: {0}")]
+    BadIgnore(String),
     /// Anything else.
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -124,8 +127,8 @@ impl Workspace {
     /// orphan refs.
     ///
     /// Scans `.ts`, `.tsx`, `.js`, `.jsx` files anywhere under `root`, skipping
-    /// well-known noise directories (`.git`, `node_modules`, `target`, `dist`,
-    /// `build`) and dif's own namespace (`dif/`).
+    /// hidden and gitignored paths, `build.ignore` globs, well-known noise
+    /// directories (`node_modules`, `target`, `dist`, `build`) and `dif/`.
     pub fn scan_call_sites(&mut self) -> Result<(), WorkspaceError> {
         let root = self.root.clone();
         // Word-boundary so `notdif(...)` doesn't match. Permissive on id chars
@@ -134,10 +137,22 @@ impl Workspace {
         let pattern =
             Regex::new(r#"\bdif\s*\(\s*"([a-zA-Z0-9][a-zA-Z0-9_-]*)""#).expect("static regex");
 
+        let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
+        for glob in &self.config.build.ignore {
+            overrides
+                .add(&format!("!{glob}"))
+                .map_err(|e| WorkspaceError::BadIgnore(e.to_string()))?;
+        }
+        let overrides = overrides
+            .build()
+            .map_err(|e| WorkspaceError::BadIgnore(e.to_string()))?;
+
         let mut sites = Vec::new();
         let root_for_filter = root.clone();
-        for entry in walkdir::WalkDir::new(&root)
-            .into_iter()
+        // Hidden and gitignored folders hold build output, not call sites.
+        for entry in ignore::WalkBuilder::new(&root)
+            .require_git(false)
+            .overrides(overrides)
             .filter_entry(move |e| {
                 if e.path() == root_for_filter {
                     return true;
@@ -145,15 +160,16 @@ impl Workspace {
                 let name = e.file_name().to_str().unwrap_or("");
                 !matches!(
                     name,
-                    paths::DIF_DIR | ".git" | "node_modules" | "target" | "dist" | "build"
+                    paths::DIF_DIR | "node_modules" | "target" | "dist" | "build"
                 )
             })
+            .build()
         {
             let entry = match entry {
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            if !entry.file_type().is_file() {
+            if !entry.file_type().is_some_and(|t| t.is_file()) {
                 continue;
             }
             let ext = entry
@@ -286,5 +302,49 @@ mod tests {
         assert!(ws.tracking_plan.is_none());
         let codes: Vec<_> = ws.parse_errors.iter().map(|d| d.code.as_str()).collect();
         assert_eq!(codes, ["E011"]);
+    }
+
+    fn scanned_ids(config: &str, files: &[(&str, &str)]) -> Vec<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let dif = dir.path().join("dif");
+        std::fs::create_dir_all(&dif).unwrap();
+        std::fs::write(dif.join("config.yaml"), config).unwrap();
+        for (path, body) in files {
+            let path = dir.path().join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let mut ws = Workspace::load(dir.path()).unwrap();
+        ws.scan_call_sites().unwrap();
+        ws.call_sites.into_iter().map(|c| c.experiment_id).collect()
+    }
+
+    const CONFIG: &str = "project: demo\ndefault_surface: web\n";
+
+    #[test]
+    fn scan_skips_gitignored_and_hidden_folders() {
+        let ids = scanned_ids(
+            CONFIG,
+            &[
+                (".gitignore", "out/\n"),
+                ("out/a.js", r#"dif("ignored")"#),
+                (".svelte-kit/b.js", r#"dif("hidden")"#),
+                ("src/c.ts", r#"dif("kept")"#),
+            ],
+        );
+        assert_eq!(ids, ["kept"]);
+    }
+
+    #[test]
+    fn scan_skips_paths_in_build_ignore() {
+        let config = "project: demo\ndefault_surface: web\nbuild:\n  ignore: [\"src/docs/**\"]\n";
+        let ids = scanned_ids(
+            config,
+            &[
+                ("src/docs/sample.ts", r#"dif("sample")"#),
+                ("src/app.ts", r#"dif("kept")"#),
+            ],
+        );
+        assert_eq!(ids, ["kept"]);
     }
 }

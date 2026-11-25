@@ -196,6 +196,9 @@ pub struct BuildConfig {
     /// If true, the generated files are committed to git. Default false.
     #[serde(default)]
     pub commit_generated: bool,
+    /// Globs, relative to the repo root, that the call-site scan skips.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignore: Vec<String>,
 }
 
 impl Default for BuildConfig {
@@ -204,6 +207,7 @@ impl Default for BuildConfig {
             out: default_out(),
             fail_on: default_fail_on(),
             commit_generated: false,
+            ignore: Vec::new(),
         }
     }
 }

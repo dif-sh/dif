@@ -23,6 +23,7 @@ miette      = { workspace = true }
 sha2        = { workspace = true }
 chrono      = { workspace = true }
 walkdir     = { workspace = true }
+ignore      = { workspace = true }
 regex       = { workspace = true }
 
 [dev-dependencies]

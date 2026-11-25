@@ -63,7 +63,7 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E011** — `dif/tracking-plan.yaml` invalid YAML or schema.
 - **E012** — Bad event name in the tracking plan (empty, over 128 bytes, leading `$`, whitespace or control characters).
 - **E013** — Duplicate event name in the tracking plan.
-- **W001** — Call site references an experiment that isn't active (warning).
+- **W001** — Call site references an experiment that isn't active (warning). The scan skips hidden and gitignored paths. Add more globs to `build.ignore` in `dif/config.yaml`.
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
