@@ -327,6 +327,57 @@ It revokes the calling token.
 { "revoked": true }
 ```
 
+### `POST /v1/cli/projects/:slug/site/setup`
+Scope: `site:manage`. The caller must be a project owner or admin.
+```json
+// request
+{ "env": "live", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "replace": false }
+// 200
+{ "env": "live", "prefix": "0123abcd", "key": "dif_pk_live_0123abcd_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+```
+`env` is `live` or `test` and is required. `allowed_origins` has 1 to 32 origins, each `scheme://host[:port]` with no path and no trailing slash. A test env accepts only localhost, 127.0.0.1, `[::1]`, `*.localhost` and `*.test`. `rate_limit_per_min` is optional (1 to 60000). `replace` is optional and defaults to `false`, which adds to the stored list. `key` is the full publishable key for `env`, or `null` only when the stored key text was not kept.
+
+### `POST /v1/cli/projects/:slug/site/install-check`
+Scope: `site:manage`. It opens the 10-minute check window.
+```json
+// request
+{ "env": "live" }
+// 202
+{ "env": "live", "window_ends_ms": 1764072000000 }
+```
+
+### `GET /v1/cli/projects/:slug/site/install-check?env=live`
+Scope: `events:read`.
+```json
+{
+  "env": "live",
+  "prefix": "0123abcd",
+  "status": "seen",
+  "accepted_last_hour": 3,
+  "last_accepted_ms": 1764071071000,
+  "last_origin": "https://example.com",
+  "pageviews_last_hour": 3,
+  "refused_last_hour": { "origin": 0, "gates": 0, "rate": 0, "bad_request": 0 },
+  "lines": ["3 events accepted in the last hour, last at 12:04:31, from https://example.com."]
+}
+```
+`status` is `seen`, `unknown_key`, `unavailable` or `error`. When it is not `seen`, `accepted_last_hour` and `pageviews_last_hour` are `null`. `pageviews_last_hour` can also be `null` when `seen`. A consumer must not read `null` as zero. `last_accepted_ms` and `last_origin` are `null` when nothing was accepted.
+
+### `GET /v1/cli/projects/:slug/events?since=24h`
+Scope: `events:read`.
+```json
+{
+  "since": "24h",
+  "events": [
+    { "name": "$pageview", "count": 120, "last_seen_ms": 1764068400000, "builtin": true },
+    { "name": "signup_completed", "count": 4, "last_seen_ms": 1764064800000, "builtin": false }
+  ]
+}
+```
+`since` is `1h`, `24h` (default) or `7d`. One row per event name seen in the window, sorted by `count` descending, then `name`. `last_seen_ms` is the start of the latest hour bucket with a count above 0. `builtin` is `true` when the name starts with `$`. The data is live data only; test-key events are not listed. When counts cannot be read, the route answers 503 `unavailable`, never an empty list.
+
+**Errors on the four new routes:** `{ "error": "<code>", "message": "…", "hint"?: "…" }`. The codes are `unauthenticated` (401), `missing_scope` (403), `project_not_found` (404), `not_project_manager` (403), `site_analytics_unavailable` (403), `site_not_set_up` (409), `bad_request` (400) and `unavailable` (503). The CLI accepts these and the shared auth errors below.
+
 **Shared auth errors:** `unauthorized` (401: a missing, malformed, revoked or expired token) and `forbidden` (403). The CLI maps them to `token_invalid` and `forbidden`.
 
 ---
@@ -344,6 +395,57 @@ The initializer can skip steps 2–3 and run `dif auth login` interactively with
 
 ---
 
+## 8. `dif site` and `dif events`
+
+These are cloud verbs. They need a login (`dif auth login`) and a `dif/` workspace. Each prints one JSON object with `--json` (section 1).
+
+**Project slug.** `--project <slug>`, else the project whose `repo` matches the git remote, else the only project the login can see, else `needs_selection` (exit 2, same shape as section 5).
+
+### `dif site setup --env <live|test> --origin <origin>… [--rate-limit <n>] [--replace] [--project <slug>]`
+`--origin` repeats, with at most 32 values. The CLI checks each origin before any request. Output is the route object plus `ok` and `project`. `key` is the full publishable key for `env`, or `null` for old keys whose text was not kept. In human mode the CLI prints it after the ✓ line. It never writes the key to a file.
+```json
+{ "ok": true, "project": "acme", "env": "live", "prefix": "0123abcd", "key": "dif_pk_live_0123abcd_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+```
+
+### `dif site check --env <live|test> [--wait <seconds>] [--project <slug>]`
+It opens the check window, then reads the result. With `--wait`, it polls every 10 seconds until events arrive or the time ends. Output is the install-check object plus `ok` and `project`. `null` counts stay `null`. If no events arrive before `--wait` ends, it still exits 0. Read `status` and the counts; the exit code does not say whether events arrived.
+
+### `dif events [--since <1h|24h|7d>] [--plan] [--project <slug>]`
+`--since` defaults to `24h`. Output has `ok`, `project`, `since` and `events`, with rows as the route sends them.
+```json
+{ "ok": true, "project": "acme", "since": "24h", "events": [{ "name": "$pageview", "count": 120, "last_seen_ms": 1764068400000, "builtin": true }] }
+```
+With `--plan`, the CLI compares against `dif/tracking-plan.yaml`:
+- Each row gets `in_plan: boolean`.
+- Each planned name with no row is added at the end, in plan order: `{ "name", "count": 0, "last_seen_ms": null, "builtin": false, "in_plan": true }`.
+- `missing` lists the planned names with count 0.
+
+### Exit codes and errors
+Exit 0 is success. Exit 2 is a usage or setup error. Exit 1 is a Cloud refusal or failure.
+
+| `error` | Exit | When |
+|---|---|---|
+| `no_workspace` | 2 | No `dif/` here. |
+| `not_logged_in` | 2 | No login. Run `dif auth login`. |
+| `token_invalid` | 2 | The token expired or was revoked. |
+| `needs_selection` | 2 | The project slug is unclear. Pass `--project`. |
+| `usage` | 2 | A bad `--origin`, too many origins, or a `--project` slug that is not letters, digits and `-`. |
+| `no_tracking_plan` | 2 | `--plan`, and `dif/tracking-plan.yaml` does not exist or is not valid. |
+| `missing_scope` | 2 | The token predates the new scopes. Run `dif auth login` again. |
+| `project_not_found` | 2 | No project with that slug for this login. |
+| `bad_request` | 2 | Cloud refused the request. |
+| `forbidden` | 1 | The token lacks the role or scope. |
+| `rate_limited` | 1 | Too many requests. Wait `retry_after` seconds. |
+| `cloud_unreachable` | 1 | The network call failed. This never means zero events. |
+| `not_project_manager` | 1 | Only a project owner or admin can change site settings. |
+| `site_analytics_unavailable` | 1 | Site analytics is not on for this project. |
+| `site_not_set_up` | 1 | No site key for this env. Run `dif site setup`. |
+| `cloud_error` | 1 | Cloud answered 503 `unavailable`. This never means zero events. |
+
+The six new Cloud error codes are `missing_scope`, `not_project_manager`, `site_analytics_unavailable`, `project_not_found`, `bad_request` and `site_not_set_up`. The CLI also maps `unauthorized` and `forbidden` as before.
+
+---
+
 ## Clarifications (2026-11-05, after the build)
 
 These tighten cases that v1 left open. None of them changes a name, a type or a documented meaning, so the version stays `cli-contract/1`.
@@ -356,3 +458,4 @@ These tighten cases that v1 left open. None of them changes a name, a type or a 
 - `dif auth status` with `source: "env"` omits `user` and `expires_at` without `--verify` (section 4).
 - `repo` can be `null`, `github_install_url` can be `null`, `--create` with several orgs needs `--org` (sections 5–7).
 - No paid plan is needed to create a project or read its key. Additive errors: `bad_request`, `project_not_found` on the key route (section 6).
+- 2026-11-25: `dif site setup`, `dif site check` and `dif events`, the four `/v1/cli/projects/:slug/…` routes, and six new error codes are additive under Change rule 1 (sections 6 and 8).

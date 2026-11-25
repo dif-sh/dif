@@ -6,6 +6,7 @@ import type { AttributeBag, ExperimentSpec } from "./types.js";
 import { bucket, selectVariant } from "./bucket.js";
 import { fireExposure } from "./exposure.js";
 import { getState } from "./config.js";
+import { gated } from "./consent.js";
 
 /** Experiment specs the generated file has registered. */
 const registry = new Map<string, ExperimentSpec>();
@@ -153,7 +154,8 @@ export function recordExposure(id: string, variant: string, bucket: number): voi
   if (!spec || !state || state.enabled === false) return;
   const userId = state.userId();
   if (userId === null) return;
-  fireExposure(spec, variant, userId, bucket, state.sinks);
+  const sinks = state.sinks;
+  gated(() => fireExposure(spec, variant, userId, bucket, sinks));
 }
 
 /**
@@ -267,7 +269,9 @@ function resolve<V extends string, R>(id: string, branches: Record<V, () => R>):
     result.bucket !== null &&
     userId !== null
   ) {
-    fireExposure(spec, result.variant, userId, result.bucket, state.sinks);
+    const { sinks } = state;
+    const { variant: shown, bucket: slot } = result;
+    gated(() => fireExposure(spec, shown, userId, slot, sinks));
   }
   return variant;
 }

@@ -131,6 +131,19 @@ to accept.
   fires an exposure. A bare `dif()` call with a `userId` set can still fire one,
   deduped per process only.
 
+## Consent
+
+Set `consent: "required"` to hold every event until the visitor answers.
+Page views, tracks and exposures wait, up to 50 events. Call
+`dif.consent(true)` to send them. `dif.consent(false)` drops them and
+all later events. Call `dif.consent()` after `dif.init`. An earlier call
+is ignored.
+
+```ts
+dif.init({ publishableKey, userId, consent: "required" });
+cmp.onChange((c) => dif.consent(c.analytics === true)); // your CMP callback
+```
+
 ## Event ids
 
 Every exposure and every `dif.track()` or `DifServer.track()` call carries an

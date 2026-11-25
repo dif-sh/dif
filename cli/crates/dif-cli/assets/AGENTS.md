@@ -41,6 +41,9 @@ dif/context.json                            agent-facing summary of active exper
 | `dif build` | Compile to `dif/generated/client.ts` + `dif/context.json`. Runs validate first. |
 | `dif qa --user <id>` | Trace a user's assignment chain (debugging). |
 | `dif conclude <id> --decision "<text>"` | One step: move to `concluded/`, fill the Decision block, append one line to the surface's Learnings log. |
+| `dif site setup` | Turn on site analytics for an environment and allow origins. The `dif-setup-analytics` skill runs this flow. |
+| `dif site check` | Check that site events arrive in dif analytics. |
+| `dif events` | List events received by dif analytics, to check that tracked events arrive. |
 
 Plus `dif scaffold-audiences` to pull in starter audience resolvers into an existing project.
 
@@ -57,11 +60,15 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E008** — Declared audience attribute missing its `dif/audiences/<name>.ts` resolver.
 - **E009** — Duplicate experiment id across `experiments/active/` and `experiments/concluded/`.
 - **E010** — Duplicate variant id within one experiment.
+- **E011** — `dif/tracking-plan.yaml` invalid YAML or schema.
+- **E012** — Bad event name in the tracking plan (empty, over 128 bytes, leading `$`, whitespace or control characters).
+- **E013** — Duplicate event name in the tracking plan.
 - **W001** — Call site references an experiment that isn't active (warning).
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
 - **W005** — Active experiment while `features.experiments` is false in `dif/config.yaml` (warning).
+- **W006** — Experiment metric not in `dif/tracking-plan.yaml` (warning; only when the file exists). A metric name that fails the E012 rule cannot be planned; its help says so and the warning is expected.
 
 ## Before drafting an experiment
 
@@ -84,5 +91,6 @@ Bad: `"Inconclusive."`
 - `.claude/skills/dif-triage-experiments/`: review every active experiment in the dif analytics overview, then ramp, turn off or conclude the ones that need action, with one PR per experiment in autonomous mode.
 - `.claude/skills/dif-connect-cloud/`: sign the CLI in to dif analytics, link or create the project, write its publishable key, then `dif build`.
 - `.claude/skills/dif-generate-surfaces/`: for fresh repos, read the app and propose the initial set of surfaces. Useful right after `dif init`, or when `dif new --surface X` fails because X doesn't exist yet.
+- `.claude/skills/dif-setup-analytics/`: install dif site analytics or SDK page views, plan and add events, and check that they arrive.
 - https://dif.sh/docs/mcp/: connect dif analytics with a read token, over MCP or as `DIF_TOKEN` for REST. The conclude and triage skills need one of them.
 - https://dif.sh/docs: full documentation.

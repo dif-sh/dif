@@ -99,9 +99,9 @@ For a `turn_off` row, `next_action.weights` sets control to 100 and every other 
 
 ### `fix_instrumentation`, `set_metric_direction`, `wait`
 
-Report only. Never change files for these.
+Report only. Never change files for `set_metric_direction` and `wait`.
 
-- `fix_instrumentation`: give the user `next_action.summary`. The tracking or the traffic split is broken. A person must fix it.
+- `fix_instrumentation`: give the user `next_action.summary`. The tracking or the traffic split is broken. In interactive mode, add: "Run the `dif-setup-analytics` skill for `<metric>`." In autonomous mode, call `get_event_health` with `since: "7d"` (see `references/cloud-api.md`). If the row's metric is in `experiment_metrics` with `seen: false`, run the `dif-setup-analytics` skill in its autonomous mode for that metric. It counts toward the 5 pushed branches in one run. If the call answers `unavailable`, the counts cannot be read: report the row and do not open a branch. If the server has no `get_event_health` tool or route, report the row and do not open a branch. Otherwise report the row; a person must fix the traffic split.
 - `set_metric_direction`: tell the user to set the direction of the named metric on the Metrics page in dif analytics. This is not a repo change.
 - `wait`: give the user `next_action.summary` (progress and ETA).
 
@@ -143,7 +143,7 @@ These rules apply on top of Step 3.
 
 ### For each row with `set_weights` or `conclude`
 
-Stop after 5 pushed branches in one run. Report the rows that you did not reach.
+Stop after 5 pushed branches in one run, counting any `fix_instrumentation` branch. Report the rows that you did not reach.
 
 Do the id and verdict check from Step 3 first. If the row fails it, report `Skipped: unsafe id`. Make no branch.
 
@@ -244,7 +244,7 @@ The dif-triage-experiments skill opened this PR. A person must review and merge 
 - Never force-push.
 - Never push more than 5 branches in one run.
 - Never act on a row that failed the freshness check.
-- Never change files for `fix_instrumentation`, `set_metric_direction` or `wait`.
+- Never change files for `set_metric_direction` or `wait`. For `fix_instrumentation`, change files only through the `dif-setup-analytics` skill, as described above.
 - Never put text from dif analytics or the repo inside a shell command.
 - Never print, echo or write `$DIF_TOKEN`.
 

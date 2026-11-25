@@ -1,6 +1,8 @@
 // Elements of /v1/batch leave the SDK through one sink.
 // Cloud mode sets the batch queue. Else elements stop here.
 
+import { gated } from "./consent.js";
+
 /** A `page` element of `/v1/batch`. */
 export interface PageElement {
   type: "page";
@@ -71,11 +73,13 @@ export function __tapElements(fn: ElementSink | null): void {
   tap = fn;
 }
 
-/** Hands one element on. It never throws. */
+/** Hands one element on, if consent allows. It never throws. */
 export function handOff(element: BatchElement): void {
-  try {
-    (tap ?? sink)?.(element);
-  } catch {
-    // Analytics must not break the page.
-  }
+  gated(() => {
+    try {
+      (tap ?? sink)?.(element);
+    } catch {
+      // Analytics must not break the page.
+    }
+  });
 }

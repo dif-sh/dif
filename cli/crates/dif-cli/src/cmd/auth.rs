@@ -2,13 +2,15 @@
 
 use super::CmdError;
 use crate::cloud::credentials::{PendingLogin, StoredCredential};
-use crate::cloud::{print_json, rejected, ApiError, Client, CloudEnv, Failure, Source};
+use crate::cloud::{
+    print_json, rejected, ApiError, Client, Clock, CloudEnv, Failure, RealClock, Source,
+};
 use clap::{Args as ClapArgs, Subcommand};
 use console::style;
 use serde_json::{json, Value};
 use std::io::IsTerminal;
 use std::process::ExitCode;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// `dif auth` flags.
 #[derive(ClapArgs, Debug)]
@@ -269,22 +271,6 @@ enum PollOutcome {
     Expired,
 }
 
-trait Clock {
-    fn now(&self) -> Instant;
-    fn sleep(&self, d: Duration);
-}
-
-struct RealClock;
-
-impl Clock for RealClock {
-    fn now(&self) -> Instant {
-        Instant::now()
-    }
-    fn sleep(&self, d: Duration) {
-        std::thread::sleep(d);
-    }
-}
-
 fn poll_for_token(
     client: &Client,
     device_code: &str,
@@ -388,6 +374,7 @@ mod tests {
     use crate::cloud::fake_server::FakeServer;
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
 
     /// Time moves only when the poll loop sleeps.
     struct FakeClock {

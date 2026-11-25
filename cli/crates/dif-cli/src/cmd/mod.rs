@@ -5,10 +5,13 @@ pub mod auth;
 pub mod build;
 pub mod conclude;
 pub mod connect;
+pub mod events;
 pub mod init;
 pub mod new;
+pub mod project;
 pub mod qa;
 pub mod scaffold_audiences;
+pub mod site;
 pub mod validate;
 
 /// Shared error type for the CLI layer. We deliberately keep this small —

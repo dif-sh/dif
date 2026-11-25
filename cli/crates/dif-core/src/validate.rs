@@ -14,11 +14,15 @@
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
 //! - `E009` duplicate experiment id across `active/` and `concluded/`
 //! - `E010` duplicate variant id within one experiment
+//! - `E011` tracking plan does not parse
+//! - `E012` tracking plan event name is invalid
+//! - `E013` tracking plan event name is duplicated
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 //! - `W003` legacy `exposure:` block (superseded by `events:`)
 //! - `W004` active experiment file's `status:` isn't `active`
 //! - `W005` active experiment while `features.experiments` is false
+//! - `W006` experiment metric missing from the tracking plan
 
 use crate::{
     diag::{Diagnostic, Report},
@@ -48,6 +52,7 @@ pub fn run(workspace: &Workspace) -> Report {
     experiments_disabled(workspace, &mut report);
     duplicate_experiment_ids(workspace, &mut report);
     duplicate_variant_ids(workspace, &mut report);
+    untracked_metrics(workspace, &mut report);
     sort_report(&mut report);
     report
 }
@@ -406,6 +411,39 @@ pub fn duplicate_variant_ids(workspace: &Workspace, report: &mut Report) {
     }
 }
 
+/// Warn when a live experiment's metric is not in the tracking plan.
+/// Runs only when the plan file exists.
+pub fn untracked_metrics(workspace: &Workspace, report: &mut Report) {
+    let Some(plan) = &workspace.tracking_plan else {
+        return;
+    };
+    for parsed in &workspace.active {
+        if !matches!(parsed.spec.status, Status::Draft | Status::Active) {
+            continue;
+        }
+        let metrics = &parsed.spec.metrics;
+        for name in std::iter::once(&metrics.primary).chain(metrics.guardrails.iter()) {
+            if plan.contains(name) {
+                continue;
+            }
+            let help = match crate::tracking_plan::name_problem(name) {
+                // The plan refuses this name, so the warning stays.
+                Some((problem, _)) => format!(
+                    "This name {problem}, so it cannot go in dif/tracking-plan.yaml. Expect this warning while the experiment uses this name."
+                ),
+                None => "Add it to dif/tracking-plan.yaml with the dif.track() call that sends it, or fix the spelling. The name must match exactly.".to_string(),
+            };
+            report.warnings.push(simple_error(
+                "W006",
+                format!("metric `{name}` is not in dif/tracking-plan.yaml"),
+                parsed,
+                workspace,
+                Some(&help),
+            ));
+        }
+    }
+}
+
 fn simple_error(
     code: &str,
     message: String,
@@ -499,6 +537,7 @@ mod tests {
             surfaces,
             audiences: vec![],
             call_sites: vec![],
+            tracking_plan: None,
             parse_errors: vec![],
         }
     }
@@ -1022,5 +1061,111 @@ created: 2026-01-01";
             .expect("E010");
         assert!(e.message.contains("control"));
         assert!(e.message.contains('2'));
+    }
+
+    fn plan_of(names: &[&str]) -> crate::tracking_plan::TrackingPlan {
+        let events: Vec<String> = names
+            .iter()
+            .map(|n| format!("  - name: {n}\n    kind: product"))
+            .collect();
+        serde_yaml::from_str(&format!("events:\n{}", events.join("\n")))
+            .expect("plan fixture parses")
+    }
+
+    fn w006(report: &Report) -> Vec<&Diagnostic> {
+        report
+            .warnings
+            .iter()
+            .filter(|d| d.code == "W006")
+            .collect()
+    }
+
+    #[test]
+    fn no_tracking_plan_no_w006() {
+        let ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        assert!(w006(&run(&ws)).is_empty());
+    }
+
+    #[test]
+    fn missing_primary_is_w006() {
+        let mut ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["other"]));
+        let report = run(&ws);
+        let found = w006(&report);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].message.contains("`m`"));
+    }
+
+    #[test]
+    fn missing_guardrail_is_w006() {
+        let yaml = VALID_FRONTMATTER.replace("primary: m", "primary: m\n  guardrails: [g]");
+        let mut ws = make_workspace(
+            vec![parse(&yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["m"]));
+        let report = run(&ws);
+        let found = w006(&report);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].message.contains("`g`"));
+    }
+
+    #[test]
+    fn planned_metrics_are_clean() {
+        let yaml = VALID_FRONTMATTER.replace("primary: m", "primary: m\n  guardrails: [g]");
+        let mut ws = make_workspace(
+            vec![parse(&yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["m", "g"]));
+        assert!(w006(&run(&ws)).is_empty());
+    }
+
+    #[test]
+    fn concluded_experiments_are_ignored() {
+        let mut ws = make_workspace(vec![], vec![make_surface("home")], empty_config());
+        ws.concluded = vec![parse(VALID_FRONTMATTER, "x")];
+        ws.tracking_plan = Some(plan_of(&["other"]));
+        assert!(w006(&run(&ws)).is_empty());
+    }
+
+    #[test]
+    fn unplannable_metric_w006_explains_name_rule() {
+        let yaml = VALID_FRONTMATTER.replace("primary: m", "primary: Signup Completed");
+        let mut ws = make_workspace(
+            vec![parse(&yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["other"]));
+        let report = run(&ws);
+        let found = w006(&report);
+        assert_eq!(found.len(), 1);
+        let help = found[0].help.as_deref().unwrap();
+        assert!(help.contains("cannot go in dif/tracking-plan.yaml"));
+        assert!(help.contains("whitespace"));
+        assert!(report.is_clean());
+    }
+
+    #[test]
+    fn w006_does_not_fail_validation() {
+        let mut ws = make_workspace(
+            vec![parse(VALID_FRONTMATTER, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["other"]));
+        let report = run(&ws);
+        assert!(report.is_clean());
     }
 }

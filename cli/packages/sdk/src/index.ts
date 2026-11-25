@@ -14,6 +14,7 @@ import {
   getState,
   type DifInitConfig,
 } from "./config.js";
+import { consent, __resetConsent } from "./consent.js";
 import { track } from "./track.js";
 import { page, type PageOptions } from "./page.js";
 import { identify, __resetIdentity } from "./identify.js";
@@ -36,6 +37,11 @@ export interface DifFn {
    * Traits also send an identify event.
    */
   identify(userId: string | null, traits?: DifProps): void;
+  /**
+   * Answer the consent gate set by `init({ consent: "required" })`.
+   * `true` sends held events. `false` drops them and later ones.
+   */
+  consent(granted: boolean): void;
   /** Sends queued events. Resolves when all are settled. */
   flush(): Promise<void>;
   /** Set the active QA/preview forces (experiment id → variant). `{}` clears. */
@@ -68,6 +74,7 @@ export const dif: DifFn = Object.assign(difCall, {
   track,
   page,
   identify,
+  consent,
   flush,
   setOverrides,
   getOverrides,
@@ -89,6 +96,7 @@ export function __reset(): void {
   __resetBatchState();
   __resetIdentity();
   __resetPageViews();
+  __resetConsent();
 }
 
 // SSR-safe assignment primitives — used by framework adapters (e.g. @dif.sh/svelte)

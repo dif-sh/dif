@@ -31,6 +31,10 @@ enum Command {
     Connect(cmd::connect::Args),
     /// Sign in to dif analytics. Show or end the login.
     Auth(cmd::auth::Args),
+    /// Set up and check dif site analytics.
+    Site(cmd::site::Args),
+    /// List the events dif analytics has seen.
+    Events(cmd::events::Args),
     /// Draft a new experiment, informed by the surface's prior learnings.
     New(cmd::new::Args),
     /// Check the workspace: schema, owners, surface refs, exclusion graph.
@@ -52,6 +56,8 @@ fn main() -> ExitCode {
         Command::Init(args) => cmd::init::run(args, json),
         Command::Connect(args) => cmd::connect::run(args, json),
         Command::Auth(args) => cmd::auth::run(args, json),
+        Command::Site(args) => cmd::site::run(args, json),
+        Command::Events(args) => cmd::events::run(args, json),
         Command::New(args) => cmd::new::run(args, json),
         Command::Validate(args) => cmd::validate::run(args, json),
         Command::Build(args) => cmd::build::run(args, json),

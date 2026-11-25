@@ -20,6 +20,7 @@ pub mod exclusion;
 pub mod parse;
 pub mod paths;
 pub mod spec;
+pub mod tracking_plan;
 pub mod validate;
 pub mod workspace;
 
@@ -28,6 +29,7 @@ pub use config::Config;
 pub use diag::{Diagnostic, Report};
 pub use parse::{ParsedExperiment, ParsedSurface};
 pub use spec::{Audience, Experiment, Status, Surface, Variant};
+pub use tracking_plan::TrackingPlan;
 pub use workspace::{CallSite, Workspace, WorkspaceError};
 
 /// Crate version, baked into generated artifacts so customers can audit drift.
