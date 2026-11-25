@@ -29,7 +29,7 @@ pub(super) fn is_interactive(json: bool) -> bool {
 }
 
 /// Print the intro, then ask what the flags left open.
-/// Fills `args.key` and `args.framework`. `None` means the user cancelled.
+/// `None` means the user cancelled.
 pub(super) fn ask(cwd: &Path, args: &mut Args) -> io::Result<Option<EventsMode>> {
     cliclack::set_theme(DifTheme);
     print_logo()?;
@@ -119,13 +119,19 @@ fn ask_inner(cwd: &Path, args: &mut Args) -> io::Result<EventsMode> {
         args.project_type = Some(picked.iter().map(|t| t.as_str().to_string()).collect());
     }
 
+    Ok(mode)
+}
+
+/// True when init should offer to connect to dif analytics.
+pub(super) fn wants_cloud_step(cwd: &Path, args: &Args, mode: EventsMode) -> bool {
     // A re-run that adds a key would clash with the old config.
     // `dif connect` adds a key to an existing workspace.
     let fresh = args.force || !cwd.join(paths::CONFIG_FILE).exists();
-    if fresh && wants_analytics && mode == EventsMode::Cloud && args.key.is_none() {
-        connect_cloud(cwd, args)?;
-    }
-    Ok(mode)
+    let wants_analytics = args
+        .features
+        .as_ref()
+        .is_some_and(|f| f.iter().any(|v| v == Feature::Analytics.flag_value()));
+    fresh && wants_analytics && mode == EventsMode::Cloud && args.key.is_none()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -137,7 +143,7 @@ enum CloudStep {
 
 /// Get a publishable key: by login and project pick, or by paste.
 /// A failed sign-in warns and goes on with no key.
-fn connect_cloud(cwd: &Path, args: &mut Args) -> io::Result<()> {
+pub(super) fn connect_cloud(cwd: &Path, args: &mut Args) -> io::Result<()> {
     let env = CloudEnv::from_process();
     let email = env
         .session()

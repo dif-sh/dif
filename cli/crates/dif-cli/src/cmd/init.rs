@@ -178,10 +178,18 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     if !args.force {
         reuse_existing_events(&cwd, &mut args);
     }
-    match ui::ask(&cwd, &mut args)? {
-        Some(mode) => run_in(&cwd, args, mode, json),
-        None => Ok(ExitCode::from(1)),
+    let Some(mode) = ui::ask(&cwd, &mut args)? else {
+        return Ok(ExitCode::from(1));
+    };
+    // Link a project only if the files can be written.
+    if ui::wants_cloud_step(&cwd, &args, mode) && !would_collide(&cwd, &args, mode) {
+        match ui::connect_cloud(&cwd, &mut args) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Ok(ExitCode::from(1)),
+            Err(e) => return Err(e.into()),
+        }
     }
+    run_in(&cwd, args, mode, json)
 }
 
 /// Copy events settings from an existing config into unset flags.
@@ -362,15 +370,15 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         return Ok(ExitCode::from(2));
     }
 
-    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+    let sel = match resolve_agents(args.agents.clone(), args.no_agent_files) {
         Ok(sel) => sel,
         Err(msg) => {
             report_usage_error(msg, json);
             return Ok(ExitCode::from(2));
         }
     };
-    let picks = resolve_project_type(args.project_type)
-        .and_then(|kinds| Ok((kinds, resolve_features(args.features)?)));
+    let picks = resolve_project_type(args.project_type.clone())
+        .and_then(|kinds| Ok((kinds, resolve_features(args.features.clone())?)));
     let (project_type, features) = match picks {
         Ok(picks) => picks,
         Err(msg) => {
@@ -381,7 +389,6 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
 
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
     let framework = args.framework.unwrap_or_else(|| detect_framework_in(cwd));
-    let project = project_name_in(cwd);
 
     let mut dirs = vec![
         cwd.join(paths::EXPERIMENTS_ACTIVE),
@@ -393,58 +400,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     if mode == EventsMode::Custom {
         dirs.push(cwd.join(paths::EVENTS_DIR));
     }
-    // Plain dif-owned files: the structural scaffold plus the dif-namespaced
-    // skill files. Written verbatim and guarded by the refuse-unless-`--force`
-    // collision check.
-    let mut plain_files: Vec<(PathBuf, String)> = vec![
-        (
-            cwd.join(paths::CONFIG_FILE),
-            default_config_yaml(
-                &project,
-                &surface,
-                mode,
-                args.key.as_deref(),
-                args.cloud_url.as_deref().unwrap_or(DEFAULT_CLOUD_URL),
-                &project_type,
-                features,
-            ),
-        ),
-        (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
-        (
-            cwd.join(paths::SURFACES_DIR).join(format!("{surface}.md")),
-            default_surface_md(&surface),
-        ),
-        (
-            cwd.join(paths::AUDIENCES_DIR).join("locale.ts"),
-            DEFAULT_LOCALE_TS.to_string(),
-        ),
-        (
-            cwd.join(paths::AUDIENCES_DIR).join("device_type.ts"),
-            DEFAULT_DEVICE_TYPE_TS.to_string(),
-        ),
-    ];
-    // Custom events mode scaffolds the two handler files the user owns, mirroring
-    // the audience resolvers above.
-    if mode == EventsMode::Custom {
-        plain_files.push((
-            cwd.join(paths::EVENTS_DIR).join("exposure.ts"),
-            DEFAULT_EXPOSURE_TS.to_string(),
-        ));
-        plain_files.push((
-            cwd.join(paths::EVENTS_DIR).join("track.ts"),
-            DEFAULT_TRACK_TS.to_string(),
-        ));
-    }
-    // The `.claude/skills/dif-*` files are Claude-only and written verbatim, so
-    // they're gated on the `claude` target alone.
-    if sel.claude {
-        plain_files.extend(agent_skill_files(cwd));
-    }
-    // Cursor's project rule is dif-namespaced (`.cursor/rules/dif.mdc`), so like
-    // the skills it's written verbatim and collision-guarded.
-    if sel.cursor {
-        plain_files.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
-    }
+    let plain_files = plain_files(cwd, &args, mode, sel, &project_type, features);
 
     // Shared agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
     // and a legacy .cursorrules) are co-owned with the user, so we never clobber
@@ -461,22 +417,16 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         .iter()
         .all(|(p, content)| file_matches(p, content));
     let progress = ui::is_interactive(json).then(ui::start_writing);
-    if !args.force {
-        let collisions: Vec<&Path> = plain_files
-            .iter()
-            .filter(|(p, content)| p.exists() && !file_matches(p, content))
-            .map(|(p, _)| p.as_path())
-            .collect();
-        if !collisions.is_empty() {
-            match progress {
-                Some(p) => {
-                    let rel: Vec<String> = collisions.iter().map(|c| relative(cwd, c)).collect();
-                    ui::report_collisions(p, &rel)?;
-                }
-                None => report_collisions(&collisions, json),
+    let collisions = collisions(&plain_files, args.force);
+    if !collisions.is_empty() {
+        match progress {
+            Some(p) => {
+                let rel: Vec<String> = collisions.iter().map(|c| relative(cwd, c)).collect();
+                ui::report_collisions(p, &rel)?;
             }
-            return Ok(ExitCode::from(2));
+            None => report_collisions(&collisions, json),
         }
+        return Ok(ExitCode::from(2));
     }
 
     let written = (|| -> Result<(), CmdError> {
@@ -522,6 +472,98 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         None => report_success(&summary, json),
     }
     Ok(ExitCode::from(0))
+}
+
+/// Plain dif-owned files: the structural scaffold plus the dif-namespaced
+/// skill files. Written verbatim and guarded by the collision check.
+fn plain_files(
+    cwd: &Path,
+    args: &Args,
+    mode: EventsMode,
+    sel: AgentSelection,
+    project_type: &[ProjectType],
+    features: Features,
+) -> Vec<(PathBuf, String)> {
+    let surface = args.surface.as_deref().unwrap_or("home");
+    let project = project_name_in(cwd);
+    let mut plain_files: Vec<(PathBuf, String)> = vec![
+        (
+            cwd.join(paths::CONFIG_FILE),
+            default_config_yaml(
+                &project,
+                surface,
+                mode,
+                args.key.as_deref(),
+                args.cloud_url.as_deref().unwrap_or(DEFAULT_CLOUD_URL),
+                project_type,
+                features,
+            ),
+        ),
+        (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
+        (
+            cwd.join(paths::SURFACES_DIR).join(format!("{surface}.md")),
+            default_surface_md(surface),
+        ),
+        (
+            cwd.join(paths::AUDIENCES_DIR).join("locale.ts"),
+            DEFAULT_LOCALE_TS.to_string(),
+        ),
+        (
+            cwd.join(paths::AUDIENCES_DIR).join("device_type.ts"),
+            DEFAULT_DEVICE_TYPE_TS.to_string(),
+        ),
+    ];
+    // Custom events mode scaffolds the two handler files the user owns, mirroring
+    // the audience resolvers above.
+    if mode == EventsMode::Custom {
+        plain_files.push((
+            cwd.join(paths::EVENTS_DIR).join("exposure.ts"),
+            DEFAULT_EXPOSURE_TS.to_string(),
+        ));
+        plain_files.push((
+            cwd.join(paths::EVENTS_DIR).join("track.ts"),
+            DEFAULT_TRACK_TS.to_string(),
+        ));
+    }
+    // The `.claude/skills/dif-*` files are Claude-only and written verbatim, so
+    // they're gated on the `claude` target alone.
+    if sel.claude {
+        plain_files.extend(agent_skill_files(cwd));
+    }
+    // Cursor's project rule is dif-namespaced (`.cursor/rules/dif.mdc`), so like
+    // the skills it's written verbatim and collision-guarded.
+    if sel.cursor {
+        plain_files.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
+    }
+    plain_files
+}
+
+/// Files that exist with other content. `--force` ignores them.
+fn collisions(files: &[(PathBuf, String)], force: bool) -> Vec<&Path> {
+    if force {
+        return Vec::new();
+    }
+    files
+        .iter()
+        .filter(|(p, content)| p.exists() && !file_matches(p, content))
+        .map(|(p, _)| p.as_path())
+        .collect()
+}
+
+/// True when `run_in` will refuse because files clash.
+/// Bad flag values give false, so `run_in` reports them.
+fn would_collide(cwd: &Path, args: &Args, mode: EventsMode) -> bool {
+    let Ok(sel) = resolve_agents(args.agents.clone(), args.no_agent_files) else {
+        return false;
+    };
+    let Ok(project_type) = resolve_project_type(args.project_type.clone()) else {
+        return false;
+    };
+    let Ok(features) = resolve_features(args.features.clone()) else {
+        return false;
+    };
+    let files = plain_files(cwd, args, mode, sel, &project_type, features);
+    !collisions(&files, args.force).is_empty()
 }
 
 /// What `dif init` did, for the success report.
@@ -615,7 +657,7 @@ fn run_agents_only(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdEr
         report_home_dir_refusal(json);
         return Ok(ExitCode::from(2));
     }
-    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+    let sel = match resolve_agents(args.agents.clone(), args.no_agent_files) {
         Ok(sel) if sel != AgentSelection::NONE => sel,
         Ok(_) => {
             report_usage_error("--agents-only needs at least one agent target", json);
@@ -2731,6 +2773,42 @@ mod tests {
         let mut args = default_args();
         reuse_existing_events(tmp.path(), &mut args);
         assert!(args.events.is_none() && args.key.is_none());
+    }
+
+    #[test]
+    fn clashing_file_without_config_blocks_the_cloud_step() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let surfaces = tmp.path().join(paths::SURFACES_DIR);
+        std::fs::create_dir_all(&surfaces).unwrap();
+        std::fs::write(surfaces.join("home.md"), "edited by hand").unwrap();
+        assert!(would_collide(
+            tmp.path(),
+            &default_args(),
+            EventsMode::Cloud
+        ));
+    }
+
+    #[test]
+    fn empty_folder_allows_the_cloud_step() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert!(!would_collide(
+            tmp.path(),
+            &default_args(),
+            EventsMode::Cloud
+        ));
+    }
+
+    #[test]
+    fn force_ignores_clashing_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let surfaces = tmp.path().join(paths::SURFACES_DIR);
+        std::fs::create_dir_all(&surfaces).unwrap();
+        std::fs::write(surfaces.join("home.md"), "edited by hand").unwrap();
+        let args = Args {
+            force: true,
+            ..default_args()
+        };
+        assert!(!would_collide(tmp.path(), &args, EventsMode::Cloud));
     }
 
     fn init_workspace() -> tempfile::TempDir {

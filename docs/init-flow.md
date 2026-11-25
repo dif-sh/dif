@@ -18,6 +18,7 @@
   - **Webapp**
   - Saved as `project_type` in `dif/config.yaml`, for example `[marketing, ecommerce]`
 - **Connect to dif analytics?** (only with Analytics → dif analytics, new workspaces only; later, use `dif connect`)
+  - Skipped when existing files would block the write, so no project is created
   - **Skip for now** → no key → *Write files*
   - **Paste a publishable key**
     - Valid `dif_pk_…` → key saved → *Write files*
