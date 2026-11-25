@@ -56,10 +56,11 @@ pub(crate) fn validate_publishable_key(raw: &str) -> Result<String, CmdError> {
     // `dif_pk_live_…`, or a bare `dif_pk_`): the remainder must be the key body
     // itself, not an ellipsis standing in for it.
     let remainder = &key["dif_pk_".len()..];
-    let complete = !remainder.is_empty()
+    // Key bodies can be base64url, so they can contain dashes.
+    let complete = remainder.chars().any(|c| c.is_ascii_alphanumeric())
         && remainder
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_');
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
     if !complete {
         return Err(CmdError::Other(
             "that isn't a complete publishable key — paste the exact dif_pk_… value from your dif analytics project (no placeholders)",
@@ -113,5 +114,19 @@ mod tests {
             validate_publishable_key("dif_pk_live_abc123").unwrap(),
             "dif_pk_live_abc123"
         );
+    }
+
+    #[test]
+    fn accepts_key_with_dashes() {
+        assert_eq!(
+            validate_publishable_key("dif_pk_test_Ab-3x_9-Qz").unwrap(),
+            "dif_pk_test_Ab-3x_9-Qz"
+        );
+    }
+
+    #[test]
+    fn rejects_key_of_only_dashes() {
+        assert!(validate_publishable_key("dif_pk_---").is_err());
+        assert!(validate_publishable_key("dif_pk_-_-").is_err());
     }
 }

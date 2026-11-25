@@ -21,14 +21,19 @@
 //! stay at the repo root — those are editor/agent conventions, not dif content.
 
 use super::{validate_publishable_key, CmdError};
+use crate::cloud::DEFAULT_CLOUD_URL;
 use clap::{Args as ClapArgs, ValueEnum};
-use console::{style, Term};
-use dialoguer::Select;
+use console::style;
 use dif_core::config::{EventsMode, Features, ProjectType};
 use dif_core::config_edit::render_events_block;
 use dif_core::paths;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+mod choices;
+mod ui;
+
+use choices::{detect_framework, Framework};
 
 /// `dif init` flags.
 #[derive(ClapArgs, Debug)]
@@ -37,17 +42,20 @@ pub struct Args {
     #[arg(long)]
     pub surface: Option<String>,
 
-    /// How events are delivered: `cloud` (built-in dif analytics delivery) or
-    /// `custom` (you export exposure/track handlers in `dif/events/`). Omit to
-    /// be prompted on a TTY, or to default to cloud when non-interactive.
+    /// Where events go: `cloud` (dif analytics) or `custom` (your handlers in
+    /// `dif/events/`). Omit to be asked on a TTY, else defaults to cloud.
     #[arg(long, value_enum)]
     pub events: Option<EventsModeArg>,
 
-    /// Publishable key (dif_pk_…) from your dif analytics project. Implies cloud
-    /// events mode and writes the key into dif/config.yaml so the generated
-    /// client authenticates without an env var. Copy it from dif analytics onboarding.
+    /// Publishable key (dif_pk_…) for dif/config.yaml. Implies cloud events.
+    /// Omit on a TTY to sign in and pick or create a project instead.
     #[arg(long)]
     pub key: Option<String>,
+
+    /// Your app framework. Picks the adapter package in the install step.
+    /// Omit to be asked on a TTY, or to detect it from package.json.
+    #[arg(long, value_enum)]
+    pub framework: Option<Framework>,
 
     /// Overwrite existing files. Off by default — refuses to clobber.
     #[arg(long)]
@@ -76,21 +84,31 @@ pub struct Args {
     /// Never changes dif/ content. Needs an existing workspace.
     #[arg(
         long,
-        conflicts_with_all = ["surface", "events", "key", "force", "project_type", "features"]
+        conflicts_with_all = [
+            "surface", "events", "key", "framework", "force", "project_type", "features"
+        ]
     )]
     pub agents_only: bool,
 
     /// Kinds of project, comma-separated: `marketing`, `app`, `ecommerce`.
-    /// Omit to leave `project_type` out of dif/config.yaml.
+    /// Omit to be asked on a TTY, else left out of the config.
     #[arg(long, value_delimiter = ',')]
     pub project_type: Option<Vec<String>>,
 
     /// Enabled features, comma-separated: `analytics`, `flags`,
-    /// `experiments`. Omit to enable all three.
+    /// `experiments`. Omit to be asked on a TTY, else all three.
     #[arg(long, value_delimiter = ',')]
     pub features: Option<Vec<String>>,
 
-    /// Accept the default for every prompt.
+    /// Cloud URL of the login that linked the project. Not a flag.
+    #[arg(skip)]
+    pub cloud_url: Option<String>,
+
+    /// Dashboard of the project that `dif init` linked. Not a flag.
+    #[arg(skip)]
+    pub dashboard_url: Option<String>,
+
+    /// Ask nothing and use the defaults. Implied by --json or a non-TTY.
     #[arg(long)]
     pub yes: bool,
 }
@@ -112,7 +130,7 @@ pub enum AgentTarget {
 }
 
 /// `--events` choices, mapped onto [`dif_core::config::EventsMode`].
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum EventsModeArg {
     /// Built-in delivery to dif analytics.
     Cloud,
@@ -141,47 +159,95 @@ pub fn run(mut args: Args, json: bool) -> Result<ExitCode, CmdError> {
     if let Some(raw) = &args.key {
         args.key = Some(validate_publishable_key(raw)?);
     }
-    // Fail on a bad value before the events prompt.
+    // Fail on a bad value before the prompts.
     if let Err(msg) = resolve_project_type(args.project_type.clone())
         .and_then(|_| resolve_features(args.features.clone()))
     {
         report_usage_error(&msg, json);
         return Ok(ExitCode::from(2));
     }
-    let mode = resolve_events_mode(args.events, args.key.is_some(), json || args.yes)?;
+    let mode = resolve_events_mode(args.events, args.key.is_some())?;
+    if args.yes || !ui::is_interactive(json) {
+        return run_in(&cwd, args, mode, json);
+    }
+    // Refuse before the questions, not after them.
+    if !args.force && is_home_dir(&cwd) {
+        report_home_dir_refusal(json);
+        return Ok(ExitCode::from(2));
+    }
+    if !args.force {
+        reuse_existing_events(&cwd, &mut args);
+    }
+    let Some(mode) = ui::ask(&cwd, &mut args)? else {
+        return Ok(ExitCode::from(1));
+    };
+    // Link a project only if the files can be written.
+    if ui::wants_cloud_step(&cwd, &args, mode) && !would_collide(&cwd, &args, mode) {
+        match ui::connect_cloud(&cwd, &mut args) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Ok(ExitCode::from(1)),
+            Err(e) => return Err(e.into()),
+        }
+    }
     run_in(&cwd, args, mode, json)
+}
+
+/// Copy events settings from an existing config into unset flags.
+/// A re-run then matches the files on disk and skips those questions.
+fn reuse_existing_events(cwd: &Path, args: &mut Args) {
+    let Ok(text) = std::fs::read_to_string(cwd.join(paths::CONFIG_FILE)) else {
+        return;
+    };
+    let Ok(config) = serde_yaml::from_str::<dif_core::config::Config>(&text) else {
+        return;
+    };
+    let events = config.events();
+    if args.events.is_none() {
+        args.events = Some(match events.mode {
+            EventsMode::Cloud => EventsModeArg::Cloud,
+            EventsMode::Custom => EventsModeArg::Custom,
+        });
+    }
+    if args.events == Some(EventsModeArg::Cloud) {
+        if args.key.is_none() {
+            args.key = events.key;
+        }
+        if args.cloud_url.is_none() {
+            args.cloud_url = events.url.filter(|u| u != DEFAULT_CLOUD_URL);
+        }
+    }
+    if args.features.is_none() {
+        args.features = Some(choices::feature_flag_values(config.features()));
+    }
+    // An empty list keeps the key out and skips the question.
+    if args.project_type.is_none() {
+        args.project_type = Some(config.project_type.unwrap_or_default());
+    }
+}
+
+/// The project name for `cwd`. See [`choices::project_name`].
+fn project_name_in(cwd: &Path) -> String {
+    let read = |name: &str| std::fs::read_to_string(cwd.join(name)).ok();
+    choices::project_name(
+        read(paths::CONFIG_FILE).as_deref(),
+        read("package.json").as_deref(),
+        cwd.file_name().and_then(|s| s.to_str()),
+    )
+}
+
+/// The framework from `package.json` in `cwd`, or the plain SDK.
+fn detect_framework_in(cwd: &Path) -> Framework {
+    std::fs::read_to_string(cwd.join("package.json"))
+        .map(|text| detect_framework(&text))
+        .unwrap_or(Framework::Sdk)
 }
 
 /// Decide the events mode. An explicit `--events` flag wins. A `--key` implies
 /// cloud (a key is meaningless for custom mode — that combination is a hard
-/// error). Otherwise, on an interactive terminal, prompt; in any non-interactive
-/// context (`--json`, `--yes`, piped stdin, CI) default to cloud rather than
-/// block on a prompt that can't be answered.
-fn resolve_events_mode(
-    flag: Option<EventsModeArg>,
-    has_key: bool,
-    no_prompt: bool,
-) -> Result<EventsMode, CmdError> {
-    let mode = match flag {
-        Some(m) => m.into(),
-        None if has_key => EventsMode::Cloud,
-        None if no_prompt || !Term::stdout().is_term() => EventsMode::Cloud,
-        None => {
-            let items = [
-                "cloud — built-in delivery to dif analytics",
-                "custom — you write exposure/track handlers in dif/events/",
-            ];
-            match Select::new()
-                .with_prompt("How should dif deliver events?")
-                .items(&items)
-                .default(0)
-                .interact_opt()
-            {
-                Ok(Some(1)) => EventsMode::Custom,
-                _ => EventsMode::Cloud,
-            }
-        }
-    };
+/// error). Otherwise default to cloud; on a TTY without `--yes`, the
+/// product prompt in [`ui::ask`] replaces this default.
+fn resolve_events_mode(flag: Option<EventsModeArg>, has_key: bool) -> Result<EventsMode, CmdError> {
+    let mode = flag.map_or(EventsMode::Cloud, Into::into);
     if has_key && mode == EventsMode::Custom {
         return Err(CmdError::Other(
             "--key only applies to cloud events; drop --key or pass --events cloud",
@@ -304,15 +370,15 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         return Ok(ExitCode::from(2));
     }
 
-    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+    let sel = match resolve_agents(args.agents.clone(), args.no_agent_files) {
         Ok(sel) => sel,
         Err(msg) => {
             report_usage_error(msg, json);
             return Ok(ExitCode::from(2));
         }
     };
-    let picks = resolve_project_type(args.project_type)
-        .and_then(|kinds| Ok((kinds, resolve_features(args.features)?)));
+    let picks = resolve_project_type(args.project_type.clone())
+        .and_then(|kinds| Ok((kinds, resolve_features(args.features.clone())?)));
     let (project_type, features) = match picks {
         Ok(picks) => picks,
         Err(msg) => {
@@ -322,11 +388,7 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     };
 
     let surface = args.surface.as_deref().unwrap_or("home").to_string();
-    let project = cwd
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("project")
-        .to_string();
+    let framework = args.framework.unwrap_or_else(|| detect_framework_in(cwd));
 
     let mut dirs = vec![
         cwd.join(paths::EXPERIMENTS_ACTIVE),
@@ -338,25 +400,109 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     if mode == EventsMode::Custom {
         dirs.push(cwd.join(paths::EVENTS_DIR));
     }
-    // Plain dif-owned files: the structural scaffold plus the dif-namespaced
-    // skill files. Written verbatim and guarded by the refuse-unless-`--force`
-    // collision check.
+    let plain_files = plain_files(cwd, &args, mode, sel, &project_type, features);
+
+    // Shared agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
+    // and a legacy .cursorrules) are co-owned with the user, so we never clobber
+    // them: dif's guidance lives inside a delimited managed block that we append
+    // once and refresh in place. They never trip the collision guard — appending
+    // a block can't destroy anything. Each is gated on its own target.
+    let merge_files: Vec<ManagedFile> = agent_merge_files(cwd, sel);
+
+    // A file that already holds exactly what we'd write isn't a collision: a
+    // re-run in an initialized workspace has nothing to clobber, so it succeeds
+    // (exit 0) rather than refusing (exit 2) and reading as a failure to scripts
+    // and agents. Only a write that would change a file needs `--force`.
+    let already_initialized = plain_files
+        .iter()
+        .all(|(p, content)| file_matches(p, content));
+    let progress = ui::is_interactive(json).then(ui::start_writing);
+    let collisions = collisions(&plain_files, args.force);
+    if !collisions.is_empty() {
+        match progress {
+            Some(p) => {
+                let rel: Vec<String> = collisions.iter().map(|c| relative(cwd, c)).collect();
+                ui::report_collisions(p, &rel)?;
+            }
+            None => report_collisions(&collisions, json),
+        }
+        return Ok(ExitCode::from(2));
+    }
+
+    let written = (|| -> Result<(), CmdError> {
+        for dir in &dirs {
+            std::fs::create_dir_all(dir)?;
+        }
+        // Skip files that already hold exactly this content, so a re-run really is
+        // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
+        for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, content).map_err(|e| {
+                CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
+            })?;
+        }
+        // Managed-block merge — preserve any user content already in the file, even
+        // under `--force`. Force re-scaffolds the structural files, but must never
+        // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
+        for mf in &merge_files {
+            write_managed(mf)?;
+        }
+        Ok(())
+    })();
+    if let (Err(_), Some(p)) = (&written, &progress) {
+        p.fail();
+    }
+    written?;
+
+    let summary = Summary {
+        surface: &surface,
+        sel,
+        mode,
+        framework,
+        has_key: args.key.is_some(),
+        dashboard_url: args.dashboard_url.as_deref(),
+        already_initialized,
+        project_type: &project_type,
+        features,
+    };
+    match progress {
+        Some(p) => ui::report_success(p, &summary, &next_steps(&surface, framework))?,
+        None => report_success(&summary, json),
+    }
+    Ok(ExitCode::from(0))
+}
+
+/// Plain dif-owned files: the structural scaffold plus the dif-namespaced
+/// skill files. Written verbatim and guarded by the collision check.
+fn plain_files(
+    cwd: &Path,
+    args: &Args,
+    mode: EventsMode,
+    sel: AgentSelection,
+    project_type: &[ProjectType],
+    features: Features,
+) -> Vec<(PathBuf, String)> {
+    let surface = args.surface.as_deref().unwrap_or("home");
+    let project = project_name_in(cwd);
     let mut plain_files: Vec<(PathBuf, String)> = vec![
         (
             cwd.join(paths::CONFIG_FILE),
             default_config_yaml(
                 &project,
-                &surface,
+                surface,
                 mode,
                 args.key.as_deref(),
-                &project_type,
+                args.cloud_url.as_deref().unwrap_or(DEFAULT_CLOUD_URL),
+                project_type,
                 features,
             ),
         ),
         (cwd.join(paths::GITIGNORE_FILE), "generated/\n".to_string()),
         (
             cwd.join(paths::SURFACES_DIR).join(format!("{surface}.md")),
-            default_surface_md(&surface),
+            default_surface_md(surface),
         ),
         (
             cwd.join(paths::AUDIENCES_DIR).join("locale.ts"),
@@ -389,63 +535,48 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     if sel.cursor {
         plain_files.push((cwd.join(CURSOR_MDC_PATH), cursor_mdc()));
     }
+    plain_files
+}
 
-    // Shared agent files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md,
-    // and a legacy .cursorrules) are co-owned with the user, so we never clobber
-    // them: dif's guidance lives inside a delimited managed block that we append
-    // once and refresh in place. They never trip the collision guard — appending
-    // a block can't destroy anything. Each is gated on its own target.
-    let merge_files: Vec<ManagedFile> = agent_merge_files(cwd, sel);
-
-    // A file that already holds exactly what we'd write isn't a collision: a
-    // re-run in an initialized workspace has nothing to clobber, so it succeeds
-    // (exit 0) rather than refusing (exit 2) and reading as a failure to scripts
-    // and agents. Only a write that would change a file needs `--force`.
-    let already_initialized = plain_files
+/// Files that exist with other content. `--force` ignores them.
+fn collisions(files: &[(PathBuf, String)], force: bool) -> Vec<&Path> {
+    if force {
+        return Vec::new();
+    }
+    files
         .iter()
-        .all(|(p, content)| file_matches(p, content));
-    if !args.force {
-        let collisions: Vec<&Path> = plain_files
-            .iter()
-            .filter(|(p, content)| p.exists() && !file_matches(p, content))
-            .map(|(p, _)| p.as_path())
-            .collect();
-        if !collisions.is_empty() {
-            report_collisions(&collisions, json);
-            return Ok(ExitCode::from(2));
-        }
-    }
+        .filter(|(p, content)| p.exists() && !file_matches(p, content))
+        .map(|(p, _)| p.as_path())
+        .collect()
+}
 
-    for dir in &dirs {
-        std::fs::create_dir_all(dir)?;
-    }
-    // Skip files that already hold exactly this content, so a re-run really is
-    // "nothing overwritten" — no mtime bumps to trip watchers or build tools.
-    for (path, content) in plain_files.iter().filter(|(p, c)| !file_matches(p, c)) {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, content).map_err(|e| {
-            CmdError::OtherOwned(format!("failed to write {}: {e}", path.display()))
-        })?;
-    }
-    // Managed-block merge — preserve any user content already in the file, even
-    // under `--force`. Force re-scaffolds the structural files, but must never
-    // destroy a hand-edited CLAUDE.md; it refreshes only dif's delimited block.
-    for mf in &merge_files {
-        write_managed(mf)?;
-    }
+/// True when `run_in` will refuse because files clash.
+/// Bad flag values give false, so `run_in` reports them.
+fn would_collide(cwd: &Path, args: &Args, mode: EventsMode) -> bool {
+    let Ok(sel) = resolve_agents(args.agents.clone(), args.no_agent_files) else {
+        return false;
+    };
+    let Ok(project_type) = resolve_project_type(args.project_type.clone()) else {
+        return false;
+    };
+    let Ok(features) = resolve_features(args.features.clone()) else {
+        return false;
+    };
+    let files = plain_files(cwd, args, mode, sel, &project_type, features);
+    !collisions(&files, args.force).is_empty()
+}
 
-    report_success(
-        &surface,
-        json,
-        sel,
-        mode,
-        already_initialized,
-        &project_type,
-        features,
-    );
-    Ok(ExitCode::from(0))
+/// What `dif init` did, for the success report.
+struct Summary<'a> {
+    surface: &'a str,
+    sel: AgentSelection,
+    mode: EventsMode,
+    framework: Framework,
+    has_key: bool,
+    dashboard_url: Option<&'a str>,
+    already_initialized: bool,
+    project_type: &'a [ProjectType],
+    features: Features,
 }
 
 /// True when `cwd` is the user's home directory ($HOME, or %USERPROFILE% on
@@ -526,7 +657,7 @@ fn run_agents_only(cwd: &Path, args: Args, json: bool) -> Result<ExitCode, CmdEr
         report_home_dir_refusal(json);
         return Ok(ExitCode::from(2));
     }
-    let sel = match resolve_agents(args.agents, args.no_agent_files) {
+    let sel = match resolve_agents(args.agents.clone(), args.no_agent_files) {
         Ok(sel) if sel != AgentSelection::NONE => sel,
         Ok(_) => {
             report_usage_error("--agents-only needs at least one agent target", json);
@@ -650,24 +781,25 @@ fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<St
 
 /// The "next steps" block appended to a successful `dif init`, shared between
 /// the pretty text output and the `next` JSON array so they can't drift.
-fn next_steps(surface: &str) -> [String; 3] {
+fn next_steps(surface: &str, framework: Framework) -> [String; 3] {
     [
-        "npm install @dif.sh/sdk".to_string(),
+        format!("npm install {}", framework.packages().join(" ")),
         format!("dif new <id> --surface {surface} — then edit the file and set status: active"),
         "dif build".to_string(),
     ]
 }
 
-fn report_success(
-    surface: &str,
-    json: bool,
-    sel: AgentSelection,
-    mode: EventsMode,
-    already_initialized: bool,
-    project_type: &[ProjectType],
-    features: Features,
-) {
-    let next = next_steps(surface);
+fn report_success(s: &Summary, json: bool) {
+    let Summary {
+        surface,
+        sel,
+        mode,
+        already_initialized,
+        project_type,
+        features,
+        ..
+    } = *s;
+    let next = next_steps(surface, s.framework);
     if json {
         let payload = serde_json::json!({
             "ok": true,
@@ -733,15 +865,14 @@ fn default_config_yaml(
     surface: &str,
     mode: EventsMode,
     key: Option<&str>,
+    cloud_url: &str,
     project_type: &[ProjectType],
     features: Features,
 ) -> String {
     // The events block (comment + mapping) is rendered by dif-core so `dif init`
     // and `dif connect` stay byte-for-byte in agreement.
     let events_block = match mode {
-        EventsMode::Cloud => {
-            render_events_block(EventsMode::Cloud, Some("https://cloud.dif.sh"), key)
-        }
+        EventsMode::Cloud => render_events_block(EventsMode::Cloud, Some(cloud_url), key),
         EventsMode::Custom => render_events_block(EventsMode::Custom, None, None),
     };
     let project_type_block = if project_type.is_empty() {
@@ -1182,6 +1313,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -1211,6 +1343,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             Some("dif_pk_live_xyz"),
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -1227,6 +1360,7 @@ mod tests {
             "home",
             EventsMode::Custom,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );
@@ -1399,27 +1533,21 @@ mod tests {
     #[test]
     fn resolve_events_mode_key_implies_cloud() {
         // json=true keeps this non-interactive (no TTY prompt).
-        assert_eq!(
-            resolve_events_mode(None, true, true).unwrap(),
-            EventsMode::Cloud
-        );
+        assert_eq!(resolve_events_mode(None, true).unwrap(), EventsMode::Cloud);
     }
 
     #[test]
     fn resolve_events_mode_key_with_custom_is_error() {
-        assert!(resolve_events_mode(Some(EventsModeArg::Custom), true, true).is_err());
+        assert!(resolve_events_mode(Some(EventsModeArg::Custom), true).is_err());
     }
 
     #[test]
     fn resolve_events_mode_explicit_flags_without_key() {
         assert_eq!(
-            resolve_events_mode(Some(EventsModeArg::Custom), false, true).unwrap(),
+            resolve_events_mode(Some(EventsModeArg::Custom), false).unwrap(),
             EventsMode::Custom
         );
-        assert_eq!(
-            resolve_events_mode(None, false, true).unwrap(),
-            EventsMode::Cloud
-        );
+        assert_eq!(resolve_events_mode(None, false).unwrap(), EventsMode::Cloud);
     }
 
     #[test]
@@ -2165,6 +2293,18 @@ mod tests {
 
     // -- re-runs + Cursor / Copilot targets ----------------------------------
 
+    #[test]
+    fn next_steps_install_the_framework_adapter() {
+        let [install, new, build] = next_steps("home", Framework::Svelte);
+        assert_eq!(install, "npm install @dif.sh/sdk @dif.sh/svelte");
+        assert!(new.starts_with("dif new <id> --surface home"));
+        assert_eq!(build, "dif build");
+        assert_eq!(
+            next_steps("home", Framework::Sdk)[0],
+            "npm install @dif.sh/sdk"
+        );
+    }
+
     fn default_args() -> Args {
         Args {
             surface: None,
@@ -2174,6 +2314,9 @@ mod tests {
             force: false,
             no_agent_files: false,
             agents_only: false,
+            framework: None,
+            cloud_url: None,
+            dashboard_url: None,
             project_type: None,
             features: None,
             yes: false,
@@ -2419,6 +2562,255 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rerun_reuses_existing_events_settings() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let keyed = Args {
+            key: Some("dif_pk_live_xyz".into()),
+            ..default_args()
+        };
+        assert_eq!(
+            run_in(tmp.path(), keyed, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Cloud)));
+        assert_eq!(args.key.as_deref(), Some("dif_pk_live_xyz"));
+    }
+
+    #[test]
+    fn emitted_config_records_a_non_default_cloud_url() {
+        let yaml = default_config_yaml(
+            "acme-shop",
+            "home",
+            EventsMode::Cloud,
+            Some("dif_pk_live_xyz"),
+            "http://localhost:8787",
+            &[],
+            Features::default(),
+        );
+        let config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+        assert_eq!(
+            config.events().url.as_deref(),
+            Some("http://localhost:8787")
+        );
+    }
+
+    #[test]
+    fn rerun_reuses_a_non_default_cloud_url() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let staging = Args {
+            key: Some("dif_pk_live_xyz".into()),
+            cloud_url: Some("http://localhost:8787".into()),
+            ..default_args()
+        };
+        assert_eq!(
+            run_in(tmp.path(), staging, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.cloud_url.as_deref(), Some("http://localhost:8787"));
+    }
+
+    #[test]
+    fn rerun_with_default_cloud_url_leaves_it_unset() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(args.cloud_url.is_none());
+    }
+
+    #[test]
+    fn rerun_reuses_existing_project_type() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let shop = Args {
+            project_type: Some(vec!["ecommerce".into(), "marketing".into()]),
+            ..default_args()
+        };
+        assert_eq!(
+            run_in(tmp.path(), shop, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.project_type,
+            Some(vec!["marketing".to_string(), "ecommerce".to_string()])
+        );
+    }
+
+    #[test]
+    fn rerun_without_project_type_skips_the_question() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.project_type, Some(vec![]));
+    }
+
+    #[test]
+    fn explicit_project_type_beats_the_existing_one() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = Args {
+            project_type: Some(vec!["app".into()]),
+            ..default_args()
+        };
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(args.project_type, Some(vec!["app".to_string()]));
+    }
+
+    #[test]
+    fn rerun_after_adding_package_json_keeps_the_old_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let before = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
+
+        let code = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("rerun");
+        assert_eq!(code, ExitCode::from(0));
+        let after = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn fresh_init_names_the_project_from_package_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("package.json"), r#"{"name": "acme-site"}"#).unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let config = std::fs::read_to_string(tmp.path().join("dif/config.yaml")).unwrap();
+        assert!(config.contains("\nproject: acme-site\n"));
+    }
+
+    #[test]
+    fn rerun_reuses_custom_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Custom)));
+        assert!(args.key.is_none());
+    }
+
+    #[test]
+    fn rerun_reuses_existing_features() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let no_analytics = Args {
+            features: Some(vec!["flags".into(), "experiments".into()]),
+            ..default_args()
+        };
+        assert_eq!(
+            run_in(tmp.path(), no_analytics, EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.features,
+            Some(vec!["flags".to_string(), "experiments".to_string()])
+        );
+    }
+
+    #[test]
+    fn rerun_with_all_features_skips_the_features_prompt() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert_eq!(
+            args.features,
+            Some(vec![
+                "analytics".to_string(),
+                "flags".to_string(),
+                "experiments".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn explicit_flags_beat_existing_events_settings() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(
+            run_in(tmp.path(), default_args(), EventsMode::Custom, true).expect("init"),
+            ExitCode::from(0)
+        );
+        let mut args = Args {
+            events: Some(EventsModeArg::Cloud),
+            ..default_args()
+        };
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(matches!(args.events, Some(EventsModeArg::Cloud)));
+    }
+
+    #[test]
+    fn fresh_directory_leaves_args_alone() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut args = default_args();
+        reuse_existing_events(tmp.path(), &mut args);
+        assert!(args.events.is_none() && args.key.is_none());
+    }
+
+    #[test]
+    fn clashing_file_without_config_blocks_the_cloud_step() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let surfaces = tmp.path().join(paths::SURFACES_DIR);
+        std::fs::create_dir_all(&surfaces).unwrap();
+        std::fs::write(surfaces.join("home.md"), "edited by hand").unwrap();
+        assert!(would_collide(
+            tmp.path(),
+            &default_args(),
+            EventsMode::Cloud
+        ));
+    }
+
+    #[test]
+    fn empty_folder_allows_the_cloud_step() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert!(!would_collide(
+            tmp.path(),
+            &default_args(),
+            EventsMode::Cloud
+        ));
+    }
+
+    #[test]
+    fn force_ignores_clashing_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let surfaces = tmp.path().join(paths::SURFACES_DIR);
+        std::fs::create_dir_all(&surfaces).unwrap();
+        std::fs::write(surfaces.join("home.md"), "edited by hand").unwrap();
+        let args = Args {
+            force: true,
+            ..default_args()
+        };
+        assert!(!would_collide(tmp.path(), &args, EventsMode::Cloud));
+    }
+
     fn init_workspace() -> tempfile::TempDir {
         let tmp = tempfile::TempDir::new().unwrap();
         let _ = run_in(tmp.path(), default_args(), EventsMode::Cloud, true).expect("init");
@@ -2547,6 +2939,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[ProjectType::App, ProjectType::Ecommerce],
             features,
         );
@@ -2565,6 +2958,7 @@ mod tests {
             "home",
             EventsMode::Cloud,
             None,
+            DEFAULT_CLOUD_URL,
             &[],
             Features::default(),
         );

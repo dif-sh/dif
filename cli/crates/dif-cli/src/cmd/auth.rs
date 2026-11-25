@@ -111,12 +111,43 @@ fn login(args: &LoginArgs, env: &CloudEnv, json: bool) -> Outcome {
         }
     }
 
+    let cred = match finish_login(env, &pending, Duration::from_secs(args.timeout))? {
+        Ok(c) => c,
+        Err(f) => return Ok(Err(f)),
+    };
+
+    let payload = json!({
+        "ok": true,
+        "status": "logged_in",
+        "user": cred.user,
+        "expires_at": cred.expires_at,
+    });
+    if !print_json(json, &payload) {
+        println!(
+            "{} logged in as {}",
+            style("✓").green().bold(),
+            cred.user
+                .as_ref()
+                .and_then(|u| u["email"].as_str())
+                .unwrap_or("unknown user"),
+        );
+    }
+    Ok(Ok(()))
+}
+
+/// Wait for the person to approve `pending`, then save the token.
+/// Shared by `dif auth login` and the `dif init` sign-in step.
+pub(crate) fn finish_login(
+    env: &CloudEnv,
+    pending: &PendingLogin,
+    timeout: Duration,
+) -> Result<Result<StoredCredential, Failure>, CmdError> {
     let client = Client::new(&pending.cloud_url, None);
     let outcome = poll_for_token(
         &client,
         &pending.device_code,
         Duration::from_secs(pending.interval),
-        Duration::from_secs(args.timeout),
+        timeout,
         &RealClock,
     );
     let token = match outcome {
@@ -158,27 +189,10 @@ fn login(args: &LoginArgs, env: &CloudEnv, json: bool) -> Outcome {
     };
     env.save_credential(&cred)?;
     env.delete_pending()?;
-
-    let payload = json!({
-        "ok": true,
-        "status": "logged_in",
-        "user": cred.user,
-        "expires_at": cred.expires_at,
-    });
-    if !print_json(json, &payload) {
-        println!(
-            "{} logged in as {}",
-            style("✓").green().bold(),
-            cred.user
-                .as_ref()
-                .and_then(|u| u["email"].as_str())
-                .unwrap_or("unknown user"),
-        );
-    }
-    Ok(Ok(()))
+    Ok(Ok(cred))
 }
 
-fn start_login(env: &CloudEnv) -> Result<Result<PendingLogin, Failure>, CmdError> {
+pub(crate) fn start_login(env: &CloudEnv) -> Result<Result<PendingLogin, Failure>, CmdError> {
     let base = env.login_url();
     let client = Client::new(&base, None);
     let body = json!({
@@ -228,7 +242,7 @@ fn hostname() -> String {
 }
 
 /// Best effort. The URL is on stderr if this fails.
-fn open_browser(url: &str) {
+pub(crate) fn open_browser(url: &str) {
     let mut cmd = if cfg!(target_os = "macos") {
         std::process::Command::new("open")
     } else if cfg!(windows) {

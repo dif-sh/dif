@@ -68,11 +68,14 @@ New flags (all optional):
 |---|---|---|
 | `--project-type` | comma list of `marketing`, `app`, `ecommerce` | none (the key is left out of config) |
 | `--features` | comma list of the **enabled** features: `analytics`, `flags`, `experiments` | all three |
+| `--framework` | one of `sdk`, `react`, `svelte`, `openfeature`, `flags-sdk` | Detected from `package.json` in the current folder; `sdk` when nothing matches |
 | `--yes` | – | Off. Accepts the default for every prompt. Implied by `--json` or a non-TTY. |
 
-Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
+Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. A new workspace takes its `project:` name from the `name` in `package.json` (without an `@scope/`), else the folder name. An existing config keeps its name. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
 
 Errors added: `usage` (exit 2) for an unknown value in `--project-type` or `--features`, or for an empty list.
+
+`--framework` only picks the install step: `next[0]` becomes `npm install @dif.sh/sdk` plus the framework's adapter, for example `npm install @dif.sh/sdk @dif.sh/svelte`. Nothing is written to config. It can't be combined with `--agents-only`.
 
 The success JSON adds two fields. `project_type` is always an array, `[]` when the flag is omitted. `features` always lists all three keys.
 
@@ -194,7 +197,7 @@ When there is no `--key`, the command needs login. It writes the project's publi
 | `--org <slug>` | Org to use. Optional when the user has exactly one. |
 | `--project <slug>` | Link to an existing project. |
 | `--create` | Create a new project. Can't be combined with `--project`. |
-| `--name <name>` | Name for `--create`. The default is the workspace folder name. |
+| `--name <name>` | Name for `--create`. The default is `project:` in `dif/config.yaml`. |
 
 On a TTY with none of these flags, the CLI prompts. In JSON mode or on a non-TTY, it returns `needs_selection` so that the caller can ask the person:
 
@@ -207,7 +210,7 @@ On a TTY with none of these flags, the CLI prompts. In JSON mode or on a non-TTY
 }
 ```
 
-`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing. `repo` is `null` for a project that has no repo yet. With `--create` and several orgs, the caller must add `--org <slug>`.
+`needs_selection` exits with 2. `projects` lists the selected org only, or every org when `--org` is missing. `repo` is `null` for a project that has no repo yet. With `--create` and several orgs, the caller must add `--org <slug>`. With no orgs, `projects` lists the projects the login can see, which can have `org: null`.
 
 Success:
 
@@ -237,6 +240,7 @@ Success:
 |---|---|---|
 | `no_workspace` | 2 | No `dif/` here. This error is unchanged. |
 | `org_not_found` / `project_not_found` | 2 | An unknown slug was passed. |
+| `no_org` | 2 | The login has no org (`whoami` returns `orgs: []`), and there is no project to link, or `--create` was passed. Creating a project needs an org. Projects with `org: null` can still be linked with `--project <slug>`. |
 | `usage` | 2 | `--project` was combined with `--create`, or `--url` names a host other than the login's. |
 
 ---
@@ -291,7 +295,7 @@ Each successful authenticated call slides `expires_at` to now + 90 days.
 Scope: `project:create`. The caller must be an org owner or admin. A paid plan is **not** required; the dashboard needs one.
 ```json
 // request
-{ "org": "acme", "name": "acme-shop", "repo_full_name": "acme/shop" }
+{ "org": "acme", "name": "acme-shop", "repo_full_name": "acme/shop", "project_type": ["marketing", "ecommerce"] }
 // 201
 {
   "slug": "acme-shop",
@@ -301,6 +305,8 @@ Scope: `project:create`. The caller must be an org owner or admin. A paid plan i
 }
 ```
 `repo_full_name` is optional and only a hint. The GitHub App install binds the repo; the hint does not.
+
+`project_type` is optional: the project categories from `dif/config.yaml` (`marketing`, `app`, `ecommerce`). The CLI leaves it out when the config has none. `dif init` and `dif connect --create` both send it.
 
 Errors: `org_not_found` (404, also for an org the caller is not in) and `forbidden` (403, a member who is not owner or admin). `repo.github_install_url` can be `null` (see section 5).
 

@@ -9,7 +9,6 @@ use super::{validate_publishable_key, CmdError};
 use crate::cloud::{rejected, ApiError, Client, CloudEnv, Failure, DEFAULT_CLOUD_URL};
 use clap::Args as ClapArgs;
 use console::{style, Term};
-use dialoguer::Select;
 use dif_core::config::EventsMode;
 use dif_core::config_edit::upsert_events_block;
 use dif_core::paths;
@@ -21,7 +20,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 /// `dif connect` flags.
-#[derive(ClapArgs, Debug)]
+#[derive(ClapArgs, Debug, Clone)]
 pub struct Args {
     /// Publishable key (dif_pk_…) to write to dif/config.yaml.
     /// Without it, connect uses the dif auth login session.
@@ -45,20 +44,25 @@ pub struct Args {
     #[arg(long)]
     pub create: bool,
 
-    /// Name for --create. Defaults to the workspace folder name.
+    /// Name for --create. Defaults to `project:` in dif/config.yaml.
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Project categories sent when a project is created.
+    /// Read from dif/config.yaml or set by `dif init`. Not a flag.
+    #[arg(skip)]
+    pub project_type: Vec<String>,
 }
 
 /// The Cloud project that a logged-in connect selected.
 #[derive(Debug)]
-struct Link {
-    slug: String,
-    org: String,
-    created: bool,
-    key: String,
-    dashboard_url: String,
-    cloud_url: String,
+pub(crate) struct Link {
+    pub(crate) slug: String,
+    pub(crate) org: String,
+    pub(crate) created: bool,
+    pub(crate) key: String,
+    pub(crate) dashboard_url: String,
+    pub(crate) cloud_url: String,
     repo: Value,
 }
 
@@ -88,12 +92,13 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
         Some(k) => (k, None),
         None => {
             let interactive = !json && Term::stderr().is_term() && std::io::stdin().is_terminal();
-            let folder = workspace
-                .root
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "app".to_string());
+            // Same name as `project:` in the config, set by dif init.
+            let folder = workspace.config.project.clone();
             let env = CloudEnv::from_process();
+            let args = Args {
+                project_type: workspace.config.project_type.clone().unwrap_or_default(),
+                ..args.clone()
+            };
             match link_project(&workspace.root, &args, &env, interactive, &folder) {
                 Ok(l) => (l.key.clone(), Some(l)),
                 Err(f) => return Ok(f.report(json)),
@@ -136,7 +141,7 @@ fn events_url(
     })
 }
 
-fn link_project(
+pub(crate) fn link_project(
     root: &Path,
     args: &Args,
     env: &CloudEnv,
@@ -177,8 +182,21 @@ fn link_project(
     };
     let detected = detect_github_repo(root);
 
+    // Projects can exist with no org, but creating one needs an org.
+    let orgless = orgs.is_empty() && args.project.is_none();
+    let orgless_projects = if orgless {
+        let projects = list_projects(&client, None).map_err(fail)?;
+        if args.create || projects.is_empty() {
+            return Err(no_org(&session.cloud_url));
+        }
+        projects
+    } else {
+        Vec::new()
+    };
+
     let choice = match (&args.project, args.create, &org) {
         (Some(slug), _, _) => Some(Choice::Existing(slug.clone())),
+        _ if orgless && interactive => prompt_orgless(&orgless_projects),
         (None, true, Some(o)) => Some(Choice::Create(o.clone())),
         (None, true, None) if interactive => prompt_org(&orgs).map(Choice::Create),
         _ if interactive => prompt(&client, &orgs, org.clone()).map_err(fail)?,
@@ -223,6 +241,9 @@ fn link_project(
             if let Some(repo) = &detected {
                 body["repo_full_name"] = json!(repo);
             }
+            if !args.project_type.is_empty() {
+                body["project_type"] = json!(args.project_type);
+            }
             let resp = client
                 .post("/v1/cli/projects", &body)
                 .map_err(|e| match e {
@@ -257,6 +278,38 @@ fn link_project(
         cloud_url: base,
         repo,
     })
+}
+
+/// `org/slug`, or only the slug for a project with no org.
+pub(crate) fn project_label(org: &str, slug: &str) -> String {
+    if org.is_empty() {
+        slug.to_string()
+    } else {
+        format!("{org}/{slug}")
+    }
+}
+
+fn no_org(cloud_url: &str) -> Failure {
+    Failure::new(
+        "no_org",
+        2,
+        format!(
+            "your dif.sh login has no org, so dif can't create a project; \
+             create or join an org at {cloud_url}, then run dif connect"
+        ),
+    )
+}
+
+/// Pick from projects that have no org. `None` when cancelled.
+fn prompt_orgless(projects: &[Value]) -> Option<Choice> {
+    let slug = |v: &Value| v["slug"].as_str().unwrap_or_default().to_string();
+    let _ =
+        cliclack::log::remark("Your login has no org, so you can only link an existing project.");
+    let items: Vec<String> = projects
+        .iter()
+        .map(|p| format!("{} ({})", slug(p), p["repo"].as_str().unwrap_or("no repo")))
+        .collect();
+    pick("Which project?", &items).map(|i| Choice::Existing(slug(&projects[i])))
 }
 
 enum Choice {
@@ -316,18 +369,11 @@ fn prompt(
         .map(|p| format!("{} ({})", slug(p), p["repo"].as_str().unwrap_or("no repo")))
         .collect();
     items.push("Create a new project".to_string());
-    Ok(
-        match Select::new()
-            .with_prompt("Which project?")
-            .items(&items)
-            .default(0)
-            .interact_opt()
-        {
-            Ok(Some(i)) if i < projects.len() => Some(Choice::Existing(slug(&projects[i]))),
-            Ok(Some(_)) => Some(Choice::Create(org)),
-            _ => None,
-        },
-    )
+    Ok(match pick("Which project?", &items) {
+        Some(i) if i < projects.len() => Some(Choice::Existing(slug(&projects[i]))),
+        Some(_) => Some(Choice::Create(org)),
+        None => None,
+    })
 }
 
 /// `None` when there is no org or the person cancels.
@@ -339,15 +385,16 @@ fn prompt_org(orgs: &[Value]) -> Option<String> {
     if items.is_empty() {
         return None;
     }
-    match Select::new()
-        .with_prompt("Which org?")
-        .items(&items)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(i)) => Some(items[i].clone()),
-        _ => None,
+    pick("Which org?", &items).map(|i| items[i].clone())
+}
+
+/// One-choice prompt. `None` when the person cancels.
+fn pick(prompt: &str, items: &[String]) -> Option<usize> {
+    let mut select = cliclack::select(prompt);
+    for (i, item) in items.iter().enumerate() {
+        select = select.item(i, item, "");
     }
+    select.initial_value(0).interact().ok()
 }
 
 fn detect_github_repo(root: &Path) -> Option<String> {
@@ -456,7 +503,116 @@ mod tests {
             project: None,
             create: false,
             name: None,
+            project_type: Vec::new(),
         }
+    }
+
+    fn create_body(project_type: Vec<String>) -> Value {
+        let server = FakeServer::start(|req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"orgs":[{"slug":"acme","name":"Acme"}]}"#.into()),
+            "/v1/cli/projects" => (
+                201,
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                ),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            project_type,
+            ..args()
+        };
+        link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        let requests = server.requests.lock().unwrap();
+        let create = requests
+            .iter()
+            .find(|r| r.method == "POST" && r.path == "/v1/cli/projects")
+            .expect("create request");
+        serde_json::from_str(&create.body).unwrap()
+    }
+
+    fn no_org_server(projects: &'static str) -> FakeServer {
+        FakeServer::start(move |req| match req.path.as_str() {
+            "/v1/cli/whoami" => (200, r#"{"user":{"email":"e"},"orgs":[]}"#.into()),
+            "/v1/cli/projects" => (200, projects.into()),
+            "/v1/cli/projects/niftic/key" => (
+                200,
+                format!(r#"{{"project_key":"{KEY}","repo":{{"status":"linked"}}}}"#),
+            ),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        })
+    }
+
+    const ORGLESS: &str =
+        r#"{"projects":[{"slug":"niftic","name":"Niftic","org":null,"repo":"acme/site"}]}"#;
+
+    #[test]
+    fn no_orgs_and_no_projects_is_a_no_org_error() {
+        let server = no_org_server(r#"{"projects":[]}"#);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
+        assert_eq!((f.code, f.exit), ("no_org", 2));
+        assert!(f.message.contains("no org"), "{}", f.message);
+    }
+
+    #[test]
+    fn creating_with_no_orgs_is_a_no_org_error() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            ..args()
+        };
+        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
+        assert_eq!(f.code, "no_org");
+    }
+
+    #[test]
+    fn no_orgs_still_links_an_existing_project() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            project: Some("niftic".into()),
+            ..args()
+        };
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!((link.slug.as_str(), link.org.as_str()), ("niftic", ""));
+        assert_eq!(link.key, KEY);
+    }
+
+    #[test]
+    fn no_orgs_with_projects_still_needs_selection() {
+        let server = no_org_server(ORGLESS);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
+        assert_eq!(f.code, "needs_selection");
+        assert_eq!(f.to_json()["projects"][0]["slug"], "niftic");
+    }
+
+    #[test]
+    fn project_label_leaves_out_a_missing_org() {
+        assert_eq!(project_label("acme", "shop"), "acme/shop");
+        assert_eq!(project_label("", "niftic"), "niftic");
+    }
+
+    #[test]
+    fn creating_a_project_sends_its_categories() {
+        let body = create_body(vec!["marketing".into(), "ecommerce".into()]);
+        assert_eq!(body["project_type"], json!(["marketing", "ecommerce"]));
+        assert_eq!(body["name"], "shop");
+    }
+
+    #[test]
+    fn creating_a_project_without_categories_leaves_the_field_out() {
+        let body = create_body(Vec::new());
+        assert!(body.get("project_type").is_none());
     }
 
     fn env_with_token(url: Option<&str>) -> CloudEnv {
