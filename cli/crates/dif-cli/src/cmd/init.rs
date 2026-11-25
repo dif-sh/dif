@@ -1087,7 +1087,7 @@ anything that's bitten a previous test on this surface. One bullet per.)
 
 // -- agent onboarding files --------------------------------------------------
 //
-// CLAUDE.md, AGENTS.md, .cursorrules at the project root plus two Claude Code
+// CLAUDE.md, AGENTS.md, .cursorrules at the project root plus the Claude Code
 // skills under `.claude/skills/`. The content lives under `assets/` so it can
 // be edited as ordinary markdown; `include_str!` bakes it into the binary at
 // compile time so `dif init` writes the same bytes regardless of where it
@@ -1117,6 +1117,14 @@ pub(crate) const SKILL_CONNECT_CLOUD: &str =
     include_str!("../../assets/claude/skills/dif-connect-cloud/SKILL.md");
 pub(crate) const SKILL_GENERATE_SURFACES: &str =
     include_str!("../../assets/claude/skills/dif-generate-surfaces/SKILL.md");
+pub(crate) const SKILL_SETUP_ANALYTICS: &str =
+    include_str!("../../assets/claude/skills/dif-setup-analytics/SKILL.md");
+pub(crate) const SKILL_SETUP_ANALYTICS_INSTALL: &str =
+    include_str!("../../assets/claude/skills/dif-setup-analytics/references/install-paths.md");
+pub(crate) const SKILL_SETUP_ANALYTICS_NAMING: &str =
+    include_str!("../../assets/claude/skills/dif-setup-analytics/references/event-naming.md");
+pub(crate) const SKILL_SETUP_ANALYTICS_TROUBLESHOOTING: &str =
+    include_str!("../../assets/claude/skills/dif-setup-analytics/references/troubleshooting.md");
 pub(crate) const SKILL_TRIAGE: &str =
     include_str!("../../assets/claude/skills/dif-triage-experiments/SKILL.md");
 pub(crate) const SKILL_TRIAGE_CLOUD_API: &str =
@@ -1135,6 +1143,10 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
     ".claude/skills/dif-conclude-experiment/references/cloud-api.md",
     ".claude/skills/dif-connect-cloud/SKILL.md",
     ".claude/skills/dif-generate-surfaces/SKILL.md",
+    ".claude/skills/dif-setup-analytics/SKILL.md",
+    ".claude/skills/dif-setup-analytics/references/install-paths.md",
+    ".claude/skills/dif-setup-analytics/references/event-naming.md",
+    ".claude/skills/dif-setup-analytics/references/troubleshooting.md",
     ".claude/skills/dif-triage-experiments/SKILL.md",
     ".claude/skills/dif-triage-experiments/references/cloud-api.md",
 ];
@@ -1142,7 +1154,8 @@ pub(crate) const CLAUDE_FILE_PATHS: &[&str] = &[
 /// Success line text for the Claude Code skills.
 const CLAUDE_SKILLS_LINE: &str = concat!(
     "wrote .claude/skills/ (dif-author-experiment, dif-conclude-experiment, ",
-    "dif-connect-cloud, dif-generate-surfaces, dif-triage-experiments)"
+    "dif-connect-cloud, dif-generate-surfaces, dif-setup-analytics, ",
+    "dif-triage-experiments)"
 );
 
 /// Path written for the `general` target: the model-agnostic AGENTS.md.
@@ -1327,6 +1340,10 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .join(".claude")
         .join("skills")
         .join("dif-generate-surfaces");
+    let setup = cwd
+        .join(".claude")
+        .join("skills")
+        .join("dif-setup-analytics");
     let triage = cwd
         .join(".claude")
         .join("skills")
@@ -1355,6 +1372,19 @@ fn agent_skill_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         (
             generate.join("SKILL.md"),
             SKILL_GENERATE_SURFACES.to_string(),
+        ),
+        (setup.join("SKILL.md"), SKILL_SETUP_ANALYTICS.to_string()),
+        (
+            setup.join("references").join("install-paths.md"),
+            SKILL_SETUP_ANALYTICS_INSTALL.to_string(),
+        ),
+        (
+            setup.join("references").join("event-naming.md"),
+            SKILL_SETUP_ANALYTICS_NAMING.to_string(),
+        ),
+        (
+            setup.join("references").join("troubleshooting.md"),
+            SKILL_SETUP_ANALYTICS_TROUBLESHOOTING.to_string(),
         ),
         (triage.join("SKILL.md"), SKILL_TRIAGE.to_string()),
         (
@@ -2228,6 +2258,7 @@ mod tests {
             ("dif-conclude-experiment", SKILL_CONCLUDE),
             ("dif-connect-cloud", SKILL_CONNECT_CLOUD),
             ("dif-generate-surfaces", SKILL_GENERATE_SURFACES),
+            ("dif-setup-analytics", SKILL_SETUP_ANALYTICS),
             ("dif-triage-experiments", SKILL_TRIAGE),
         ] {
             let frontmatter = extract_frontmatter(content)

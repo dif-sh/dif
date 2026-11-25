@@ -89,6 +89,7 @@ agent run the commands:
 | Skill | Ask for | What it does |
 | --- | --- | --- |
 | `dif-generate-surfaces` | *"Set up dif surfaces for this app"* | Reads your routes and pages, proposes the surface set, writes the files |
+| `dif-setup-analytics` | *"Set up dif analytics"* | Installs page views, plans and adds events, checks they arrive in dif analytics |
 | `dif-author-experiment` | *"Add a flag for the new checkout, mobile only"* | Drafts the frontmatter, picks weights, runs `dif validate` |
 | `dif-conclude-experiment` | *"Conclude checkout-cta-v2"* | Gets the result from dif.sh Cloud, writes the decision from its numbers, archives the file, logs the learning |
 | `dif-triage-experiments` | *"Triage my experiments"* | Reads the dif.sh Cloud overview, then ramps, turns off or concludes each experiment that needs action, one PR each |

@@ -86,5 +86,6 @@ dif-conclude-experiment    get dif analytics results, check the verdict, write t
 dif-triage-experiments     act on every experiment the dif analytics overview flags (ramp, turn off, conclude)
 dif-connect-cloud          sign in to dif analytics, link or create the project, write its key
 dif-generate-surfaces      for fresh repos: propose the initial set of surfaces from app context
+dif-setup-analytics        install analytics, plan and add events, check they arrive
 https://www.dif.sh/docs/mcp/   connect dif analytics with a read token, over MCP or as DIF_TOKEN for REST
 https://www.dif.sh/docs/       full documentation

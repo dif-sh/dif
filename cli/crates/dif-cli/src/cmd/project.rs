@@ -71,21 +71,6 @@ fn parse_github_remote(url: &str) -> Option<String> {
     Some(format!("{owner}/{repo}"))
 }
 
-// Callers arrive with `dif events`.
-#[allow(dead_code)]
-/// The project slug for a cloud verb.
-/// Flag, then git remote, then the only project.
-pub(crate) fn resolve_project(
-    client: &Client,
-    root: &Path,
-    flag: Option<&str>,
-) -> Result<String, Failure> {
-    resolve_inner(client, root, flag).map_err(|e| match e {
-        Resolve::Api(e) => e.into_failure(),
-        Resolve::Fail(f) => f,
-    })
-}
-
 enum Resolve {
     Api(ApiError),
     Fail(Failure),
@@ -152,6 +137,17 @@ mod tests {
 
     fn client(server: &FakeServer) -> Client {
         Client::new(&server.url, Some("dif_cli_x".into()))
+    }
+
+    fn resolve_project(
+        client: &Client,
+        root: &Path,
+        flag: Option<&str>,
+    ) -> Result<String, crate::cloud::Failure> {
+        resolve_inner(client, root, flag).map_err(|e| match e {
+            Resolve::Api(e) => e.into_failure(),
+            Resolve::Fail(f) => f,
+        })
     }
 
     fn projects() -> Vec<Value> {

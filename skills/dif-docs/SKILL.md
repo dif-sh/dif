@@ -64,16 +64,17 @@ const checkout = dif("new-checkout", {
 ## Docs (markdown)
 
 - Overview, install, workspace layout: https://dif.sh/docs.md
-- File format (frontmatter, audiences, exclusion groups): https://dif.sh/docs/format.md
-- CLI (init, connect, new, validate, build, qa, conclude, scaffold-audiences): https://dif.sh/docs/cli.md
+- File format (frontmatter, audiences, exclusion groups, tracking plan): https://dif.sh/docs/format.md
+- CLI (init, connect, new, validate, build, qa, conclude, scaffold-audiences, site, events): https://dif.sh/docs/cli.md
 - SDK (`dif()`, `assign()`, React and Svelte adapters, `dif.track()`): https://dif.sh/docs/sdk.md
 - `dif/config.yaml`: https://dif.sh/docs/config.md
 - Events (cloud vs custom delivery): https://dif.sh/docs/events.md
-- Validation codes (E001–E010, W001–W005): https://dif.sh/docs/troubleshooting.md
+- Site analytics (script tag, data-* attributes, window.dif, install check): https://dif.sh/docs/analytics.md
+- Validation codes (E001–E013, W001–W006): https://dif.sh/docs/troubleshooting.md
 - dif cloud MCP server and read API (tools, REST endpoints, read tokens, verdicts): https://dif.sh/docs/mcp.md
 - Full index: https://dif.sh/llms.txt
 - Source: https://github.com/dif-sh/dif
 
 ## Workflow skills
 
-Install the workflow skills with `npx skills add dif-sh/dif`: `dif-author-experiment` (draft and validate a flag or experiment), `dif-conclude-experiment` (get the result from dif cloud, check the verdict, record the decision and archive), `dif-triage-experiments` (review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR each in autonomous mode), `dif-generate-surfaces` (propose `dif/surfaces/` from the app's routes). `dif init` also writes them into `.claude/skills/`. The conclude and triage skills read dif cloud through its MCP server at `https://cloud.dif.sh/mcp` (set up with a read token) or a read token in `DIF_TOKEN`. Setup: https://dif.sh/docs/mcp.md
+Install the workflow skills with `npx skills add dif-sh/dif`: `dif-author-experiment` (draft and validate a flag or experiment), `dif-conclude-experiment` (get the result from dif cloud, check the verdict, record the decision and archive), `dif-triage-experiments` (review every active experiment in the dif cloud overview, then ramp, turn off or conclude the ones that need action, with one PR each in autonomous mode), `dif-generate-surfaces` (propose `dif/surfaces/` from the app's routes), `dif-setup-analytics` (install site analytics or SDK page views, plan and add marketing and product events, check with `dif site check` and `dif events` that they arrive). `dif init` also writes them into `.claude/skills/`. The conclude and triage skills read dif cloud through its MCP server at `https://cloud.dif.sh/mcp` (set up with a read token) or a read token in `DIF_TOKEN`. Setup: https://dif.sh/docs/mcp.md

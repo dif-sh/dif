@@ -73,9 +73,9 @@ Two variants inside the same experiment declare the same `id:`. The message repo
 
 ### E012 — tracking plan event name is invalid
 
-An event `name` in `dif/tracking-plan.yaml` is empty, longer than 128 bytes, starts with `$`, or contains whitespace.
+An event `name` in `dif/tracking-plan.yaml` is empty, longer than 128 bytes, starts with `$`, or contains whitespace or a control character.
 
-**Fix:** rename the event to 1-128 bytes with no leading `$` and no whitespace.
+**Fix:** rename the event to 1-128 bytes with no leading `$` and no whitespace or control characters.
 
 ### E013 — tracking plan event name is duplicated
 
