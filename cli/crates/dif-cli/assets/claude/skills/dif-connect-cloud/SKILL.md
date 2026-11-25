@@ -93,7 +93,7 @@ To send page views and product events, use the dif-setup-analytics skill next.
 | `token_invalid` | The login expired or was revoked. If Step 1 showed `"source": "env"`, the `dif_cli_` token in `DIF_TOKEN` is no longer valid. Ask the person to replace or unset it, and stop. Otherwise go to Step 2. |
 | `forbidden` | This login cannot do that, for example create a project in that org. Tell the person. They can pick an existing project, or ask an org owner. |
 | `org_not_found`, `project_not_found` | The slug is wrong. Run `dif connect --json` with no flags to get the lists again. |
-| `no_org` | This login has no org, so it cannot create a project. Ask the person to create or join an org at the URL in `message`. Or ask for a `dif_pk_…` key and run `dif connect --key <key>`. |
+| `no_org` | This login has no org, so it cannot create a project. If `dif connect --json` lists projects, offer to link one with `--project <slug>`. Otherwise ask the person to create or join an org at the URL in `message`, or ask for a `dif_pk_…` key and run `dif connect --key <key>`. |
 | `no_workspace` | There is no `dif/` folder here. Run `dif init` first. |
 | `bad_request`, `usage` (exit 2) | dif analytics or the CLI refused a value, such as a slug that is not letters, digits and `-`. Read `message`, fix the value and run again once. |
 | `rate_limited` | Wait `retry_after` seconds, then try once more. |

@@ -15,17 +15,6 @@ pub(crate) fn list_projects(client: &Client, org: Option<&str>) -> Result<Vec<Va
         .unwrap_or_default())
 }
 
-/// The distinct orgs of `projects`, in the shape whoami uses.
-pub(crate) fn orgs_of(projects: &[Value]) -> Vec<Value> {
-    let mut slugs: Vec<&str> = projects.iter().filter_map(|p| p["org"].as_str()).collect();
-    slugs.sort_unstable();
-    slugs.dedup();
-    slugs
-        .into_iter()
-        .map(|s| serde_json::json!({ "slug": s, "name": s }))
-        .collect()
-}
-
 pub(crate) fn needs_selection(orgs: &[Value], projects: &[Value], message: &str) -> Failure {
     let pick = |v: &Value, keys: &[&str]| -> Value {
         keys.iter()
