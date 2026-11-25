@@ -20,9 +20,9 @@ Add `--json` to every `dif site`, `dif events` and `dif auth` command. Branch on
 
 1. Read `dif/config.yaml`. If it does not exist, stop and tell the person to run `dif init`.
 2. Look at the `events:` block.
-   - `mode: custom`: events go to the person's own handlers, not to dif analytics. Ask which they want. To switch, use the `dif-connect-cloud` skill. To stay custom, do only Steps 4, 5 and 8.
+   - `mode: custom`: events go to the person's own handlers, not to dif analytics. Ask which they want. To switch, use the `dif-connect-cloud` skill, then come back here. To stay custom, do only Steps 4, 5 and 8, and skip item 3 below.
    - `mode: cloud` with no `key`: use the `dif-connect-cloud` skill first, then come back.
-3. Run `dif auth status --json`. If `logged_in` is false, use Steps 1 to 3 of the `dif-connect-cloud` skill.
+3. Run `dif auth status --json`. If `logged_in` is false, use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back here.
 
 ## Step 1. Read the app
 
@@ -48,12 +48,15 @@ Find these before you change anything:
    Use the dev server's real port. `--env test` takes only local origins.
 3. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
 4. Fallbacks:
-   - `not_logged_in`: use Steps 1 to 3 of the `dif-connect-cloud` skill, then run the same command again.
-   - `missing_scope`: the login is from before this feature. Run `dif auth login --no-wait --json` and follow Steps 2 and 3 of the `dif-connect-cloud` skill to log in again. Skip its Step 1: it says you are logged in. Then run the same command again.
+   - `not_logged_in` or `token_invalid`: use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back and run the same command again.
+   - `missing_scope`: the login is from before this feature. Do Steps 2 and 3 of `dif-connect-cloud` (skip Step 1), then come back and run the same command again.
+   - `forbidden`: this login lacks the role or scope. Tell the person, and stop this step.
    - `project_not_found`: the slug is wrong, or this login cannot see the project. Ask the person for the right slug.
    - `usage` or `bad_request`: an origin is not valid, or a test origin is not local. Fix the list and run again.
    - `not_project_manager`: tell the person an owner or admin must do this. Give them the origin list.
    - `site_analytics_unavailable`: site analytics is not on for this project yet. Skip Step 3 and the site part of Step 7. Product events still work.
+   - `rate_limited`: wait `retry_after` seconds, then run the same command once more. If it fails again, tell the person.
+   - `cloud_unreachable`: dif analytics cannot be reached. Check the network. Say the command could not run; never report zero.
    - `dif site` is unknown: tell the person to open Settings → Site in dif analytics, turn it on and paste the origin list. Wait until they say it is done.
 
 Never pass `--replace` unless the person asks to remove origins. Never pass `--rate-limit` unless the person asks.
@@ -73,7 +76,7 @@ For the chosen path:
 - Set `data-domains` to the production hostnames, so preview deploys send nothing.
 - Use `data-spa="hash"` only for a hash router.
 - Signed-in users: render `data-user-id` on the server, or call `dif.identify(id)` on every page load. It is not stored. Call `dif.identify(null)` at sign-out.
-- Keys: the live key (`dif_pk_live_…`) in production and the test key (`dif_pk_test_…`) locally. Use the framework's env mechanism. Do not commit a key that is not already in `dif/config.yaml`.
+- Keys: the live key (`dif_pk_live_…`) in production and the test key (`dif_pk_test_…`) locally. For the script tag's `data-key`, use the framework's env mechanism. Do not commit a key that is not already in `dif/config.yaml`. On the SDK path, change nothing: `dif build` puts the key from `dif/config.yaml` into `dif/generated/events.ts`.
 - Consent: if there is a CMP, add `data-consent="required"` (script) or `consent: "required"` (SDK). Then call `dif.consent(true)` or `dif.consent(false)` from the CMP's callback. If there is no CMP, do not add consent. Say so in Step 8.
 - CSP: if a policy exists, add `https://cdn.dif.sh` to `script-src` and `https://ingest.difdb.com` to `connect-src`. If the app sends product tracks with a user id, also add the `events.url` origin from `dif/config.yaml` to `connect-src`. With no `events.url`, it is `https://cloud.dif.sh`. If there is no policy, change nothing.
 - SRI: only if the person asks to pin the version, or the repo already pins other third-party scripts.
@@ -89,7 +92,7 @@ Make the tracking plan before you edit code. Use these sources, in this order:
 
 Follow `references/event-naming.md`. Keep the plan to about 5 to 15 events. Ask before you add more.
 
-Show the plan as a table: name, kind (marketing or product), where it fires, props, and the experiment that needs it. When the person says yes, write `dif/tracking-plan.yaml`:
+Show the plan as a table: name, kind (marketing or product), where it fires, props, and the experiment that needs it. When the person says yes, write `dif/tracking-plan.yaml`. In autonomous mode, write it without asking; the PR is the review.
 
 ```yaml
 # Events this app sends to dif analytics.
@@ -132,11 +135,11 @@ dif site check --env test --wait 60 --json
 ## Step 7. Check that events arrive
 
 1. When the change is live, run `dif site check --env live --wait 60 --json`. Before that, use the Step 6 result.
-2. Run `dif events --since 24h --plan --json`. It lists live events only. Events sent with the test key show only in `dif site check --env test`. Each row has `in_plan`, and `missing` lists planned events with no count. If it fails with `cloud_error`, the counts cannot be read right now. Say so; do not report zero. If it fails with `no_tracking_plan`, go back to Step 4.
+2. Run `dif events --since 24h --plan --json`. It lists live events only. Events sent with the test key show only in `dif site check --env test`. Each row has `in_plan`, and `missing` lists planned events with no count. If it fails with `cloud_error` or `cloud_unreachable`, the counts cannot be read right now. Say so; do not report zero. If it fails with `no_tracking_plan`, go back to Step 4.
 3. Show a table: event, in plan, count in the last 24 hours, last seen.
 4. For every refusal or missing event, use `references/troubleshooting.md`.
 
-On `needs_selection`, `not_logged_in` or `missing_scope`, do what Step 2 says.
+On any other error, do what Step 2 says for that code.
 
 Read `status` in the `dif site check` result first:
 - `seen`: use the counts.
@@ -162,7 +165,7 @@ If there is no CMP, add: "dif analytics uses no cookies, but reading screen size
 
 ### Autonomous mode (from `dif-triage-experiments`)
 
-You get one metric name. Do only Steps 4, 5 and 8 for that metric.
+You get one metric name. Do only Steps 4, 5 and 8 for that metric. Do not stop to ask: write the plan and the code, and let the PR be the review.
 
 - The metric must match `^[a-z0-9][a-z0-9_]{0,63}$`. If it does not, report `Skipped: unsafe metric` and stop.
 - Use one branch, `dif/instrument/<metric>`, cut from `origin/<default>`. Follow the branch rules in the triage skill.

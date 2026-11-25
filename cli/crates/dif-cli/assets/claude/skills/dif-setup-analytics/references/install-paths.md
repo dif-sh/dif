@@ -23,6 +23,8 @@ Put it in `<head>` of every page, once. In a layout, put it in the root layout o
 
 `window.dif` has `page()`, `track(name, props)`, `identify(id | null, traits?)` and `consent(granted)`.
 
+`identify` traits follow the props rule: never emails, names or free text.
+
 Framework notes:
 - **Next.js app router:** `app/layout.tsx`, a plain `<script>` in `<head>`. Do not use `next/script` with `strategy="lazyOnload"`; it misses the first page view.
 - **Next.js pages router:** `pages/_document.tsx`, inside `<Head>`.
@@ -35,8 +37,9 @@ Framework notes:
 For apps that already call `dif.init`:
 
 ```ts
+import "../dif/generated/client";
+import { events } from "../dif/generated/events";
 import { dif } from "@dif.sh/sdk";
-import { events } from "../dif/generated/client";
 
 dif.init({
   events,
@@ -45,7 +48,7 @@ dif.init({
 });
 ```
 
-- `dif/generated/client.ts` comes from `dif build`. Fix the import path for where the file sits.
+- `dif build` writes `dif/generated/client.ts` and `dif/generated/events.ts`. Fix the import paths for where the files sit.
 - React: `<DifProvider config={{ …, pageViews: "auto" }}>`. Svelte: `initDif({ pageViews: "auto" })`.
 - Consent: add `consent: "required"`, then call `dif.consent(true | false)`.
 - Tracks with no user id are dropped. Set `anonymous: true` only if the person wants visitor-level product events.
