@@ -71,6 +71,22 @@ fn parse_github_remote(url: &str) -> Option<String> {
     Some(format!("{owner}/{repo}"))
 }
 
+/// A slug goes into a URL path, so refuse other shapes.
+/// Cloud slugs are citext, so case does not matter.
+pub(crate) fn check_slug(kind: &str, s: &str) -> Result<(), Failure> {
+    let mut bytes = s.bytes();
+    let ok = bytes.next().is_some_and(|b| b.is_ascii_alphanumeric())
+        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if ok {
+        return Ok(());
+    }
+    Err(Failure::new(
+        "usage",
+        2,
+        format!("{kind} slug {s:?} is not valid; use letters, digits and -"),
+    ))
+}
+
 enum Resolve {
     Api(ApiError),
     Fail(Failure),
@@ -78,6 +94,7 @@ enum Resolve {
 
 fn resolve_inner(client: &Client, root: &Path, flag: Option<&str>) -> Result<String, Resolve> {
     if let Some(slug) = flag {
+        check_slug("project", slug).map_err(Resolve::Fail)?;
         return Ok(slug.to_string());
     }
     let projects = list_projects(client, None).map_err(Resolve::Api)?;
@@ -163,6 +180,26 @@ mod tests {
         let slug = resolve_project(&client(&server), Path::new("."), Some("mine")).unwrap();
         assert_eq!(slug, "mine");
         assert!(server.paths().is_empty());
+    }
+
+    #[test]
+    fn bad_flag_slug_is_usage_without_a_request() {
+        let server = FakeServer::start(|_| (500, "{}".into()));
+        for bad in ["../x", "a/b", "a?b", "-a", "", "a b", "a%2f"] {
+            let f = resolve_project(&client(&server), Path::new("."), Some(bad)).unwrap_err();
+            assert_eq!((f.code, f.exit), ("usage", 2), "{bad}");
+        }
+        assert!(server.paths().is_empty());
+    }
+
+    #[test]
+    fn check_slug_matches_cloud_slugs() {
+        for ok in ["shop", "acme-2", "0x", "Shop"] {
+            assert!(check_slug("project", ok).is_ok(), "{ok}");
+        }
+        for bad in ["", "-x", "x_y", "x.y", "x/y", "é"] {
+            assert!(check_slug("org", bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

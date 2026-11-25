@@ -426,12 +426,19 @@ pub fn untracked_metrics(workspace: &Workspace, report: &mut Report) {
             if plan.contains(name) {
                 continue;
             }
+            let help = match crate::tracking_plan::name_problem(name) {
+                // The plan refuses this name, so the warning stays.
+                Some((problem, _)) => format!(
+                    "This name {problem}, so it cannot go in dif/tracking-plan.yaml. Expect this warning while the experiment uses this name."
+                ),
+                None => "Add it to dif/tracking-plan.yaml with the dif.track() call that sends it, or fix the spelling. The name must match exactly.".to_string(),
+            };
             report.warnings.push(simple_error(
                 "W006",
                 format!("metric `{name}` is not in dif/tracking-plan.yaml"),
                 parsed,
                 workspace,
-                Some("Add it to dif/tracking-plan.yaml with the dif.track() call that sends it, or fix the spelling. The name must match exactly."),
+                Some(&help),
             ));
         }
     }
@@ -1130,6 +1137,24 @@ created: 2026-01-01";
         ws.concluded = vec![parse(VALID_FRONTMATTER, "x")];
         ws.tracking_plan = Some(plan_of(&["other"]));
         assert!(w006(&run(&ws)).is_empty());
+    }
+
+    #[test]
+    fn unplannable_metric_w006_explains_name_rule() {
+        let yaml = VALID_FRONTMATTER.replace("primary: m", "primary: Signup Completed");
+        let mut ws = make_workspace(
+            vec![parse(&yaml, "x")],
+            vec![make_surface("home")],
+            empty_config(),
+        );
+        ws.tracking_plan = Some(plan_of(&["other"]));
+        let report = run(&ws);
+        let found = w006(&report);
+        assert_eq!(found.len(), 1);
+        let help = found[0].help.as_deref().unwrap();
+        assert!(help.contains("cannot go in dif/tracking-plan.yaml"));
+        assert!(help.contains("whitespace"));
+        assert!(report.is_clean());
     }
 
     #[test]

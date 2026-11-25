@@ -68,7 +68,7 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
 - **W005** — Active experiment while `features.experiments` is false in `dif/config.yaml` (warning).
-- **W006** — Experiment metric not in `dif/tracking-plan.yaml` (warning; only when the file exists).
+- **W006** — Experiment metric not in `dif/tracking-plan.yaml` (warning; only when the file exists). A metric name that fails the E012 rule cannot be planned; its help says so and the warning is expected.
 
 ## Before drafting an experiment
 

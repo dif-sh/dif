@@ -67,15 +67,26 @@ fn diag(
     }
 }
 
-fn name_problem(name: &str) -> Option<&'static str> {
+/// Why a name fails the plan's name rule, with a fix.
+/// `None` when the name is valid.
+pub fn name_problem(name: &str) -> Option<(&'static str, &'static str)> {
     if name.is_empty() {
-        Some("is empty")
+        Some(("is empty", "give the event a snake_case name"))
     } else if name.len() > MAX_NAME_BYTES {
-        Some("is longer than 128 bytes")
+        Some((
+            "is longer than 128 bytes",
+            "use a shorter name, at most 128 bytes",
+        ))
     } else if name.starts_with('$') {
-        Some("starts with `$`")
+        Some((
+            "starts with `$`",
+            "names starting with `$` are reserved for built-ins such as `$pageview`",
+        ))
     } else if name.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        Some("has whitespace or control characters")
+        Some((
+            "has whitespace or control characters",
+            "use snake_case, such as `signup_completed`",
+        ))
     } else {
         None
     }
@@ -109,16 +120,13 @@ pub fn load(root: &Path) -> (Option<TrackingPlan>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let mut seen = HashSet::new();
     for event in &plan.events {
-        if let Some(problem) = name_problem(&event.name) {
+        if let Some((problem, help)) = name_problem(&event.name) {
             diags.push(diag(
                 "E012",
                 format!("event name \"{}\" {problem}", event.name),
                 1,
                 1,
-                Some(
-                    "names starting with `$` are reserved for built-ins such as `$pageview`"
-                        .to_string(),
-                ),
+                Some(help.to_string()),
             ));
         }
         if !seen.insert(event.name.as_str()) {
@@ -215,6 +223,7 @@ mod tests {
         ));
         assert!(plan.is_some());
         assert_eq!(codes(&diags), ["E012"]);
+        assert!(diags[0].help.as_deref().unwrap().contains("snake_case"));
     }
 
     #[test]
@@ -226,6 +235,7 @@ mod tests {
         let (plan, diags) = run(Some(&yaml));
         assert!(plan.is_some());
         assert_eq!(codes(&diags), ["E012"]);
+        assert!(diags[0].help.as_deref().unwrap().contains("128 bytes"));
     }
 
     #[test]

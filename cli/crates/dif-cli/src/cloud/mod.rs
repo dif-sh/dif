@@ -1,4 +1,4 @@
-//! dif.sh Cloud access for `dif auth` and `dif connect`.
+//! dif.sh Cloud access for the cloud verbs: auth, connect, site, events.
 //! Local verbs must not use it: they stay offline.
 
 pub mod credentials;

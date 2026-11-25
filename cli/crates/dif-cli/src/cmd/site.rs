@@ -248,10 +248,11 @@ fn check(
     let path = format!("/v1/cli/projects/{slug}/site/install-check");
     client.post(&path, &json!({ "env": env.as_str() }))?;
     let get_path = format!("{path}?env={}", env.as_str());
-    let deadline = clock.now() + wait;
+    // A wait past the clock's range has no deadline.
+    let deadline = clock.now().checked_add(wait);
     loop {
         let resp = client.get(&get_path)?;
-        let left = deadline.saturating_duration_since(clock.now());
+        let left = deadline.map_or(Duration::MAX, |d| d.saturating_duration_since(clock.now()));
         if wait.is_zero() || seen_events(&resp) || left.is_zero() {
             return Ok(with_project(resp, slug));
         }
@@ -477,6 +478,15 @@ mod tests {
         assert_eq!(get_count(&server), 4);
         assert_eq!(*clock.sleeps.borrow(), vec![10, 10, 5]);
         assert_eq!(out["ok"], true);
+    }
+
+    #[test]
+    fn check_huge_wait_does_not_panic() {
+        let server = check_server(vec![THREE]);
+        let clock = FakeClock::new();
+        let wait = Duration::from_secs(u64::MAX);
+        let out = check(&client(&server), "acme", Env::Live, wait, &clock).unwrap();
+        assert_eq!(out["accepted_last_hour"], 3);
     }
 
     #[test]
