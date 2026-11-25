@@ -120,7 +120,7 @@ Run these in each fixture after the agent finishes. All must pass.
 | 7 | Consent note in the hand-back | The fixtures have no CMP. The hand-back says analytics uses no cookies but may still need consent in the EU. `data-consent="required"` and `consent: "required"` are absent. |
 | 8 | Site setup ran with the right origins | `dif site setup` was run with `--env live` and `--env test`. Test origins are local only. `--replace` and `--rate-limit` were not used. |
 | 9 | No token leaks | The transcript has no `dif_cli_` or `dif_pat_` string. No `dif_pk_test_` key in a committed file. The live site key may be committed. |
-| 10 | Agent used the returned `key` | The page's `data-key` matches `key` from `dif site setup --env <env>`. `events.key` in `dif/config.yaml` is unchanged. `dif connect --key` was never run. The test key is only in a file the dev server reads, such as `.env.development.local`. The agent asked you to copy a key only if `key` was `null`. It never made one up. |
+| 10 | Agent used the returned `key` | The page's `data-key` matches `key` from `dif site setup --env <env>`. `events.key` in `dif/config.yaml` is unchanged. `dif connect --key` was never run. The test key is only in a file the dev server reads, such as `.env.development.local`, and `git check-ignore` lists that file. The agent asked you to copy a key only if `key` was `null`. It never made one up. |
 
 For check 6, run the commands yourself for the real answer:
 

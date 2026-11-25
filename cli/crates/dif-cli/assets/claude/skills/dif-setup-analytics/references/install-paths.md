@@ -14,14 +14,16 @@ Put it in `<head>` of every page, once. In a layout, put it in the root layout o
 
 | Attribute | When |
 |---|---|
-| `data-key` | Always. The site `key` from Step 2 of the skill: live in production, test locally. Commit the live key. Put the test key in a file only your dev server reads, such as `.env.development.local`. This is not the key in `dif/config.yaml`; that is expected. |
+| `data-key` | Always. The site `key` from Step 2 of the skill: live in production, test locally. Commit the live key. Put the test key in a file only your dev server reads, such as `.env.development.local`. Check it with `git check-ignore <file>`; if it is not ignored, add it to `.gitignore`. This is not the key in `dif/config.yaml`; that is expected. |
 | `data-domains` | Always. The production hostnames. Other hosts send nothing. |
 | `data-spa="hash"` | Only for `#/route` routers. The default follows `pushState`. |
-| `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. Without server rendering, call `window.dif.identify(id)` on each page load, and `window.dif.identify(null)` at sign-out. |
+| `data-user-id` | The signed-in user's id, rendered by the server. Use it whenever the server knows the user: it is the only way the first page view gets the id. Leave it out for visitors. |
 | `data-consent="required"` | Only with a CMP. Holds up to 50 events until `dif.consent(true)`. |
 | `data-auto="false"` | Only if the person asks. Then call `dif.page()` yourself. |
 
 `window.dif` has `page()`, `track(name, props)`, `identify(id | null, traits?)` and `consent(granted)`. Props are the second argument of `track`: `window.dif.track("signup_cta_clicked", { plan: "pro" })`. This path has no `value` or `currency`.
+
+`window.dif` exists only after the script runs, and early calls are not queued. Without `data-user-id`, call `window.dif?.identify(id)` after the script loads, from a `load` listener or the app's sign-in callback, on every page load. Never call it from inline code in `<head>`. Later page views get the id; the first one does not. At sign-out, call `window.dif?.identify(null)`.
 
 `identify` traits follow the props rule: never emails, names or free text.
 
@@ -38,7 +40,7 @@ Keep the SDK for flags, tracks and exposures. Add the script tag above for page 
 
 - Keep `dif/config.yaml` as it is. `dif build` puts its key into `dif/generated/events.ts`, and the SDK sends tracks and exposures with it. Never run `dif connect --key` with a site key: the site key accepts only its listed origins, so tracks and exposures from other origins would fail.
 - Leave `pageViews` out of `dif.init`, `<DifProvider config>` and `initDif`. If the code has `pageViews: "auto"`, remove it. The SDK also skips its page views when the script is on the page, but one path is clearer.
-- Signed-in users for page views: use `data-user-id` or `window.dif.identify(id)`, as above. The SDK's `dif.identify` sets the id for SDK calls only, and sends traits with the config key. The script does not see it.
+- Signed-in users for page views: use `data-user-id`, or `window.dif?.identify(id)` after the script loads, as above. The SDK's `dif.identify` sets the id for SDK calls only, and sends traits with the config key. The script does not see it.
 - Keep the SDK's `userId` in `dif.init` for tracks.
 - Track with `dif.track(name, { props, value, currency })`. Tracks with no user id are dropped. For events from visitors who are not signed in, set `anonymous: true` in `dif.init`.
 - Consent: add `data-consent="required"` to the script tag and `consent: "required"` to `dif.init`. Call `window.dif.consent()` and the SDK's `dif.consent()` with the CMP's current state, and from the CMP's change callback.
