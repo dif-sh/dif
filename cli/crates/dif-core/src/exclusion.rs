@@ -358,6 +358,7 @@ mod tests {
             surfaces,
             audiences: vec![],
             call_sites: vec![],
+            tracking_plan: None,
             parse_errors: vec![],
         }
     }

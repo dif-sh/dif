@@ -14,6 +14,9 @@
 //! - `E008` declared audience attribute has no `dif/audiences/<name>.ts` file
 //! - `E009` duplicate experiment id across `active/` and `concluded/`
 //! - `E010` duplicate variant id within one experiment
+//! - `E011` tracking plan does not parse
+//! - `E012` tracking plan event name is invalid
+//! - `E013` tracking plan event name is duplicated
 //! - `W001` orphan ref (call site references no active experiment)
 //! - `W002` orphan audience file (not declared in `audience_attributes`)
 //! - `W003` legacy `exposure:` block (superseded by `events:`)
@@ -499,6 +502,7 @@ mod tests {
             surfaces,
             audiences: vec![],
             call_sites: vec![],
+            tracking_plan: None,
             parse_errors: vec![],
         }
     }

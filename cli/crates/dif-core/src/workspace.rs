@@ -17,6 +17,7 @@ use crate::{
     diag::Diagnostic,
     parse::{self, ParseError, ParsedExperiment, ParsedSurface},
     paths,
+    tracking_plan::{self, TrackingPlan},
 };
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -43,6 +44,8 @@ pub struct Workspace {
     /// Call sites: every `dif("<id>", ...)` reference found in source.
     /// Empty until [`Workspace::scan_call_sites`] runs.
     pub call_sites: Vec<CallSite>,
+    /// Decoded `dif/tracking-plan.yaml`. `None` when absent or unparseable.
+    pub tracking_plan: Option<TrackingPlan>,
     /// Diagnostics from files that failed to parse. Collected, not raised, so
     /// `validate` can report them in one pass alongside other checks.
     pub parse_errors: Vec<Diagnostic>,
@@ -100,6 +103,9 @@ impl Workspace {
         let surfaces = load_surfaces(&root.join(paths::SURFACES_DIR), &mut parse_errors, &root);
         let audiences = audience_files::load_audience_files(&root.join(paths::AUDIENCES_DIR));
 
+        let (tracking_plan, plan_diags) = tracking_plan::load(&root);
+        parse_errors.extend(plan_diags);
+
         Ok(Workspace {
             root,
             config,
@@ -108,6 +114,7 @@ impl Workspace {
             surfaces,
             audiences,
             call_sites: Vec::new(),
+            tracking_plan,
             parse_errors,
         })
     }
@@ -256,4 +263,28 @@ pub(crate) fn relative_path(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| path.display().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn broken_tracking_plan_is_a_parse_error_not_fatal() {
+        let dir = tempfile::tempdir().unwrap();
+        let dif = dir.path().join("dif");
+        std::fs::create_dir_all(&dif).unwrap();
+        std::fs::write(
+            dif.join("config.yaml"),
+            "project: demo\ndefault_surface: web\n",
+        )
+        .unwrap();
+        std::fs::write(dif.join("tracking-plan.yaml"), "events: [").unwrap();
+
+        let ws = Workspace::load(dir.path()).unwrap();
+
+        assert!(ws.tracking_plan.is_none());
+        let codes: Vec<_> = ws.parse_errors.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, ["E011"]);
+    }
 }

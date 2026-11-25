@@ -180,6 +180,7 @@ created: 2026-01-01";
             surfaces,
             audiences: vec![],
             call_sites: vec![],
+            tracking_plan: None,
             parse_errors: vec![],
         }
     }

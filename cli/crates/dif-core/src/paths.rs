@@ -17,6 +17,9 @@ pub const CONFIG_FILE: &str = "dif/config.yaml";
 /// the `generated/` subdir so codegen output isn't committed.
 pub const GITIGNORE_FILE: &str = "dif/.gitignore";
 
+/// Optional tracking plan (`dif/tracking-plan.yaml`).
+pub const TRACKING_PLAN_FILE: &str = "dif/tracking-plan.yaml";
+
 /// Audience resolver directory (`dif/audiences`). Each declared
 /// `audience_attributes` entry pairs with a `<name>.ts` file here.
 pub const AUDIENCES_DIR: &str = "dif/audiences";
