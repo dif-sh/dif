@@ -75,7 +75,7 @@ dif init --yes
 
 Then edit by hand:
 
-1. Call `dif.init` once, in a client component that the root layout renders. Use the `@dif.sh/sdk` import and the generated client from `dif/generated/`. Do not pass `pageViews`.
+1. Call `dif.init` once, in a client component that the root layout renders. Use the `@dif.sh/sdk` import and the generated client from `dif/generated/`. Leave `pageViews` out. The starting code has no page-view option, so the agent must add it.
 2. Add a CSP to `next.config.js` (or `.mjs`):
 
 ```js
@@ -89,7 +89,7 @@ module.exports = {
 
 3. Add a draft experiment with `metrics: primary: checkout_started`, as in fixture 1.
 
-Expected: `pageViews: "auto"` in the existing `dif.init`, or the React adapter. No script tag. The CSP gains `https://cdn.dif.sh` in `script-src` and `https://ingest.difdb.com` in `connect-src`. Nothing else changes in it.
+Expected: `pageViews: "auto"` in the existing `dif.init`, or the React adapter. No script tag. The CSP gains `https://cdn.dif.sh` in `script-src` and `https://ingest.difdb.com` in `connect-src`. Nothing else changes in it. The fixture sends no product tracks with a user id, so the `events.url` origin is not added to `connect-src`.
 
 ### Fixture 3. Plain HTML, three pages, no build step
 
@@ -101,7 +101,7 @@ done
 dif init --yes
 ```
 
-No framework, so `dif init` may ask for one. Pick "none".
+There is no framework, so `dif init` has no `package.json` to detect. In the "Which framework does your app use?" question, pick "JavaScript / TypeScript" (the plain SDK; there is no "none" option).
 
 Expected: the script tag in each of the three files (there is no shared layout). No CSP change. No SDK.
 
@@ -143,7 +143,7 @@ Goal: the skill sends the person back to sign in again, and does not give up.
 
 Pass:
 
-- `dif site setup --json` fails with `missing_scope` (exit 2).
+- `dif site setup --env live --origin https://example.com --json` fails with `missing_scope` (exit 2).
 - The agent says the login is from before this feature, and runs `dif auth login` again. It uses Steps 2 and 3 of the `dif-connect-cloud` skill and skips Step 1.
 - After sign-in, it runs the same `dif site setup` command again, and it works.
 - The agent never asks you to paste a token.
@@ -186,9 +186,9 @@ Try each. In every case the agent must say the count is unknown. It must not say
 | Make this happen | What the agent must say |
 |---|---|
 | Disconnect the network, then let it reach Step 7 | The command could not run (`cloud_unreachable`). Counts are unknown. |
-| Run before the change is deployed, with the live key | `unknown_key` or `unseen`: dif has not seen the key. Not a zero. Goes to the "no refusals, no events" row in `references/troubleshooting.md`. |
+| Run before the change is deployed, with the live key | `unknown_key`: dif has not seen the key. Not a zero. It follows the text in `references/troubleshooting.md` that starts "No refusals and `accepted_last_hour` is 0, or `status` is `unknown_key`". |
 | `status` of `unavailable` or `error` | The check cannot run now. Not a zero. |
-| Run `dif events` in a project with no `dif/tracking-plan.yaml` | `no_tracking_plan`. The agent goes back to Step 4. |
+| Run `dif events --plan --since 24h --json` in a project with no `dif/tracking-plan.yaml` | `no_tracking_plan`. The agent goes back to Step 4. |
 | Never deploy | "not checked yet: deploy, then run `dif site check --env live`". |
 
 Counts are `null` unless `status` is `seen`. A `null` must never turn into a 0 in the table.
