@@ -235,6 +235,9 @@ jobs:
       - name: wrapper execs dif --help
         working-directory: cli/packages/cli
         run: node bin/dif.js --help | grep -q dif
+      - name: create-dif tests
+        working-directory: cli/packages/create-dif
+        run: npm test
 
   # The cross-language anchor: the Rust side regenerates the fixture, the TS
   # side reads it, both must agree. This is the contract.

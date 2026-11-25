@@ -3,6 +3,7 @@
 //! `--json` and piped runs keep the plain output in [`super`].
 
 use super::choices::{feature_flag_values, features_for, Feature, Framework};
+use super::install::PackageManager;
 use super::{
     validate_publishable_key, AgentSelection, Args, Summary, CLAUDE_FILE_PATHS, CURSOR_MDC_PATH,
 };
@@ -291,8 +292,8 @@ pub(super) fn start_writing() -> Progress {
     }
 }
 
-/// Show the result: what landed, then next steps.
-pub(super) fn report_success(progress: Progress, s: &Summary, next: &[String]) -> io::Result<()> {
+/// Show what landed on disk.
+pub(super) fn report_written(progress: Progress, s: &Summary) -> io::Result<()> {
     if let Some(rest) = MIN_SPIN.checked_sub(progress.started.elapsed()) {
         sleep(rest);
     }
@@ -323,7 +324,34 @@ pub(super) fn report_success(progress: Progress, s: &Summary, next: &[String]) -
         }
         rail()?;
     }
+    Ok(())
+}
 
+/// Ask before dif changes package.json.
+pub(super) fn confirm_install(pm: PackageManager, packages: &[&str]) -> io::Result<bool> {
+    let prompt = format!("Install {} with {}?", join_and(packages), pm.name());
+    match cliclack::confirm(prompt).initial_value(true).interact() {
+        Ok(yes) => Ok(yes),
+        Err(e) if e.kind() == io::ErrorKind::Interrupted => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// The install failed, but the workspace is written.
+pub(super) fn warn_install_failed(line: &str) -> io::Result<()> {
+    cliclack::log::warning(format!("Install failed. Run: {line}"))
+}
+
+fn join_and(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// Show the next steps and the outro.
+pub(super) fn report_next(s: &Summary, next: &[String]) -> io::Result<()> {
     let mut steps: Vec<String> = next
         .iter()
         .enumerate()

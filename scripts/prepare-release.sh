@@ -35,8 +35,8 @@ cargo_toml="$root/cli/Cargo.toml"
 VERSION="$version" perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/m' "$cargo_toml"
 VERSION="$version" perl -0pi -e 's/(path = "crates\/dif-core", version = ")[^"]*"/$1$ENV{VERSION}"/' "$cargo_toml"
 
-# 2. npm package versions (wrapper, sdk, react, svelte, openfeature, flags-sdk).
-for pkg in cli sdk react svelte openfeature flags-sdk; do
+# 2. npm package versions (wrapper, create-dif, sdk, react, svelte, openfeature, flags-sdk).
+for pkg in cli create-dif sdk react svelte openfeature flags-sdk; do
   ( cd "$root/cli/packages/$pkg" && npm version "$version" --no-git-tag-version --allow-same-version >/dev/null )
 done
 

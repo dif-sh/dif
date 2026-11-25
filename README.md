@@ -43,6 +43,17 @@
 
 ## Quickstart
 
+In your app's folder, next to `package.json`:
+
+```sh
+npm create dif@latest
+```
+
+This installs `@dif.sh/cli` with your package manager and runs `dif init`,
+which sets up the `dif/` workspace and installs the SDK for your framework.
+
+Or install the CLI globally:
+
 ```sh
 npm install -g @dif.sh/cli
 ```

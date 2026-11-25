@@ -37,6 +37,15 @@
   - Files differ from what dif would write → list them, "Nothing was written", exit
   - Files already match → "already up to date"
   - New workspace → "Created your dif workspace" with a ✔ line per path
+- **Install packages** (only when `package.json` exists and some packages are missing)
+  - Packages: `@dif.sh/sdk` plus the framework's adapter, minus any already in `package.json`
+  - Manager: lockfile, then `npm_config_user_agent`, else npm
+  - **Install @dif.sh/sdk and @dif.sh/react with pnpm?** (default yes; skipped with `--install`)
+    - Yes → runs the install
+      - Succeeded → no install line in Next steps
+      - Failed → warning with the command, which also stays in Next steps
+    - No or Esc → the command goes first in Next steps
+  - `--yes`, `--json` or no terminal → installs only with `--install`
 - **Wrap-up:** "Added guidance for coding agents", then Next steps, then "You're all set"
 
-Press **Esc** at any question to cancel without writing anything.
+Press **Esc** at any question before *Write files* to cancel without writing anything. Esc at the install question only skips the install.

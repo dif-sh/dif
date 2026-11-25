@@ -207,6 +207,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # After the wrapper, so the CLI version it pins exists.
+      - name: sync version (create-dif)
+        working-directory: cli/packages/create-dif
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - name: publish create-dif
+        working-directory: cli/packages/create-dif
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: sync version (sdk)
         working-directory: cli/packages/sdk
         run: |

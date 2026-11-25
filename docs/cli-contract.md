@@ -70,14 +70,17 @@ New flags (all optional):
 | `--features` | comma list of the **enabled** features: `analytics`, `flags`, `experiments` | all three |
 | `--framework` | one of `sdk`, `react`, `svelte`, `openfeature`, `flags-sdk` | Detected from `package.json` in the current folder; `sdk` when nothing matches |
 | `--yes` | – | Off. Accepts the default for every prompt. Implied by `--json` or a non-TTY. |
+| `--install` | – | Off. Installs the SDK packages without asking. Without it, `--yes`, `--json` and a non-TTY never install. |
 
 Unchanged: `--surface`, `--events`, `--key`, `--force`, `--agents`, `--agents-only`. A new workspace takes its `project:` name from the `name` in `package.json` (without an `@scope/`), else the folder name. An existing config keeps its name. `--events cloud` with no `--key` is valid: the workspace is ready for Cloud but has no key yet.
 
 Errors added: `usage` (exit 2) for an unknown value in `--project-type` or `--features`, or for an empty list.
 
-`--framework` only picks the install step: `next[0]` becomes `npm install @dif.sh/sdk` plus the framework's adapter, for example `npm install @dif.sh/sdk @dif.sh/svelte`. Nothing is written to config. It can't be combined with `--agents-only`.
+`--framework` only picks the install step: `@dif.sh/sdk` plus the framework's adapter. Nothing is written to config. It can't be combined with `--agents-only`.
 
-The success JSON adds two fields. `project_type` is always an array, `[]` when the flag is omitted. `features` always lists all three keys.
+The install step runs only when `package.json` exists, and it skips packages that `dependencies` or `devDependencies` already list. The package manager comes from the lockfile (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb`, `package-lock.json`), then from `npm_config_user_agent`, else npm. When packages are still missing, `next[0]` is the install command for that manager, for example `pnpm add @dif.sh/sdk @dif.sh/svelte`. Otherwise `next` has only the two dif steps. Under `--json` the package manager's output goes to stderr. A failed install prints a warning to stderr and still exits 0, with the command in `next[0]`.
+
+The success JSON adds three fields. `project_type` is always an array, `[]` when the flag is omitted. `features` always lists all three keys. `installed` lists the packages that this run installed, `[]` when none.
 
 ```json
 {
@@ -85,6 +88,7 @@ The success JSON adds two fields. `project_type` is always an array, `[]` when t
   "already_initialized": false,
   "created": ["dif/experiments/active", "…"],
   "next": ["…"],
+  "installed": [],
   "project_type": ["app", "ecommerce"],
   "features": { "analytics": true, "flags": true, "experiments": true }
 }

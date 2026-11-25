@@ -41,3 +41,4 @@ Never do these. Stop and ask a human:
 - Skills mirror check: `node scripts/sync-skills.mjs --check`
 - Skills mirror refresh, after you edit `cli/crates/dif-cli/assets/claude/skills/`: `node scripts/sync-skills.mjs`
 - SDK tests (run `npm install` in that folder once first): `cd cli/packages/sdk && npm test`
+- create-dif tests: `cd cli/packages/create-dif && npm test`
