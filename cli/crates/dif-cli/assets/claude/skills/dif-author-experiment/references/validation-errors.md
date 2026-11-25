@@ -1,6 +1,6 @@
 # dif validate error codes
 
-`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E010 are errors; W001-W005 are warnings.
+`dif validate` collects all errors before exiting (not fail-fast), so one run shows the full picture. Errors abort the build; warnings don't. Codes E001 / E003-E013 are errors; W001-W006 are warnings.
 
 (There is intentionally no E002 — it was reserved during design and never used. The gap is preserved so existing codes don't renumber.)
 
@@ -65,6 +65,24 @@ Two variants inside the same experiment declare the same `id:`. The message repo
 
 **Fix:** duplicate variant ids silently bucket everyone into the first occurrence. Give each variant a unique `id:`.
 
+### E011 — tracking plan does not parse
+
+`dif/tracking-plan.yaml` is not valid YAML, or does not match the schema (an `events:` list of `name`, `kind`, optional `where` and `props`).
+
+**Fix:** correct the YAML. `kind` must be `product` or `marketing`. Unknown keys are rejected.
+
+### E012 — tracking plan event name is invalid
+
+An event `name` in `dif/tracking-plan.yaml` is empty, longer than 128 bytes, starts with `$`, or contains whitespace.
+
+**Fix:** rename the event to 1-128 bytes with no leading `$` and no whitespace.
+
+### E013 — tracking plan event name is duplicated
+
+Two events in `dif/tracking-plan.yaml` share the same `name`.
+
+**Fix:** keep one entry per event name.
+
 ## Warnings (non-fatal)
 
 ### W001 — orphan ref
@@ -98,3 +116,9 @@ A file under `experiments/active/` has `status:` set to something other than `ac
 `dif/config.yaml` has `features.experiments: false`, but an experiment under `experiments/active/` has `status: active`. `dif build` leaves its registration out of the generated client.
 
 **Fix:** set `features.experiments: true`, or run `dif conclude <id>`.
+
+### W006 — experiment metric not in the tracking plan
+
+An experiment under `experiments/active/` with status `draft` or `active` names a primary or guardrail metric that is not in `dif/tracking-plan.yaml`. It only runs when that file exists. Concluded experiments are not checked.
+
+**Fix:** add the event to `dif/tracking-plan.yaml` with the `dif.track()` call that sends it, or fix the spelling. The name must match exactly.

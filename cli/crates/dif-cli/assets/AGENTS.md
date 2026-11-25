@@ -57,11 +57,15 @@ Plus `dif scaffold-audiences` to pull in starter audience resolvers into an exis
 - **E008** — Declared audience attribute missing its `dif/audiences/<name>.ts` resolver.
 - **E009** — Duplicate experiment id across `experiments/active/` and `experiments/concluded/`.
 - **E010** — Duplicate variant id within one experiment.
+- **E011** — `dif/tracking-plan.yaml` invalid YAML or schema.
+- **E012** — Bad event name in the tracking plan (empty, over 128 bytes, leading `$`, or whitespace).
+- **E013** — Duplicate event name in the tracking plan.
 - **W001** — Call site references an experiment that isn't active (warning).
 - **W002** — Audience file has no matching entry in `audience_attributes` (warning).
 - **W003** — Legacy `exposure:` block in `dif/config.yaml`, superseded by `events:` (warning).
 - **W004** — Active experiment file's `status:` isn't `active` (warning).
 - **W005** — Active experiment while `features.experiments` is false in `dif/config.yaml` (warning).
+- **W006** — Experiment metric not in `dif/tracking-plan.yaml` (warning; only when the file exists).
 
 ## Before drafting an experiment
 
