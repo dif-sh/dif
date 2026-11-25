@@ -66,6 +66,7 @@ curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/
 curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/v1/projects/<slug>/overview"
 curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/v1/projects/<slug>/experiments/<id>/results"
 curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/v1/projects/<slug>/learnings?surface=<surface>&limit=20"
+curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/v1/projects/<slug>/event-health?since=24h"
 ```
 
 | REST path | MCP tool | Returns |
@@ -74,6 +75,7 @@ curl --fail-with-body -sS -H "Authorization: Bearer $DIF_TOKEN" "$DIF_CLOUD_URL/
 | `/v1/projects/<slug>/overview` | `get_overview` (`repo` or `project`) | `Overview`: every active experiment, most urgent first. |
 | `/v1/projects/<slug>/experiments/<id>/results` | `get_experiment_results` (`repo` or `project`, and `experiment: "<id>"`) | `ExperimentResults`: one active experiment with arms, every metric, SRM and progress. |
 | `/v1/projects/<slug>/learnings` | `get_learnings` (`repo` or `project`, `surface`, `limit`) | `Learnings`: surface learnings and concluded decisions. |
+| `/v1/projects/<slug>/event-health?since=` | `get_event_health` (`repo` or `project`, `since`) | `EventHealth`: the events that dif analytics received, and whether each experiment metric has been seen. Newer servers only. |
 
 The limit is 120 requests a minute for each token. REST and MCP share it. Every POST to `/mcp` costs one of them, also a notification and a tool list. An MCP client spends at least 2 to connect (`initialize`, then `notifications/initialized`) before its first tool call.
 
@@ -238,6 +240,25 @@ Act on `kind`, not on the verdict name.
 - `analyses`: one item for each metric. `role` is `primary` or `guardrail`. `status` is `analyzed`, `not_analyzed` (with a `reason`; `kind_not_supported:<kind>` for a revenue or duration metric, on projects that are not on the new analysis) or `insufficient_data`. `desired_direction` is `increase`, `decrease` or `null`. `arms` has one item for each treatment: `id`, `lift`, `ci95`, `ci99`, `p_value`, `significant`, `harm`, `no_baseline`. `ci95` and `ci99` are arrays of two numbers. `lift`, `ci95` and `ci99` are `null` together, and always when `no_baseline` is `true` (the control has no conversions, or for a revenue or duration metric the control mean is 0). `p_value` can be `null`. A number that was not computed is `null`, never `0`.
 - `srm`: the sample ratio mismatch check. `p_value` can be `null`. `tripped: true` means that the traffic split is wrong.
 - `progress`: `per_arm_min` (the smallest arm), `required_per_arm` (the sample target) and `eta_days`. For a revenue or duration primary, `required_per_arm` comes from the control's variance. `required_per_arm` and `eta_days` can be `null`, and `progress` itself can be `null`.
+
+### `get_event_health`
+
+Newer servers also have this tool. The four tools in section 1 are still the check for whether MCP works. Do not require this one. `since` is `1h`, `24h` or `7d` (default `24h`).
+
+```json
+{
+  "project": "acme-shop",
+  "since": "24h",
+  "site": { "live": { "env": "live", "prefix": "pk_live_", "status": "active", "accepted_last_hour": 120, "last_accepted_ms": 1792920000000, "last_origin": "https://acme.com", "pageviews_last_hour": 80, "refused_last_hour": 0 } },
+  "events": [ { "name": "signup_completed", "count": 42, "last_seen_ms": 1792920000000, "builtin": false } ],
+  "experiment_metrics": [ { "experiment": "checkout-cta-v2", "metric": "completed_checkout", "role": "primary", "seen": true } ]
+}
+```
+
+- `site.live` is `null` when site analytics is off.
+- `events`: each event name with its count in the window and the time it was last seen. `builtin` is `true` for events that dif analytics sends itself, such as page views.
+- `experiment_metrics`: one item for each metric of an experiment that is draft or active. `role` is `primary` or `guardrail`. `seen` is true when the metric has events in the window.
+- If the tool or route answers `unavailable` (REST 503), the counts cannot be read. Report it. Never treat it as "not seen", and never read it as an empty `events` list.
 
 ### `get_learnings`
 

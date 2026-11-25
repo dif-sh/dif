@@ -61,6 +61,7 @@ The body has three sections:
 - E005 weights → distribute so they total 100.
 - E006 undeclared attribute → either add it to `audience_attributes` (and create `dif/audiences/<name>.ts`) or remove the predicate.
 - E007 exclusion conflict → add shared `exclusion_group` to both files, or narrow one audience.
+- W006 metric not in the tracking plan → the experiment's metric has no entry in `dif/tracking-plan.yaml`. Fix the spelling, or offer to run the `dif-setup-analytics` skill (Step 4) to add the event and its `dif.track()` call. An experiment whose metric is never sent has no data.
 
 See `references/validation-errors.md` for every code with its fix.
 

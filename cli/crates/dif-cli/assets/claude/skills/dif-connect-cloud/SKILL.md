@@ -83,6 +83,8 @@ dif build
 
 This writes the key into `dif/generated/client.ts`. `dif connect` changed only `dif/config.yaml`.
 
+To send page views and product events, use the dif-setup-analytics skill next.
+
 ## Errors
 
 | `error` | What to do |
