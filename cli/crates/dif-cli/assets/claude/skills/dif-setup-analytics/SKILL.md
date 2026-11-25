@@ -29,7 +29,7 @@ Add `--json` to every `dif site`, `dif events` and `dif auth` command. Branch on
 
 1. Run `dif auth status --json`. If `logged_in` is false, run `dif auth login`, then come back here.
 2. Run `dif site check --env live --json` with no `--project`. It fails with `needs_selection` and lists the login's projects. Ask the person which project, even if there is only one. Add `--project <slug>` to every `dif site` command after that.
-3. Do Steps 1, 2, 3, 6, 7 and 8. In Step 3, the SDK and `events.url` notes do not apply unless the app already uses `@dif.sh/sdk`. In Step 7, skip item 2 and use only `dif site check`. Do not write `dif/tracking-plan.yaml`.
+3. Do Steps 1, 2, 3, 6, 7 and 8. In Step 3, the SDK and `events.url` notes do not apply unless the app already uses `@dif.sh/sdk`. In Step 7, skip items 2 and 3 and use only `dif site check`. In Step 8, report the `dif site check` counts in place of the table. Do not write `dif/tracking-plan.yaml`.
 
 ## Step 1. Read the app
 
