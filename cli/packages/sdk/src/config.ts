@@ -17,7 +17,7 @@ import type {
   MetricEvent,
   Sink,
 } from "./types.js";
-import { requireConsent } from "./consent.js";
+import { consentGranted, requireConsent } from "./consent.js";
 import { DEFAULT_VISITOR_COOKIE, visitorId } from "./visitor.js";
 
 export type { DifInitConfig };
@@ -162,7 +162,10 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
   const resolve = merged.userId ?? (() => null);
   const anonymousUserId = merged.anonymousUserId === true;
   const cookie = merged.anonymousCookieName ?? DEFAULT_VISITOR_COOKIE;
-  const visitor = anonymousUserId ? () => visitorId(cookie) : () => null;
+  // The cookie waits for consent, as the events do.
+  const visitor = anonymousUserId
+    ? () => (consentGranted() ? visitorId(cookie) : null)
+    : () => null;
   state = {
     project: merged.project ?? null,
     publishableKey,

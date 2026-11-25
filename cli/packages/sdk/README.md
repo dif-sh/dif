@@ -74,8 +74,12 @@ variant. Set `anonymousCookieName` to use another cookie name.
 - On a server there is no cookie jar, so the SDK mints nothing and SSR
   renders control. To bucket on the server too, mint the cookie in your
   middleware and pass it as `userId`.
+- With `consent: "required"`, the SDK does not read or set the cookie
+  until `dif.consent(true)`. Until then the visitor has no user id:
+  experiments show control and send no exposure, with no warning. After
+  `dif.consent(true)` the SDK reads or mints the cookie and uses it.
 - Decide with your own legal advice whether the cookie needs consent in
-  your market. `consent: "required"` holds events, not the cookie.
+  your market.
 
 ## Wiring audiences
 
@@ -169,7 +173,8 @@ Set `consent: "required"` to hold every event until the visitor answers.
 Page views, tracks and exposures wait, up to 50 events. Call
 `dif.consent(true)` to send them. `dif.consent(false)` drops them and
 all later events. Call `dif.consent()` after `dif.init`. An earlier call
-is ignored.
+is ignored. With `anonymousUserId: true`, the `dif_uid` cookie also waits
+for `dif.consent(true)`; see "Anonymous visitors".
 
 ```ts
 dif.init({ publishableKey, userId, consent: "required" });

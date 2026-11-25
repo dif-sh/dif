@@ -25,8 +25,10 @@ turns on the core SDK's `anonymousUserId`, which reads the same cookie and mints
 it in the browser when `difLoad()` did not run. Page views from `initDif({ pageViews: "auto" })`
 carry it as the user id, marked anonymous (`anon`): dif counts it as a visitor,
 not as a signed-in user. If you need no cookie, use the dif tracking script for
-page views and do not call `difLoad()`. Decide with your own legal advice
-whether the cookie needs consent in your market.
+page views and do not call `difLoad()`. With `consent: "required"`, `initDif()`
+reads or mints the cookie only after `dif.consent(true)`; `difLoad()` does not
+check consent. Decide with your own legal advice whether the cookie needs
+consent in your market.
 
 ## Usage
 

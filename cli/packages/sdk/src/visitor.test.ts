@@ -151,3 +151,61 @@ describe("anonymousUserId: true", () => {
     assert.equal(writes.length, 0);
   });
 });
+
+describe("anonymousUserId with consent: required", () => {
+  it("leaves the cookie alone before consent", () => {
+    const { writes } = installCookies("dif_uid=visitor-1");
+    const reads = { n: 0 };
+    const doc = g.document as { cookie: string };
+    const desc = Object.getOwnPropertyDescriptor(doc, "cookie")!;
+    Object.defineProperty(doc, "cookie", {
+      get: () => (reads.n++, desc.get!.call(doc)),
+      set: (v: string) => desc.set!.call(doc, v),
+    });
+    init({ anonymousUserId: true, consent: "required" });
+    assert.equal(show(), "c");
+    assert.equal(reads.n, 0);
+    assert.equal(writes.length, 0);
+    assert.equal(exposures.length, 0);
+  });
+
+  it("does not warn about a missing user id before consent", () => {
+    installCookies();
+    const realWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (m: string) => warnings.push(String(m));
+    try {
+      init({ anonymousUserId: true, consent: "required" });
+      show();
+    } finally {
+      console.warn = realWarn;
+    }
+    assert.equal(warnings.filter((w) => w.includes("no user id")).length, 0);
+  });
+
+  it("mints the cookie after consent and uses it from then on", () => {
+    const { jar, writes } = installCookies();
+    init({ anonymousUserId: true, consent: "required" });
+    show();
+    dif.consent(true);
+    assert.equal(show(), "t");
+    assert.equal(writes.length, 1);
+    assert.equal(exposures[0]?.user_id, jar.get("dif_uid"));
+  });
+
+  it("reads an earlier cookie after consent", () => {
+    installCookies("dif_uid=visitor-1");
+    init({ anonymousUserId: true, consent: "required" });
+    dif.consent(true);
+    show();
+    assert.equal(exposures[0]?.user_id, "visitor-1");
+  });
+
+  it("keeps the cookie alone after consent is refused", () => {
+    const { writes } = installCookies();
+    init({ anonymousUserId: true, consent: "required" });
+    dif.consent(false);
+    assert.equal(show(), "c");
+    assert.equal(writes.length, 0);
+  });
+});
