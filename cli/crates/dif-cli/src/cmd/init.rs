@@ -35,6 +35,7 @@ mod install;
 mod ui;
 
 use choices::{detect_framework, Framework};
+use install::{detect_package_manager, missing_packages, PackageManager};
 
 /// `dif init` flags.
 #[derive(ClapArgs, Debug)]
@@ -86,7 +87,8 @@ pub struct Args {
     #[arg(
         long,
         conflicts_with_all = [
-            "surface", "events", "key", "framework", "force", "project_type", "features"
+            "surface", "events", "key", "framework", "force", "project_type", "features",
+            "install"
         ]
     )]
     pub agents_only: bool,
@@ -112,6 +114,10 @@ pub struct Args {
     /// Ask nothing and use the defaults. Implied by --json or a non-TTY.
     #[arg(long)]
     pub yes: bool,
+
+    /// Install the SDK packages without asking. Off for --yes and --json.
+    #[arg(long)]
+    pub install: bool,
 }
 
 /// `--agents` targets. Each maps to a set of scaffolded files;
@@ -461,18 +467,84 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
         surface: &surface,
         sel,
         mode,
-        framework,
         has_key: args.key.is_some(),
         dashboard_url: args.dashboard_url.as_deref(),
         already_initialized,
         project_type: &project_type,
         features,
     };
-    match progress {
-        Some(p) => ui::report_success(p, &summary, &next_steps(&surface, framework))?,
-        None => report_success(&summary, json),
+    let pending = pending_install(cwd, framework);
+    let interactive = progress.is_some();
+    if let Some(p) = progress {
+        ui::report_written(p, &summary)?;
+    }
+    let mut installed: Vec<&str> = Vec::new();
+    if let Some((pm, packages)) = &pending {
+        let wanted = if interactive && !args.install {
+            ui::confirm_install(*pm, packages)?
+        } else {
+            args.install
+        };
+        if wanted {
+            if run_install(cwd, *pm, packages, json) {
+                installed.clone_from(packages);
+            } else if interactive {
+                ui::warn_install_failed(&pm.add_line(packages))?;
+            } else {
+                eprintln!("warning: install failed. Run: {}", pm.add_line(packages));
+            }
+        }
+    }
+    let install_line = pending
+        .as_ref()
+        .filter(|_| installed.is_empty())
+        .map(|(pm, packages)| pm.add_line(packages));
+    let next = next_steps(&surface, install_line.as_deref());
+    if interactive {
+        ui::report_next(&summary, &next)?;
+    } else {
+        report_success(&summary, json, &next, &installed);
     }
     Ok(ExitCode::from(0))
+}
+
+/// The manager and the framework packages not in package.json yet.
+/// Without package.json this is not a JS app, so dif installs nothing.
+fn pending_install(
+    cwd: &Path,
+    framework: Framework,
+) -> Option<(PackageManager, Vec<&'static str>)> {
+    let package_json = std::fs::read_to_string(cwd.join("package.json")).ok()?;
+    let packages = missing_packages(&package_json, framework.packages());
+    if packages.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = std::fs::read_dir(cwd)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let user_agent = std::env::var("npm_config_user_agent").ok();
+    Some((
+        detect_package_manager(&names, user_agent.as_deref()),
+        packages,
+    ))
+}
+
+/// Run the package manager in `cwd`. True when it succeeds.
+/// Under --json its output goes to stderr, so stdout stays JSON.
+fn run_install(cwd: &Path, pm: PackageManager, packages: &[&str], json: bool) -> bool {
+    let args = pm.add_args(packages);
+    let mut cmd = std::process::Command::new(&args[0]);
+    cmd.args(&args[1..]).current_dir(cwd);
+    if json {
+        cmd.stdout(std::io::stderr());
+    }
+    cmd.status().is_ok_and(|status| status.success())
 }
 
 /// Plain dif-owned files: the structural scaffold plus the dif-namespaced
@@ -572,7 +644,6 @@ struct Summary<'a> {
     surface: &'a str,
     sel: AgentSelection,
     mode: EventsMode,
-    framework: Framework,
     has_key: bool,
     dashboard_url: Option<&'a str>,
     already_initialized: bool,
@@ -782,15 +853,18 @@ fn created_paths(surface: &str, sel: AgentSelection, mode: EventsMode) -> Vec<St
 
 /// The "next steps" block appended to a successful `dif init`, shared between
 /// the pretty text output and the `next` JSON array so they can't drift.
-fn next_steps(surface: &str, framework: Framework) -> [String; 3] {
-    [
-        format!("npm install {}", framework.packages().join(" ")),
-        format!("dif new <id> --surface {surface} — then edit the file and set status: active"),
-        "dif build".to_string(),
-    ]
+fn next_steps(surface: &str, install: Option<&str>) -> Vec<String> {
+    install
+        .map(String::from)
+        .into_iter()
+        .chain([
+            format!("dif new <id> --surface {surface} — then edit the file and set status: active"),
+            "dif build".to_string(),
+        ])
+        .collect()
 }
 
-fn report_success(s: &Summary, json: bool) {
+fn report_success(s: &Summary, json: bool, next: &[String], installed: &[&str]) {
     let Summary {
         surface,
         sel,
@@ -800,13 +874,13 @@ fn report_success(s: &Summary, json: bool) {
         features,
         ..
     } = *s;
-    let next = next_steps(surface, s.framework);
     if json {
         let payload = serde_json::json!({
             "ok": true,
             "already_initialized": already_initialized,
             "created": created_paths(surface, sel, mode),
             "next": next,
+            "installed": installed,
             "project_type": project_type,
             "features": features,
         });
@@ -2295,15 +2369,12 @@ mod tests {
     // -- re-runs + Cursor / Copilot targets ----------------------------------
 
     #[test]
-    fn next_steps_install_the_framework_adapter() {
-        let [install, new, build] = next_steps("home", Framework::Svelte);
-        assert_eq!(install, "npm install @dif.sh/sdk @dif.sh/svelte");
-        assert!(new.starts_with("dif new <id> --surface home"));
-        assert_eq!(build, "dif build");
-        assert_eq!(
-            next_steps("home", Framework::Sdk)[0],
-            "npm install @dif.sh/sdk"
-        );
+    fn next_steps_lead_with_the_install_line() {
+        let next = next_steps("home", Some("pnpm add @dif.sh/sdk"));
+        assert_eq!(next[0], "pnpm add @dif.sh/sdk");
+        assert!(next[1].starts_with("dif new <id> --surface home"));
+        assert_eq!(next[2], "dif build");
+        assert_eq!(next_steps("home", None).len(), 2);
     }
 
     fn default_args() -> Args {
@@ -2321,6 +2392,7 @@ mod tests {
             project_type: None,
             features: None,
             yes: false,
+            install: false,
         }
     }
 
