@@ -94,6 +94,7 @@ To send page views and product events, use the dif-setup-analytics skill next.
 | `forbidden` | This login cannot do that, for example create a project in that org. Tell the person. They can pick an existing project, or ask an org owner. |
 | `org_not_found`, `project_not_found` | The slug is wrong. Run `dif connect --json` with no flags to get the lists again. |
 | `no_workspace` | There is no `dif/` folder here. Run `dif init` first. |
+| `bad_request`, `usage` (exit 2) | dif analytics or the CLI refused a value, such as a slug that is not letters, digits and `-`. Read `message`, fix the value and run again once. |
 | `rate_limited` | Wait `retry_after` seconds, then try once more. |
 | `cloud_unreachable`, `cloud_error` | Tell the person and show `message`. Do not retry in a loop. |
 

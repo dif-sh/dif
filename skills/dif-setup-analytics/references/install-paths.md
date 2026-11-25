@@ -14,14 +14,14 @@ Put it in `<head>` of every page, once. In a layout, put it in the root layout o
 
 | Attribute | When |
 |---|---|
-| `data-key` | Always. The live key in production, the test key locally. |
+| `data-key` | Always. The live key in production, the test key locally. Use the keys from the check in Step 2 of the skill. |
 | `data-domains` | Always. The production hostnames. Other hosts send nothing. |
 | `data-spa="hash"` | Only for `#/route` routers. The default follows `pushState`. |
 | `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. |
 | `data-consent="required"` | Only with a CMP. Holds up to 50 events until `dif.consent(true)`. |
 | `data-auto="false"` | Only if the person asks. Then call `dif.page()` yourself. |
 
-`window.dif` has `page()`, `track(name, props)`, `identify(id | null, traits?)` and `consent(granted)`.
+`window.dif` has `page()`, `track(name, props)`, `identify(id | null, traits?)` and `consent(granted)`. Props are the second argument of `track`: `window.dif.track("signup_cta_clicked", { plan: "pro" })`. This path has no `value` or `currency`.
 
 `identify` traits follow the props rule: never emails, names or free text.
 
@@ -49,9 +49,11 @@ dif.init({
 ```
 
 - `dif build` writes `dif/generated/client.ts` and `dif/generated/events.ts`. Fix the import paths for where the files sit.
+- The key comes from `dif/config.yaml`. If the check in Step 2 of the skill gave a different live key, run `dif connect --key <key> --json`, then `dif build`. For the test key, pass `publishableKey` to `dif.init` from a local env var.
+- Track with `dif.track(name, { props, value, currency })`.
 - React: `<DifProvider config={{ …, pageViews: "auto" }}>`. Svelte: `initDif({ pageViews: "auto" })`.
-- Consent: add `consent: "required"`, then call `dif.consent(true | false)`.
-- Tracks with no user id are dropped. Set `anonymous: true` only if the person wants visitor-level product events.
+- Consent: add `consent: "required"`. Right after `dif.init`, call `dif.consent()` with the CMP's current state. Also call it from the CMP's change callback.
+- Tracks with no user id are dropped. For events from visitors who are not signed in, set `anonymous: true` in `dif.init`.
 - If the page also has the script tag, leave `pageViews` off.
 
 ## Server

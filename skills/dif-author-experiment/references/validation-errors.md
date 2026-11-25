@@ -122,3 +122,5 @@ A file under `experiments/active/` has `status:` set to something other than `ac
 An experiment under `experiments/active/` with status `draft` or `active` names a primary or guardrail metric that is not in `dif/tracking-plan.yaml`. It only runs when that file exists. Concluded experiments are not checked.
 
 **Fix:** add the event to `dif/tracking-plan.yaml` with the `dif.track()` call that sends it, or fix the spelling. The name must match exactly.
+
+If the metric name fails the E012 rule (whitespace, control characters, a leading `$`, or over 128 bytes), it cannot go in the plan. The help says so, and the warning stays while the experiment uses that name. It does not stop `dif build`. Do not edit the experiment to silence it.

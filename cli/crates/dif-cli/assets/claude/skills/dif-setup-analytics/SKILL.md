@@ -46,10 +46,15 @@ Find these before you change anything:
    dif site setup --env test --origin http://localhost:5173 --json
    ```
    Use the dev server's real port. `--env test` takes only local origins.
-3. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
-4. Fallbacks:
+3. Check the key. The result has `prefix`, the start of the key that dif analytics allows for that env. The key in `dif/config.yaml` (`events.key`) may be a different key.
+   - `--env live`: if `events.key` starts with `prefix`, use that key. If it does not, ask the person to copy the full live publishable key from Settings → Site in dif analytics.
+   - `--env test`: always ask the person to copy the full test publishable key from Settings → Site.
+   - Use the key they give you for the script tag's `data-key` or the local env file. On the SDK path with a new live key, run `dif connect --key <key> --json`, then `dif build`, so the config and the generated files match. Never `dif connect` a test key: pass it to `dif.init` as `publishableKey` from a local env var.
+   - Never guess a key, and never build one from `prefix`.
+4. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
+5. Fallbacks:
    - `not_logged_in` or `token_invalid`: use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back and run the same command again.
-   - `missing_scope`: the login is from before this feature. Do Steps 2 and 3 of `dif-connect-cloud` (skip Step 1), then come back and run the same command again.
+   - `missing_scope`: the login is from before this feature. Run `dif auth status --json`. If `source` is `env`, the token comes from `DIF_TOKEN`: ask the person to replace it with a new token, and stop. Otherwise do Steps 2 and 3 of `dif-connect-cloud` (skip Step 1), then come back and run the same command again. Try again at most once.
    - `forbidden`: this login lacks the role or scope. Tell the person, and stop this step.
    - `project_not_found`: the slug is wrong, or this login cannot see the project. Ask the person for the right slug.
    - `usage` or `bad_request`: an origin is not valid, or a test origin is not local. Fix the list and run again.
@@ -76,8 +81,8 @@ For the chosen path:
 - Set `data-domains` to the production hostnames, so preview deploys send nothing.
 - Use `data-spa="hash"` only for a hash router.
 - Signed-in users: render `data-user-id` on the server, or call `dif.identify(id)` on every page load. It is not stored. Call `dif.identify(null)` at sign-out.
-- Keys: the live key (`dif_pk_live_…`) in production and the test key (`dif_pk_test_…`) locally. For the script tag's `data-key`, use the framework's env mechanism. Do not commit a key that is not already in `dif/config.yaml`. On the SDK path, change nothing: `dif build` puts the key from `dif/config.yaml` into `dif/generated/events.ts`.
-- Consent: if there is a CMP, add `data-consent="required"` (script) or `consent: "required"` (SDK). Then call `dif.consent(true)` or `dif.consent(false)` from the CMP's callback. If there is no CMP, do not add consent. Say so in Step 8.
+- Keys: the live key (`dif_pk_live_…`) in production and the test key (`dif_pk_test_…`) locally. Use the keys from the check in Step 2, item 3. For the script tag's `data-key`, use the framework's env mechanism. Do not commit a key that is not already in `dif/config.yaml`. On the SDK path, `dif build` puts the key from `dif/config.yaml` into `dif/generated/events.ts`.
+- Consent: if there is a CMP, add `data-consent="required"` (script) or `consent: "required"` (SDK). Right after init, call `dif.consent()` with the CMP's current state, `true` or `false`. Also call it from the CMP's change callback. If there is no CMP, do not add consent. Say so in Step 8.
 - CSP: if a policy exists, add `https://cdn.dif.sh` to `script-src` and `https://ingest.difdb.com` to `connect-src`. If the app sends product tracks with a user id, also add the `events.url` origin from `dif/config.yaml` to `connect-src`. With no `events.url`, it is `https://cloud.dif.sh`. If there is no policy, change nothing.
 - SRI: only if the person asks to pin the version, or the repo already pins other third-party scripts.
 
@@ -85,7 +90,7 @@ For the chosen path:
 
 Make the tracking plan before you edit code. Use these sources, in this order:
 
-1. **Required:** every `metrics.primary` and `metrics.guardrails` name in `dif/experiments/active/*.md` with `status: draft` or `active`.
+1. **Required:** every `metrics.primary` and `metrics.guardrails` name in `dif/experiments/active/*.md` with `status: draft` or `active`. A name with whitespace or control characters, a leading `$`, or over 128 bytes cannot go in the plan (E012). Leave it out, tell the person, and expect W006 for it. Never edit the experiment.
 2. Existing `dif.track()` calls and `data-dif-event` attributes.
 3. Marketing events from the pages: the main calls to action (sign up, start trial, book a demo, contact), pricing, and links into the app.
 4. Product events from the routes and handlers: account created, the first key action, the core actions, upgrade or checkout, invite.
@@ -108,7 +113,7 @@ events:
     props: [plan]
 ```
 
-Then run `dif validate`. `W006` means an experiment metric is missing from the plan. Fix the plan, or ask the person about the spelling.
+Then run `dif validate`. `W006` means an experiment metric is missing from the plan. Fix the plan, or ask the person about the spelling. A W006 whose help says the name cannot go in the plan is expected; leave it.
 
 ## Step 5. Add the events
 
@@ -116,9 +121,10 @@ Then run `dif validate`. `W006` means an experiment metric is missing from the p
   ```html
   <a href="/signup" data-dif-event="signup_cta_clicked" data-dif-prop-plan="pro">Start free</a>
   ```
-- On SDK pages, call `dif.track("signup_cta_clicked", { props: { plan: "pro" } })` in the click handler.
-- Product events: call `dif.track(name, { props })` where the action succeeds, after the server confirms it, not when the button is pressed. For a server-side success, use `DifServer` from `@dif.sh/sdk/server`.
-- Money: pass `value` and `currency`, never a prop.
+- On script tag pages, the call in JavaScript is `window.dif.track(name, { plan: "pro" })`. The props are the second argument. This path has no `value` or `currency`.
+- On SDK pages, call `dif.track(name, { props: { plan: "pro" }, value, currency })`. A track with no user id is dropped unless the init has `anonymous: true`. For events from visitors who are not signed in, set `dif.init({ anonymous: true })`.
+- Product events: call `dif.track()` where the action succeeds, after the server confirms it, not when the button is pressed. For a server-side success, use `DifServer` from `@dif.sh/sdk/server`.
+- Money (SDK only): pass `value` and `currency`, never a prop.
 - One call per event. Do not add a wrapper module. If the repo already has an analytics wrapper, add the call there.
 - Never rename a metric in an experiment file. Rename the `dif.track()` call, or ask.
 
@@ -126,7 +132,7 @@ Then run the repo's typecheck and tests, and `dif validate`.
 
 ## Step 6. Test locally
 
-Do this only when the app can run here. Start the dev server with the test key. Open one page, and click one call to action. Then:
+Do this only when the app can run here. Start the dev server with the test key that the person gave you in Step 2. Open one page, and click one call to action. Then:
 
 ```sh
 dif site check --env test --wait 60 --json
@@ -143,11 +149,11 @@ On any other error, do what Step 2 says for that code.
 
 Read `status` in the `dif site check` result first:
 - `seen`: use the counts.
-- `unknown_key`: dif analytics has not seen this key yet. The page is not live, or the request never left the browser. Use the "no refusals, no events" row in `references/troubleshooting.md`.
+- `unknown_key`: dif analytics has not seen this key yet. The page is not live, the request never left the browser, or the page sends another key. Use the part of `references/troubleshooting.md` that starts "No refusals and `accepted_last_hour` is 0, or `status` is `unknown_key`".
 - `unavailable` or `error`: the check cannot run right now. Say so; do not report zero.
 - Error `site_not_set_up`: go back to Step 2 for that env.
 
-Counts are `null` unless `status` is `seen`. Never read `null` as zero.
+Counts are `null` unless `status` is `seen`. When `status` is not `seen`, `refused_last_hour` is four zeros, and those zeros mean nothing. Never read `null` as zero.
 
 Report only what these commands return. If the change is not deployed, say "not checked yet: deploy, then run `dif site check --env live`". Never say events arrive when no command showed it.
 
@@ -168,6 +174,8 @@ If there is no CMP, add: "dif analytics uses no cookies, but reading screen size
 You get one metric name. Do only Steps 4, 5 and 8 for that metric. Do not stop to ask: write the plan and the code, and let the PR be the review.
 
 - The metric must match `^[a-z0-9][a-z0-9_]{0,63}$`. If it does not, report `Skipped: unsafe metric` and stop.
+- If the code already has a `dif.track()` call with this exact name, change nothing. Report `Instrumented but not seen in 7d` and open no branch.
+- If you create `dif/tracking-plan.yaml`, add every required metric from Step 4 that passes the name rule, not only this one. If a required metric cannot go in the plan, list its expected W006 in the PR body.
 - Use one branch, `dif/instrument/<metric>`, cut from `origin/<default>`. Follow the branch rules in the triage skill.
 - Open one PR. Do not deploy, and do not change dif analytics settings.
 

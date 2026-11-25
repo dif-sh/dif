@@ -101,7 +101,7 @@ For a `turn_off` row, `next_action.weights` sets control to 100 and every other 
 
 Report only. Never change files for `set_metric_direction` and `wait`.
 
-- `fix_instrumentation`: give the user `next_action.summary`. The tracking or the traffic split is broken. In interactive mode, add: "Run the `dif-setup-analytics` skill for `<metric>`." In autonomous mode, call `get_event_health` (see `references/cloud-api.md`). If the row's metric is in `experiment_metrics` with `seen: false`, run the `dif-setup-analytics` skill in its autonomous mode for that metric. It counts toward the 5 pushed branches in one run. If the call answers `unavailable`, the counts cannot be read: report the row and do not open a branch. Otherwise report the row; a person must fix the traffic split.
+- `fix_instrumentation`: give the user `next_action.summary`. The tracking or the traffic split is broken. In interactive mode, add: "Run the `dif-setup-analytics` skill for `<metric>`." In autonomous mode, call `get_event_health` with `since: "7d"` (see `references/cloud-api.md`). If the row's metric is in `experiment_metrics` with `seen: false`, run the `dif-setup-analytics` skill in its autonomous mode for that metric. It counts toward the 5 pushed branches in one run. If the call answers `unavailable`, the counts cannot be read: report the row and do not open a branch. If the server has no `get_event_health` tool or route, report the row and do not open a branch. Otherwise report the row; a person must fix the traffic split.
 - `set_metric_direction`: tell the user to set the direction of the named metric on the Metrics page in dif analytics. This is not a repo change.
 - `wait`: give the user `next_action.summary` (progress and ETA).
 

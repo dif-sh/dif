@@ -249,13 +249,15 @@ Newer servers also have this tool. The four tools in section 1 are still the che
 {
   "project": "acme-shop",
   "since": "24h",
-  "site": { "live": { "env": "live", "prefix": "pk_live_", "status": "active", "accepted_last_hour": 120, "last_accepted_ms": 1792920000000, "last_origin": "https://acme.com", "pageviews_last_hour": 80, "refused_last_hour": 0 } },
+  "site": { "live": { "env": "live", "prefix": "dif_pk_live_ab12", "status": "seen", "accepted_last_hour": 120, "last_accepted_ms": 1792920000000, "last_origin": "https://acme.com", "pageviews_last_hour": 80, "refused_last_hour": { "origin": 0, "gates": 0, "rate": 0, "bad_request": 0 } } },
   "events": [ { "name": "signup_completed", "count": 42, "last_seen_ms": 1792920000000, "builtin": false } ],
   "experiment_metrics": [ { "experiment": "checkout-cta-v2", "metric": "completed_checkout", "role": "primary", "seen": true } ]
 }
 ```
 
 - `site.live` is `null` when site analytics is off.
+- `site.live.status` is `seen`, `unknown_key`, `unavailable` or `error`. The counts (`accepted_last_hour`, `last_accepted_ms`, `last_origin`, `pageviews_last_hour`) are `null` unless `status` is `seen`. When `status` is not `seen`, `refused_last_hour` is all zeros, and those zeros mean nothing. Never read `null` as zero.
+- `refused_last_hour` counts refused events in the last hour by cause: `origin`, `gates`, `rate` and `bad_request`.
 - `events`: each event name with its count in the window and the time it was last seen. `builtin` is `true` for events that dif analytics sends itself, such as page views.
 - `experiment_metrics`: one item for each metric of an experiment that is draft or active. `role` is `primary` or `guardrail`. `seen` is true when the metric has events in the window.
 - If the tool or route answers `unavailable` (REST 503), the counts cannot be read. Report it. Never treat it as "not seen", and never read it as an empty `events` list.

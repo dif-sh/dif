@@ -7,6 +7,7 @@
 - At most 128 bytes, no spaces. `dif validate` refuses others (E012).
 - One name per thing. Do not add `signup` and `signup_completed` for the same moment.
 - An experiment's metric name wins. If code already sends another spelling, propose one rename of the code. Never change the experiment file.
+- If an experiment's metric name breaks these rules, it cannot go in the plan. Leave it out of the plan, tell the person, and expect W006 for it.
 
 ## Marketing or product
 
