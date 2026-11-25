@@ -397,9 +397,9 @@ The initializer can skip steps 2–3 and run `dif auth login` interactively with
 
 ## 8. `dif site` and `dif events`
 
-These are cloud verbs. They need a login (`dif auth login`) and a `dif/` workspace. Each prints one JSON object with `--json` (section 1).
+These are cloud verbs. They need a login (`dif auth login`). `dif events` also needs a `dif/` workspace; `dif site` does not. Each prints one JSON object with `--json` (section 1).
 
-**Project slug.** `--project <slug>`, else the project whose `repo` matches the git remote, else the only project the login can see, else `needs_selection` (exit 2, same shape as section 5).
+**Project slug.** `--project <slug>`, else the project whose `repo` matches the git remote, else the only project the login can see, else `needs_selection` (exit 2, same shape as section 5). Outside a `dif/` workspace, `dif site` takes only `--project <slug>`; without it, the result is `needs_selection` with the login's projects, even when there is one.
 
 ### `dif site setup --env <live|test> --origin <origin>… [--rate-limit <n>] [--replace] [--project <slug>]`
 `--origin` repeats, with at most 32 values. The CLI checks each origin before any request. Output is the route object plus `ok` and `project`. `key` is the full publishable key for `env`, or `null` for old keys whose text was not kept. In human mode the CLI prints it after the ✓ line. It never writes the key to a file.
@@ -425,7 +425,7 @@ Exit 0 is success. Exit 2 is a usage or setup error. Exit 1 is a Cloud refusal o
 
 | `error` | Exit | When |
 |---|---|---|
-| `no_workspace` | 2 | No `dif/` here. |
+| `no_workspace` | 2 | `dif events` only: no `dif/` here. |
 | `not_logged_in` | 2 | No login. Run `dif auth login`. |
 | `token_invalid` | 2 | The token expired or was revoked. |
 | `needs_selection` | 2 | The project slug is unclear. Pass `--project`. |
@@ -459,3 +459,4 @@ These tighten cases that v1 left open. None of them changes a name, a type or a 
 - `repo` can be `null`, `github_install_url` can be `null`, `--create` with several orgs needs `--org` (sections 5–7).
 - No paid plan is needed to create a project or read its key. Additive errors: `bad_request`, `project_not_found` on the key route (section 6).
 - 2026-11-25: `dif site setup`, `dif site check` and `dif events`, the four `/v1/cli/projects/:slug/…` routes, and six new error codes are additive under Change rule 1 (sections 6 and 8).
+- 2026-11-25: `dif site` works with no `dif/` workspace. It no longer returns `no_workspace` (section 8).

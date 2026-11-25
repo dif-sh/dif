@@ -1,6 +1,5 @@
 //! `dif site setup` and `dif site check`: site analytics via the cloud.
 
-use super::connect::report_no_workspace;
 use super::project::project_session;
 use super::CmdError;
 use crate::cloud::{print_json, rejected, ApiError, Client, Clock, CloudEnv, Failure, RealClock};
@@ -58,6 +57,7 @@ pub struct SetupArgs {
     #[arg(long)]
     pub replace: bool,
     /// Project slug. Default: from the git remote.
+    /// Required outside a dif workspace.
     #[arg(long)]
     pub project: Option<String>,
 }
@@ -70,18 +70,17 @@ pub struct CheckArgs {
     #[arg(long, default_value_t = 0)]
     pub wait: u64,
     /// Project slug. Default: from the git remote.
+    /// Required outside a dif workspace.
     #[arg(long)]
     pub project: Option<String>,
 }
 
 pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     let cwd = std::env::current_dir()?;
-    let workspace = match Workspace::load(&cwd) {
-        Ok(ws) => ws,
-        Err(WorkspaceError::NotFound(_)) => {
-            report_no_workspace(json);
-            return Ok(ExitCode::from(2));
-        }
+    // Site analytics needs no experiments, so a workspace is optional.
+    let root = match Workspace::load(&cwd) {
+        Ok(ws) => Some(ws.root),
+        Err(WorkspaceError::NotFound(_)) => None,
         Err(e) => return Err(e.into()),
     };
     let env = CloudEnv::from_process();
@@ -95,7 +94,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
             return Ok(f.report(json));
         }
     }
-    let (client, session, slug) = match project_session(&workspace.root, project, &env) {
+    let (client, session, slug) = match project_session(root.as_deref(), project, &env) {
         Ok(t) => t,
         Err(f) => return Ok(f.report(json)),
     };
