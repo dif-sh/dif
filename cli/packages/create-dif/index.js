@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { addDevArgs, cliInstallScript, detectPackageManager, execDifArgs } from "./lib.js";
+import {
+  addDevArgs,
+  cliInstallScript,
+  detectPackageManager,
+  execDifArgs,
+  nearestFiles,
+} from "./lib.js";
 
 const cwd = process.cwd();
 if (!existsSync(join(cwd, "package.json"))) {
@@ -14,7 +20,7 @@ if (!existsSync(join(cwd, "package.json"))) {
 
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 const pm = detectPackageManager({
-  files: readdirSync(cwd),
+  files: nearestFiles(cwd),
   userAgent: process.env.npm_config_user_agent,
 });
 
@@ -32,7 +38,8 @@ console.log(`Installing @dif.sh/cli with ${pm}…`);
 const added = run(addDevArgs(pm, `@dif.sh/cli@${version}`));
 if (added !== 0) process.exit(added);
 
-// pnpm 10 and bun can skip postinstall, so fetch the binary here.
+// pnpm 10 and bun can skip postinstall.
+// Then the CLI binary is missing.
 const script = cliInstallScript(cwd);
 if (script) {
   const fetched = run([process.execPath, script], false);

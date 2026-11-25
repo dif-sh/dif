@@ -35,7 +35,7 @@ mod install;
 mod ui;
 
 use choices::{detect_framework, Framework};
-use install::{detect_package_manager, missing_packages, PackageManager};
+use install::{command_for, detect_in, missing_packages, PackageManager};
 
 /// `dif init` flags.
 #[derive(ClapArgs, Debug)]
@@ -115,7 +115,8 @@ pub struct Args {
     #[arg(long)]
     pub yes: bool,
 
-    /// Install the SDK packages without asking. Off for --yes and --json.
+    /// Install the SDK packages without a question.
+    /// Without it, --yes and --json do not install.
     #[arg(long)]
     pub install: bool,
 }
@@ -508,8 +509,8 @@ fn run_in(cwd: &Path, args: Args, mode: EventsMode, json: bool) -> Result<ExitCo
     Ok(ExitCode::from(0))
 }
 
-/// The manager and the framework packages not in package.json yet.
-/// Without package.json this is not a JS app, so dif installs nothing.
+/// The manager and the packages that package.json lacks.
+/// No package.json means no JS app, so no install.
 fn pending_install(
     cwd: &Path,
     framework: Framework,
@@ -519,26 +520,14 @@ fn pending_install(
     if packages.is_empty() {
         return None;
     }
-    let names: Vec<String> = std::fs::read_dir(cwd)
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect()
-        })
-        .unwrap_or_default();
-    let names: Vec<&str> = names.iter().map(String::as_str).collect();
     let user_agent = std::env::var("npm_config_user_agent").ok();
-    Some((
-        detect_package_manager(&names, user_agent.as_deref()),
-        packages,
-    ))
+    Some((detect_in(cwd, user_agent.as_deref()), packages))
 }
 
 /// Run the package manager in `cwd`. True when it succeeds.
-/// Under --json its output goes to stderr, so stdout stays JSON.
+/// Under --json, stdout must contain only the JSON result.
 fn run_install(cwd: &Path, pm: PackageManager, packages: &[&str], json: bool) -> bool {
-    let args = pm.add_args(packages);
+    let args = command_for(pm.add_args(packages), cfg!(windows));
     let mut cmd = std::process::Command::new(&args[0]);
     cmd.args(&args[1..]).current_dir(cwd);
     if json {

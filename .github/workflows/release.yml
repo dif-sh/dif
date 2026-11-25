@@ -204,6 +204,8 @@ jobs:
       - name: publish wrapper
         working-directory: cli/packages/cli
         run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # After the wrapper, so the CLI version it pins exists.
       - name: sync version (create-dif)

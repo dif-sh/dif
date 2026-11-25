@@ -48,4 +48,4 @@
   - `--yes`, `--json` or no terminal → installs only with `--install`
 - **Wrap-up:** "Added guidance for coding agents", then Next steps, then "You're all set"
 
-Press **Esc** at any question to cancel without writing anything.
+Press **Esc** at any question before *Write files* to cancel without writing anything. Esc at the install question only skips the install.

@@ -1,7 +1,9 @@
+import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
-// The same order as `dif init` uses, so both pick one manager.
+// Keep this order equal to `dif init`.
+// Then both tools pick the same manager.
 const LOCKFILES = [
   ["pnpm-lock.yaml", "pnpm"],
   ["yarn.lock", "yarn"],
@@ -36,5 +38,15 @@ export function cliInstallScript(cwd) {
     return createRequire(join(cwd, "package.json")).resolve("@dif.sh/cli/install.js");
   } catch {
     return null;
+  }
+}
+
+// A monorepo keeps its lockfile at the repo root.
+// Stop at .git, so an outer folder does not count.
+export function nearestFiles(cwd) {
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    const files = readdirSync(dir);
+    if (LOCKFILES.some(([name]) => files.includes(name))) return files;
+    if (files.includes(".git") || dirname(dir) === dir) return [];
   }
 }

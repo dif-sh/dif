@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addDevArgs, cliInstallScript, detectPackageManager, execDifArgs } from "./lib.js";
+import { addDevArgs, cliInstallScript, detectPackageManager, execDifArgs, nearestFiles } from "./lib.js";
 
 test("lockfile picks the manager", () => {
   assert.equal(detectPackageManager({ files: ["pnpm-lock.yaml"] }), "pnpm");
@@ -54,4 +54,22 @@ test("cliInstallScript finds the installed CLI", () => {
 test("cliInstallScript is null without the CLI", () => {
   const dir = mkdtempSync(join(tmpdir(), "create-dif-"));
   assert.equal(cliInstallScript(dir), null);
+});
+
+test("nearestFiles finds a lockfile in a parent folder", () => {
+  const root = mkdtempSync(join(tmpdir(), "create-dif-"));
+  mkdirSync(join(root, ".git"));
+  writeFileSync(join(root, "pnpm-lock.yaml"), "");
+  const web = join(root, "apps", "web");
+  mkdirSync(web, { recursive: true });
+  writeFileSync(join(web, "package.json"), "{}");
+  assert.equal(detectPackageManager({ files: nearestFiles(web) }), "pnpm");
+});
+
+test("nearestFiles stops at the repo root", () => {
+  const outer = mkdtempSync(join(tmpdir(), "create-dif-"));
+  writeFileSync(join(outer, "yarn.lock"), "");
+  const repo = join(outer, "repo");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  assert.equal(detectPackageManager({ files: nearestFiles(repo) }), "npm");
 });

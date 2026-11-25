@@ -1,6 +1,8 @@
 //! Package-manager detection and install commands for `dif init`.
 //! Pure logic only; the install runs in [`super`].
 
+use std::path::Path;
+
 /// A JS package manager that `dif init` can install with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PackageManager {
@@ -40,17 +42,18 @@ impl PackageManager {
     }
 }
 
-/// Pick the manager from the files in the project folder.
-/// The lockfile wins, because the project already uses it.
+const LOCKFILES: [(&str, PackageManager); 5] = [
+    ("pnpm-lock.yaml", PackageManager::Pnpm),
+    ("yarn.lock", PackageManager::Yarn),
+    ("bun.lock", PackageManager::Bun),
+    ("bun.lockb", PackageManager::Bun),
+    ("package-lock.json", PackageManager::Npm),
+];
+
+/// Pick the manager from a lockfile, then the user agent.
+/// The lockfile wins, because the project uses it.
 pub fn detect_package_manager(files: &[&str], user_agent: Option<&str>) -> PackageManager {
-    let lockfiles = [
-        ("pnpm-lock.yaml", PackageManager::Pnpm),
-        ("yarn.lock", PackageManager::Yarn),
-        ("bun.lock", PackageManager::Bun),
-        ("bun.lockb", PackageManager::Bun),
-        ("package-lock.json", PackageManager::Npm),
-    ];
-    if let Some((_, pm)) = lockfiles.iter().find(|(name, _)| files.contains(name)) {
+    if let Some((_, pm)) = LOCKFILES.iter().find(|(name, _)| files.contains(name)) {
         return *pm;
     }
     match user_agent.and_then(|ua| ua.split('/').next()) {
@@ -58,6 +61,47 @@ pub fn detect_package_manager(files: &[&str], user_agent: Option<&str>) -> Packa
         Some("yarn") => PackageManager::Yarn,
         Some("bun") => PackageManager::Bun,
         _ => PackageManager::Npm,
+    }
+}
+
+/// Like [`detect_package_manager`], for the folder `cwd`.
+/// A monorepo keeps its lockfile at the repo root.
+pub fn detect_in(cwd: &Path, user_agent: Option<&str>) -> PackageManager {
+    let names = |dir: &Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for dir in cwd.ancestors() {
+        let files = names(dir);
+        let has = |name: &str| files.iter().any(|f| f == name);
+        if LOCKFILES.iter().any(|(name, _)| has(name)) {
+            let files: Vec<&str> = files.iter().map(String::as_str).collect();
+            return detect_package_manager(&files, user_agent);
+        }
+        if has(".git") {
+            break;
+        }
+    }
+    detect_package_manager(&[], user_agent)
+}
+
+/// The program and arguments to start `args` on this OS.
+/// Windows needs cmd to find the .cmd shims of npm and yarn.
+pub fn command_for(args: Vec<String>, windows: bool) -> Vec<String> {
+    if windows {
+        ["cmd", "/C"]
+            .into_iter()
+            .map(String::from)
+            .chain(args)
+            .collect()
+    } else {
+        args
     }
 }
 
@@ -161,6 +205,40 @@ mod tests {
         assert_eq!(
             missing_packages(pkg, &["@dif.sh/sdk", "@dif.sh/react"]),
             vec!["@dif.sh/sdk", "@dif.sh/react"]
+        );
+    }
+
+    #[test]
+    fn lockfile_found_in_a_parent_folder() {
+        let root = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(root.path().join(".git")).unwrap();
+        std::fs::write(root.path().join("pnpm-lock.yaml"), "").unwrap();
+        let web = root.path().join("apps/web");
+        std::fs::create_dir_all(&web).unwrap();
+        assert_eq!(detect_in(&web, None), PackageManager::Pnpm);
+    }
+
+    #[test]
+    fn lockfile_search_stops_at_the_repo_root() {
+        let outer = tempfile::TempDir::new().unwrap();
+        std::fs::write(outer.path().join("yarn.lock"), "").unwrap();
+        let repo = outer.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        assert_eq!(detect_in(&repo, None), PackageManager::Npm);
+        let pnpm = Some("pnpm/10.0.0 npm/? node/v22");
+        assert_eq!(detect_in(&repo, pnpm), PackageManager::Pnpm);
+    }
+
+    #[test]
+    fn windows_runs_through_cmd() {
+        let args = PackageManager::Npm.add_args(&["@dif.sh/sdk"]);
+        assert_eq!(
+            command_for(args.clone(), true),
+            vec!["cmd", "/C", "npm", "install", "@dif.sh/sdk"]
+        );
+        assert_eq!(
+            command_for(args, false),
+            vec!["npm", "install", "@dif.sh/sdk"]
         );
     }
 
