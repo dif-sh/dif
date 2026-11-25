@@ -249,7 +249,7 @@ Newer servers also have this tool. The four tools in section 1 are still the che
 {
   "project": "acme-shop",
   "since": "24h",
-  "site": { "live": { "env": "live", "prefix": "dif_pk_live_ab12", "status": "seen", "accepted_last_hour": 120, "last_accepted_ms": 1792920000000, "last_origin": "https://acme.com", "pageviews_last_hour": 80, "refused_last_hour": { "origin": 0, "gates": 0, "rate": 0, "bad_request": 0 } } },
+  "site": { "live": { "env": "live", "prefix": "0123abcd", "status": "seen", "accepted_last_hour": 120, "last_accepted_ms": 1792920000000, "last_origin": "https://acme.com", "pageviews_last_hour": 80, "refused_last_hour": { "origin": 0, "gates": 0, "rate": 0, "bad_request": 0 } } },
   "events": [ { "name": "signup_completed", "count": 42, "last_seen_ms": 1792920000000, "builtin": false } ],
   "experiment_metrics": [ { "experiment": "checkout-cta-v2", "metric": "completed_checkout", "role": "primary", "seen": true } ]
 }

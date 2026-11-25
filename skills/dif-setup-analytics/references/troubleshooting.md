@@ -5,7 +5,7 @@ Read `status` from `dif site check --json` first. The counts below mean somethin
 | Field above 0 | Cause | Fix |
 |---|---|---|
 | `origin` | The page's origin is not in the key's list. | `dif site setup --env <env> --origin <exact origin> --json`. Test keys take only local origins. |
-| `gates` | Site analytics is off, or the key is wrong for the env. | Do the key check in Step 2, item 3 of the skill: run `dif site setup --env <env> --json` again and compare `key` with the key the page sends. If they differ, use `key`. Ask the person for the key from Settings → Site only when `key` is `null`. Check the live key is in production and the test key locally. |
+| `gates` | Site analytics is off, or the key is wrong for the env. | Get the `key` from Step 2, item 3 of the skill: run `dif site setup --env <env> --origin <an origin already on the list> --json` again (it adds nothing) and compare `key` with the page's `data-key`. If they differ, use `key`. Ask the person for the key from Settings → Site only when `key` is `null`. Check the live key is in production and the test key locally. |
 | `rate` | The rate limit or the spend cap. | Tell the person. Do not raise it yourself. |
 | `bad_request` | The page URL is over 8,192 bytes or is not http(s). | Find the page with very long query strings. |
 

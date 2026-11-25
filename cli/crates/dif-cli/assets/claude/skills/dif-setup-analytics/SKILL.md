@@ -1,13 +1,14 @@
 ---
 name: dif-setup-analytics
-description: Set up dif analytics in an app and prove events arrive. Installs the site analytics script or SDK page views, wires sign-in, consent and CSP, plans and adds marketing and product events with dif.track and data-dif-event, checks every experiment metric is tracked, and runs the install check. Use when the user wants to set up, install, add or check dif analytics, page views, visitors, UTM, conversion or product events, tracking, a tracking plan or instrumentation, or when triage reports fix_instrumentation or a metric has no data.
+description: Set up dif analytics in an app and prove events arrive. Installs the site analytics script for page views, wires sign-in, consent and CSP, plans and adds marketing and product events with dif.track and data-dif-event, checks every experiment metric is tracked, and runs the install check. Use when the user wants to set up, install, add or check dif analytics, page views, visitors, UTM, conversion or product events, tracking, a tracking plan or instrumentation, or when triage reports fix_instrumentation or a metric has no data.
 ---
 
 # Setting up dif analytics
 
 Use this skill to make a project send the right events to dif analytics, and to prove that they arrive. At the end:
 
-- The app sends page views in exactly one way: the script tag or the SDK.
+- The app sends page views in exactly one way: the script tag. An app that uses `@dif.sh/sdk` keeps it for flags, tracks and exposures.
+- `dif/config.yaml` still has the same key as before.
 - `dif/tracking-plan.yaml` lists the events the app sends.
 - Every metric in a draft or active experiment has a `dif.track()` call with the exact same name.
 - You have a table of events from `dif events`, or the exact reason nothing arrived.
@@ -46,10 +47,10 @@ Find these before you change anything:
    dif site setup --env test --origin http://localhost:5173 --json
    ```
    Use the dev server's real port. `--env test` takes only local origins.
-3. Use the key. The result has `key`, the full publishable key for that env. Publishable keys are public. The key in `dif/config.yaml` (`events.key`) may be a different key.
-   - `--env live`: if `key` differs from `events.key`, use `key`. On the SDK path, run `dif connect --key <key> --json`, then `dif build`, so the config and the generated files match. On the script-tag path, use it as `data-key`, and commit it like the config key.
-   - `--env test`: put `key` in a local env file that is not committed. Pass it as `data-key` locally, or to `dif.init({ publishableKey })` from that env var. Never run `dif connect --key` with a test key.
-   - Only when `key` is `null`: ask the person to copy the full key for that env from Settings → Site in dif analytics, and use the key they give you the same way.
+3. Use the key. The result has `key`, the full site key for that env. It goes only in the script tag's `data-key`. It is not the key in `dif/config.yaml` (`events.key`), and that is expected. The site key accepts only the origins on its list. The SDK sends tracks and exposures with the config key, so never change `dif/config.yaml`.
+   - `--env live`: `key` is public. Put it in `data-key`, and commit it.
+   - `--env test`: put `key` in a file only your dev server reads, for example `.env.development.local` for Vite or Next.js. A production build never reads that file. Use it for `data-key` locally. Never commit it.
+   - Only when `key` is `null`: ask the person to copy the key for that env from Settings → Site in dif analytics. Use the key they give you the same way.
    - Never guess a key or build one.
 4. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
 5. Fallbacks:
@@ -68,21 +69,17 @@ Never pass `--replace` unless the person asks to remove origins. Never pass `--r
 
 ## Step 3. Install page views
 
-Choose one path from `references/install-paths.md`. Never install both on one page: every page view would count twice.
+Every app gets page views from the script tag in `<head>`. Follow `references/install-paths.md`.
 
-| The app | Path |
-|---|---|
-| Marketing site, static or server-rendered, or no `@dif.sh/sdk` | Script tag in `<head>` |
-| Uses `@dif.sh/sdk` already | `dif.init({ pageViews: "auto" })`, or the React or Svelte adapter |
-| A marketing site and an app in one repo | Script tag on the marketing pages, SDK in the app |
+If the app uses `@dif.sh/sdk`, keep it for flags, tracks and exposures. Add the script tag, and leave the SDK's `pageViews` off. If the code has `pageViews: "auto"`, remove it. Page views from both would count twice.
 
-For the chosen path:
+Then:
 
 - Set `data-domains` to the production hostnames, so preview deploys send nothing.
 - Use `data-spa="hash"` only for a hash router.
-- Signed-in users: render `data-user-id` on the server, or call `dif.identify(id)` on every page load. It is not stored. Call `dif.identify(null)` at sign-out.
-- Keys: the live key (`dif_pk_live_…`) in production and the test key (`dif_pk_test_…`) locally. Use the keys from the check in Step 2, item 3. For the script tag's `data-key`, use the framework's env mechanism. Do not commit a key that is not already in `dif/config.yaml`. On the SDK path, `dif build` puts the key from `dif/config.yaml` into `dif/generated/events.ts`.
-- Consent: if there is a CMP, add `data-consent="required"` (script) or `consent: "required"` (SDK). Right after init, call `dif.consent()` with the CMP's current state, `true` or `false`. Also call it from the CMP's change callback. If there is no CMP, do not add consent. Say so in Step 8.
+- Signed-in users: render `data-user-id` on the server, or call `window.dif.identify(id)` on every page load. It is not stored. Call `window.dif.identify(null)` at sign-out. Do not use `dif.identify` from `@dif.sh/sdk` for page views: the script does not see it, and it sends traits with the config key.
+- Keys: the live `key` (`dif_pk_live_…`) in production and the test `key` (`dif_pk_test_…`) locally. Use the `key` from Step 2, item 3. The live key may be committed. Keep the test key out of committed files. Use the framework's env files to pick the key: for example `VITE_DIF_SITE_KEY` (or `NEXT_PUBLIC_DIF_SITE_KEY`) in a committed `.env.production` and in `.env.development.local`.
+- Consent: if there is a CMP, add `data-consent="required"` to the script tag. Right after the page loads, call `window.dif.consent()` with the CMP's current state, `true` or `false`. Also call it from the CMP's change callback. If the app uses the SDK, also add `consent: "required"` to `dif.init` and call the SDK's `dif.consent()` the same way. If there is no CMP, do not add consent. Say so in Step 8.
 - CSP: if a policy exists, add `https://cdn.dif.sh` to `script-src` and `https://ingest.difdb.com` to `connect-src`. If the app sends product tracks with a user id, also add the `events.url` origin from `dif/config.yaml` to `connect-src`. With no `events.url`, it is `https://cloud.dif.sh`. If there is no policy, change nothing.
 - SRI: only if the person asks to pin the version, or the repo already pins other third-party scripts.
 
@@ -117,12 +114,12 @@ Then run `dif validate`. `W006` means an experiment metric is missing from the p
 
 ## Step 5. Add the events
 
-- Marketing clicks on a page with the script tag: use attributes, not JavaScript.
+- Marketing clicks: use attributes, not JavaScript.
   ```html
   <a href="/signup" data-dif-event="signup_cta_clicked" data-dif-prop-plan="pro">Start free</a>
   ```
-- On script tag pages, the call in JavaScript is `window.dif.track(name, { plan: "pro" })`. The props are the second argument. This path has no `value` or `currency`.
-- On SDK pages, call `dif.track(name, { props: { plan: "pro" }, value, currency })`. A track with no user id is dropped unless the init has `anonymous: true`. For events from visitors who are not signed in, set `dif.init({ anonymous: true })`.
+- Without the SDK, the call in JavaScript is `window.dif.track(name, { plan: "pro" })`. The props are the second argument. This path has no `value` or `currency`.
+- With the SDK, call `dif.track(name, { props: { plan: "pro" }, value, currency })`. A track with no user id is dropped unless the init has `anonymous: true`. For events from visitors who are not signed in, set `dif.init({ anonymous: true })`.
 - Product events: call `dif.track()` where the action succeeds, after the server confirms it, not when the button is pressed. For a server-side success, use `DifServer` from `@dif.sh/sdk/server`.
 - Money (SDK only): pass `value` and `currency`, never a prop.
 - One call per event. Do not add a wrapper module. If the repo already has an analytics wrapper, add the call there.
@@ -132,7 +129,7 @@ Then run the repo's typecheck and tests, and `dif validate`.
 
 ## Step 6. Test locally
 
-Do this only when the app can run here. Start the dev server with the test key that the person gave you in Step 2. Open one page, and click one call to action. Then:
+Do this only when the app can run here. Start the dev server with the test `key` from Step 2 (or the one the person gave you if it was `null`). Open one page, and click one call to action. Then:
 
 ```sh
 dif site check --env test --wait 60 --json
@@ -183,6 +180,7 @@ You get one metric name. Do only Steps 4, 5 and 8 for that metric. Do not stop t
 
 - Never print, ask for or write a `dif_cli_` or `dif_pat_` token.
 - Never add a second page-view path to a page that has one.
+- Never run `dif connect --key` with a site key, and never put a site key in dif/config.yaml.
 - Never proxy `ingest.difdb.com` through the app, and never set `data-host` outside a staging test.
 - Never send emails, names, free text or ids of other people in props.
 - Never track every keystroke, scroll or mouse move.

@@ -1,6 +1,6 @@
 # Install paths
 
-Use one path per page.
+Every app gets page views from the script tag, once per page. An app that uses `@dif.sh/sdk` also keeps the SDK for flags, tracks and exposures, with SDK page views off.
 
 ## Script tag
 
@@ -14,10 +14,10 @@ Put it in `<head>` of every page, once. In a layout, put it in the root layout o
 
 | Attribute | When |
 |---|---|
-| `data-key` | Always. The live key in production, the test key locally. Use the `key` from Step 2 of the skill. Keep the test key out of committed files. |
+| `data-key` | Always. The site `key` from Step 2 of the skill: live in production, test locally. Commit the live key. Put the test key in a file only your dev server reads, such as `.env.development.local`. This is not the key in `dif/config.yaml`; that is expected. |
 | `data-domains` | Always. The production hostnames. Other hosts send nothing. |
 | `data-spa="hash"` | Only for `#/route` routers. The default follows `pushState`. |
-| `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. |
+| `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. Without server rendering, call `window.dif.identify(id)` on each page load, and `window.dif.identify(null)` at sign-out. |
 | `data-consent="required"` | Only with a CMP. Holds up to 50 events until `dif.consent(true)`. |
 | `data-auto="false"` | Only if the person asks. Then call `dif.page()` yourself. |
 
@@ -32,29 +32,16 @@ Framework notes:
 - **Astro:** the shared layout's `<head>`.
 - **Plain HTML:** every page's `<head>`, or the shared include.
 
-## SDK page views
+## Apps with the SDK
 
-For apps that already call `dif.init`:
+Keep the SDK for flags, tracks and exposures. Add the script tag above for page views.
 
-```ts
-import "../dif/generated/client";
-import { events } from "../dif/generated/events";
-import { dif } from "@dif.sh/sdk";
-
-dif.init({
-  events,
-  userId: () => currentUser?.id ?? null,
-  pageViews: "auto",
-});
-```
-
-- `dif build` writes `dif/generated/client.ts` and `dif/generated/events.ts`. Fix the import paths for where the files sit.
-- The key comes from `dif/config.yaml`. If the live `key` from Step 2 of the skill differs from it, run `dif connect --key <key> --json`, then `dif build`. For the test key, pass `publishableKey` to `dif.init` from a local env var that is not committed. Never `dif connect` a test key.
-- Track with `dif.track(name, { props, value, currency })`.
-- React: `<DifProvider config={{ …, pageViews: "auto" }}>`. Svelte: `initDif({ pageViews: "auto" })`.
-- Consent: add `consent: "required"`. Right after `dif.init`, call `dif.consent()` with the CMP's current state. Also call it from the CMP's change callback.
-- Tracks with no user id are dropped. For events from visitors who are not signed in, set `anonymous: true` in `dif.init`.
-- If the page also has the script tag, leave `pageViews` off.
+- Keep `dif/config.yaml` as it is. `dif build` puts its key into `dif/generated/events.ts`, and the SDK sends tracks and exposures with it. Never run `dif connect --key` with a site key: the site key accepts only its listed origins, so tracks and exposures from other origins would fail.
+- Leave `pageViews` out of `dif.init`, `<DifProvider config>` and `initDif`. If the code has `pageViews: "auto"`, remove it. The SDK also skips its page views when the script is on the page, but one path is clearer.
+- Signed-in users for page views: use `data-user-id` or `window.dif.identify(id)`, as above. The SDK's `dif.identify` sets the id for SDK calls only, and sends traits with the config key. The script does not see it.
+- Keep the SDK's `userId` in `dif.init` for tracks.
+- Track with `dif.track(name, { props, value, currency })`. Tracks with no user id are dropped. For events from visitors who are not signed in, set `anonymous: true` in `dif.init`.
+- Consent: add `data-consent="required"` to the script tag and `consent: "required"` to `dif.init`. Call `window.dif.consent()` and the SDK's `dif.consent()` with the CMP's current state, and from the CMP's change callback.
 
 ## Server
 

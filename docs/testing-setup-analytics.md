@@ -75,7 +75,7 @@ dif init --yes
 
 Then edit by hand:
 
-1. Call `dif.init` once, in a client component that the root layout renders. Use the `@dif.sh/sdk` import and the generated client from `dif/generated/`. Leave `pageViews` out. The starting code has no page-view option, so the agent must add it.
+1. Call `dif.init` once, in a client component that the root layout renders. Use the `@dif.sh/sdk` import and the generated client from `dif/generated/`. Leave `pageViews` out. The agent must not add it: page views come from the script tag.
 2. Add a CSP to `next.config.js` (or `.mjs`):
 
 ```js
@@ -89,7 +89,7 @@ module.exports = {
 
 3. Add a draft experiment with `metrics: primary: checkout_started`, as in fixture 1.
 
-Expected: `pageViews: "auto"` in the existing `dif.init`, or the React adapter. No script tag. The CSP gains `https://cdn.dif.sh` in `script-src` and `https://ingest.difdb.com` in `connect-src`. Nothing else changes in it. The fixture sends no product tracks with a user id, so the `events.url` origin is not added to `connect-src`.
+Expected: the script tag in `src/app/layout.tsx`, with the site `key` as `data-key`. The existing `dif.init` is unchanged and has no `pageViews`. The `events.key` in `dif/config.yaml` is unchanged, and `dif connect --key` was never run. The CSP gains `https://cdn.dif.sh` in `script-src` and `https://ingest.difdb.com` in `connect-src`. Nothing else changes in it. The fixture sends no product tracks with a user id, so the `events.url` origin is not added to `connect-src`.
 
 ### Fixture 3. Plain HTML, three pages, no build step
 
@@ -111,7 +111,7 @@ Run these in each fixture after the agent finishes. All must pass.
 
 | # | Check | How |
 |---|---|---|
-| 1 | Exactly one page-view path per page | `grep -rn "cdn.dif.sh/s/" --include='*.html' --include='*.svelte' --include='*.tsx' --include='*.ts' . --exclude-dir=node_modules` and `grep -rn 'pageViews: "auto"' . --exclude-dir=node_modules`. Every page gets one path. Never both in one layout. Never two script tags on one page. |
+| 1 | Exactly one page-view path per page | `grep -rn "cdn.dif.sh/s/" --include='*.html' --include='*.svelte' --include='*.tsx' --include='*.ts' . --exclude-dir=node_modules` and `grep -rn 'pageViews: "auto"' . --exclude-dir=node_modules`. Every page has the script tag once. No `pageViews: "auto"` anywhere. |
 | 2 | CSP changed only in fixture 2 | `git diff` (run `git init && git add -A && git commit -m base` before the agent starts). Fixtures 1 and 3 show no CSP text added. In fixture 2, only the two origins were added. |
 | 3 | Experiment metric planned and tracked, exact name | The metric is in `dif/tracking-plan.yaml`. It appears in exactly one `dif.track("<name>"` or `data-dif-event="<name>"`. `grep -rn "<name>" . --exclude-dir=node_modules`. Compare byte for byte. The experiment file is unchanged. |
 | 4 | `dif validate` clean for the plan | `dif validate`. No W006. No E011 (bad plan YAML), E012 (bad event name) or E013 (duplicate name). |
@@ -119,8 +119,8 @@ Run these in each fixture after the agent finishes. All must pass.
 | 6 | Verify step quotes command output only | Step 7's table matches `dif events --since 24h --plan --json`, or the agent says "not checked yet". Nothing is claimed that no command showed. |
 | 7 | Consent note in the hand-back | The fixtures have no CMP. The hand-back says analytics uses no cookies but may still need consent in the EU. `data-consent="required"` and `consent: "required"` are absent. |
 | 8 | Site setup ran with the right origins | `dif site setup` was run with `--env live` and `--env test`. Test origins are local only. `--replace` and `--rate-limit` were not used. |
-| 9 | No token leaks | The transcript has no `dif_cli_` or `dif_pat_` string. No live key committed that is not already in `dif/config.yaml`. |
-| 10 | Agent used the returned `key` | The key on the page (or in `dif/config.yaml`) matches `key` from `dif site setup --env <env> --json`. The test key is in an uncommitted env file, and `dif connect --key` was never run with it. The agent asked you to copy a key only if `key` was `null`. It never made one up. |
+| 9 | No token leaks | The transcript has no `dif_cli_` or `dif_pat_` string. No `dif_pk_test_` key in a committed file. The live site key may be committed. |
+| 10 | Agent used the returned `key` | The page's `data-key` matches `key` from `dif site setup --env <env>`. `events.key` in `dif/config.yaml` is unchanged. `dif connect --key` was never run. The test key is only in a file the dev server reads, such as `.env.development.local`. The agent asked you to copy a key only if `key` was `null`. It never made one up. |
 
 For check 6, run the commands yourself for the real answer:
 

@@ -397,8 +397,8 @@ mod tests {
         let a = setup_args(vec!["https://example.com".into()]);
         for (body, want) in [
             (
-                r#"{"key":"dif_pk_live_ab12_xyz"}"#,
-                json!("dif_pk_live_ab12_xyz"),
+                r#"{"key":"dif_pk_live_0123abcd_Xy3kQ9pLm2"}"#,
+                json!("dif_pk_live_0123abcd_Xy3kQ9pLm2"),
             ),
             (r#"{"key":null}"#, Value::Null),
         ] {
@@ -412,8 +412,8 @@ mod tests {
     #[test]
     fn key_line_shows_key_or_fallback() {
         assert_eq!(
-            key_line(&json!({"key":"dif_pk_live_ab12_xyz"})),
-            "key: dif_pk_live_ab12_xyz"
+            key_line(&json!({"key":"dif_pk_live_0123abcd_Xy3kQ9pLm2"})),
+            "key: dif_pk_live_0123abcd_Xy3kQ9pLm2"
         );
         for v in [json!({"key":null}), json!({})] {
             assert_eq!(

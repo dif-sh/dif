@@ -333,7 +333,7 @@ Scope: `site:manage`. The caller must be a project owner or admin.
 // request
 { "env": "live", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "replace": false }
 // 200
-{ "env": "live", "prefix": "dif_pk_live_ab12", "key": "dif_pk_live_ab12_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+{ "env": "live", "prefix": "0123abcd", "key": "dif_pk_live_0123abcd_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
 ```
 `env` is `live` or `test` and is required. `allowed_origins` has 1 to 32 origins, each `scheme://host[:port]` with no path and no trailing slash. A test env accepts only localhost, 127.0.0.1, `[::1]`, `*.localhost` and `*.test`. `rate_limit_per_min` is optional (1 to 60000). `replace` is optional and defaults to `false`, which adds to the stored list. `key` is the full publishable key for `env`, or `null` only when the stored key text was not kept.
 
@@ -351,7 +351,7 @@ Scope: `events:read`.
 ```json
 {
   "env": "live",
-  "prefix": "dif_pk_live_ab12",
+  "prefix": "0123abcd",
   "status": "seen",
   "accepted_last_hour": 3,
   "last_accepted_ms": 1764071071000,
@@ -404,7 +404,7 @@ These are cloud verbs. They need a login (`dif auth login`) and a `dif/` workspa
 ### `dif site setup --env <live|test> --origin <origin>… [--rate-limit <n>] [--replace] [--project <slug>]`
 `--origin` repeats, with at most 32 values. The CLI checks each origin before any request. Output is the route object plus `ok` and `project`. `key` is the full publishable key for `env`, or `null` for old keys whose text was not kept. In human mode the CLI prints it after the ✓ line. It never writes the key to a file.
 ```json
-{ "ok": true, "project": "acme", "env": "live", "prefix": "dif_pk_live_ab12", "key": "dif_pk_live_ab12_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+{ "ok": true, "project": "acme", "env": "live", "prefix": "0123abcd", "key": "dif_pk_live_0123abcd_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
 ```
 
 ### `dif site check --env <live|test> [--wait <seconds>] [--project <slug>]`
