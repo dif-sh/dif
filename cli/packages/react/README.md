@@ -33,6 +33,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
+For visitors who are not signed in, add `anonymousUserId: true` to `config`.
+When `userId` gives `null`, the SDK reads or mints a first-party `dif_uid`
+cookie in the browser, so anonymous visitors get bucketed and send exposures.
+Without it they always see control, and the SDK warns once outside production.
+Server rendering has no cookie, so SSR shows control: mint the cookie in
+middleware and pass it as `userId` to bucket on the server too. See the
+`@dif.sh/sdk` README, "Anonymous visitors".
+
 Connect the project once with `dif connect --key dif_pk_live_…` (or `dif init
 --key …`). The key lands in `dif/config.yaml` and `dif build` bakes it into
 `dif/generated/events.ts`, so there's no `NEXT_PUBLIC_DIF_PUBLISHABLE_KEY` env
