@@ -136,7 +136,8 @@ to accept.
 Set `consent: "required"` to hold every event until the visitor answers.
 Page views, tracks and exposures wait, up to 50 events. Call
 `dif.consent(true)` to send them. `dif.consent(false)` drops them and
-all later events.
+all later events. Call `dif.consent()` after `dif.init`. An earlier call
+is ignored.
 
 ```ts
 dif.init({ publishableKey, userId, consent: "required" });

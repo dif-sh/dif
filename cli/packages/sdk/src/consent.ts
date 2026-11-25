@@ -1,6 +1,8 @@
 // Consent gate. It holds sends until the visitor answers.
 
-const MAX_HELD = 50;
+import { EVENTS_PER_REQUEST_PUBLISHABLE } from "./limits.js";
+
+const MAX_HELD = EVENTS_PER_REQUEST_PUBLISHABLE;
 
 let required = false;
 // Null means no answer yet.
