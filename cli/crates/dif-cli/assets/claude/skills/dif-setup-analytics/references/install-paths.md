@@ -1,0 +1,67 @@
+# Install paths
+
+Use one path per page.
+
+## Script tag
+
+Put it in `<head>` of every page, once. In a layout, put it in the root layout only.
+
+```html
+<script defer src="https://cdn.dif.sh/s/v1.js"
+        data-key="dif_pk_live_…"
+        data-domains="example.com,www.example.com"></script>
+```
+
+| Attribute | When |
+|---|---|
+| `data-key` | Always. The live key in production, the test key locally. |
+| `data-domains` | Always. The production hostnames. Other hosts send nothing. |
+| `data-spa="hash"` | Only for `#/route` routers. The default follows `pushState`. |
+| `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. |
+| `data-consent="required"` | Only with a CMP. Holds up to 50 events until `dif.consent(true)`. |
+| `data-auto="false"` | Only if the person asks. Then call `dif.page()` yourself. |
+
+`window.dif` has `page()`, `track(name, props)`, `identify(id | null, traits?)` and `consent(granted)`.
+
+Framework notes:
+- **Next.js app router:** `app/layout.tsx`, a plain `<script>` in `<head>`. Do not use `next/script` with `strategy="lazyOnload"`; it misses the first page view.
+- **Next.js pages router:** `pages/_document.tsx`, inside `<Head>`.
+- **SvelteKit:** `src/app.html`, or `src/routes/+layout.svelte` in `<svelte:head>`.
+- **Astro:** the shared layout's `<head>`.
+- **Plain HTML:** every page's `<head>`, or the shared include.
+
+## SDK page views
+
+For apps that already call `dif.init`:
+
+```ts
+import { dif } from "@dif.sh/sdk";
+import { events } from "../dif/generated/client";
+
+dif.init({
+  events,
+  userId: () => currentUser?.id ?? null,
+  pageViews: "auto",
+});
+```
+
+- `dif/generated/client.ts` comes from `dif build`. Fix the import path for where the file sits.
+- React: `<DifProvider config={{ …, pageViews: "auto" }}>`. Svelte: `initDif({ pageViews: "auto" })`.
+- Consent: add `consent: "required"`, then call `dif.consent(true | false)`.
+- Tracks with no user id are dropped. Set `anonymous: true` only if the person wants visitor-level product events.
+- If the page also has the script tag, leave `pageViews` off.
+
+## Server
+
+`DifServer` from `@dif.sh/sdk/server` sends `track` and `page` with a `userId` and an absolute URL. Server page views have no country, browser or device. Use it for events that only the server knows, such as a paid webhook.
+
+## CSP
+
+Add these only if a policy exists:
+
+```
+script-src https://cdn.dif.sh;
+connect-src https://ingest.difdb.com;
+```
+
+Product tracks with a user id also go to the cloud URL in `dif/config.yaml` (`events.url`, default `https://cloud.dif.sh`). Add that to `connect-src` too.
