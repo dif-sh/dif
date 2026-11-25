@@ -12,6 +12,7 @@
 // site — analytics must not crash a render.
 
 import { getState } from "./config.js";
+import { gated } from "./consent.js";
 import { handOff } from "./elements.js";
 import { uuidv7 } from "./event-id.js";
 import { currentHref, documentReferrer, webdriver } from "./stamp.js";
@@ -74,10 +75,13 @@ export function track(metric: string, opts: TrackProps = {}): void {
     ...(opts.props !== undefined && { props: opts.props }),
   };
 
-  try {
-    state.trackHandler(event);
-  } catch {
-    // Handlers should swallow internally; defend here too so a misbehaving
-    // custom handler can never throw at the call site.
-  }
+  const handler = state.trackHandler;
+  gated(() => {
+    try {
+      handler(event);
+    } catch {
+      // Handlers should swallow internally; defend here too so a misbehaving
+      // custom handler can never throw at the call site.
+    }
+  });
 }

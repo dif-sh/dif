@@ -106,6 +106,11 @@ export interface DifInitConfig {
    * carry `anon: true`, so dif counts a visitor, not a known user.
    */
   anonymousUserId?: boolean;
+  /**
+   * `"required"` holds all events until `dif.consent(true)`.
+   * `dif.consent(false)` drops them. Defaults to no gate.
+   */
+  consent?: "required";
 }
 
 /** Anything that can receive an exposure event. */

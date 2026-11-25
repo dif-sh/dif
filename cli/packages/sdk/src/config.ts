@@ -17,6 +17,7 @@ import type {
   MetricEvent,
   Sink,
 } from "./types.js";
+import { requireConsent } from "./consent.js";
 
 export type { DifInitConfig };
 
@@ -77,6 +78,7 @@ const DEFAULT_INGEST_URL = "https://ingest.difdb.com";
 
 export function setState(cfg: DifInitConfig | DifConfig): void {
   const merged = cfg as DifInitConfig;
+  requireConsent(merged.consent === "required");
   const events = merged.events;
   // Publishable key precedence: an explicit top-level `publishableKey` wins,
   // then the one `dif build` baked into the generated cloud `events` object
