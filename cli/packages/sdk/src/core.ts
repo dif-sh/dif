@@ -24,6 +24,7 @@ export function __register(spec: ExperimentSpec): void {
 export function __resetRegistry(): void {
   registry.clear();
   driftWarned.clear();
+  noUserWarned = false;
 }
 
 /**
@@ -177,6 +178,30 @@ export function difCall<V extends string, R>(
   };
 }
 
+let noUserWarned = false;
+
+declare const process: { env: Record<string, string | undefined> };
+
+// Bundlers replace process.env.NODE_ENV at build time.
+// A browser without a bundler counts as dev.
+function isProduction(): boolean {
+  try {
+    return process.env.NODE_ENV === "production";
+  } catch {
+    return false;
+  }
+}
+
+function warnNoUser(id: string): void {
+  if (noUserWarned || isProduction() || typeof console === "undefined") return;
+  noUserWarned = true;
+  console.warn(
+    `[dif] dif("${id}") ran with no user id, so it shows control and sends ` +
+      "no exposure. For anonymous visitors, set anonymousUserId: true in " +
+      "dif.init. See https://www.dif.sh/docs/anonymous-visitors",
+  );
+}
+
 /** Experiments already warned about branch/spec drift — one warning each. */
 const driftWarned = new Set<string>();
 
@@ -257,6 +282,7 @@ function resolve<V extends string, R>(id: string, branches: Record<V, () => R>):
   // Delegate the decision to the pure assigner, then own the side effect.
   // `assign` is non-null here because `spec` exists.
   const userId = state.userId();
+  if (userId === null && !state.anonymousUserId) warnNoUser(id);
   const result = assign(id, {
     userId,
     attributes: state.attributes(),
