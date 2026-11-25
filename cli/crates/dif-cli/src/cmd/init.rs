@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod choices;
+mod install;
 mod ui;
 
 use choices::{detect_framework, Framework};
