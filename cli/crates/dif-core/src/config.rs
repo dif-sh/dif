@@ -190,12 +190,16 @@ pub struct BuildConfig {
     /// Where the generated TS / context.json land.
     #[serde(default = "default_out")]
     pub out: String,
-    /// Which validation classes hard-fail the build (as opposed to warn-only).
+    /// Not read: errors fail the build and warnings do not.
+    /// Kept so that older configs still parse.
     #[serde(default = "default_fail_on")]
     pub fail_on: Vec<String>,
     /// If true, the generated files are committed to git. Default false.
     #[serde(default)]
     pub commit_generated: bool,
+    /// Globs, relative to the repo root, that the call-site scan skips.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignore: Vec<String>,
 }
 
 impl Default for BuildConfig {
@@ -204,6 +208,7 @@ impl Default for BuildConfig {
             out: default_out(),
             fail_on: default_fail_on(),
             commit_generated: false,
+            ignore: Vec::new(),
         }
     }
 }

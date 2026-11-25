@@ -67,7 +67,7 @@ On `ok: true`, go to Step 5. On `needs_selection`, the response lists `orgs` and
 - **An existing project.** Run `dif connect --project <slug> --json`.
 - **A new project.** Run `dif connect --create --json`. Add `--name <name>` for a name other than the folder name.
 
-Add `--org <slug>` when `orgs` has more than one entry. A project whose `repo` is this repo is usually the right one, but the person decides. Do not pick for them.
+Add `--org <slug>` when `orgs` has more than one entry. When `orgs` is empty, `--create` makes a personal org. A project whose `repo` is this repo is usually the right one, but the person decides. Do not pick for them.
 
 ## Step 5. Link the GitHub repo
 
@@ -93,6 +93,7 @@ To send page views and product events, use the dif-setup-analytics skill next.
 | `token_invalid` | The login expired or was revoked. If Step 1 showed `"source": "env"`, the `dif_cli_` token in `DIF_TOKEN` is no longer valid. Ask the person to replace or unset it, and stop. Otherwise go to Step 2. |
 | `forbidden` | This login cannot do that, for example create a project in that org. Tell the person. They can pick an existing project, or ask an org owner. |
 | `org_not_found`, `project_not_found` | The slug is wrong. Run `dif connect --json` with no flags to get the lists again. |
+| `no_org` | This login has no org and no projects. Offer `dif connect --create`: the server then makes a personal org and the project. Or ask for a `dif_pk_…` key and run `dif connect --key <key>`. |
 | `no_workspace` | There is no `dif/` folder here. Run `dif init` first. |
 | `bad_request`, `usage` (exit 2) | dif analytics or the CLI refused a value, such as a slug that is not letters, digits and `-`. Read `message`, fix the value and run again once. |
 | `rate_limited` | Wait `retry_after` seconds, then try once more. |

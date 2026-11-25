@@ -46,6 +46,11 @@ pub(crate) fn validate_publishable_key(raw: &str) -> Result<String, CmdError> {
         return Err(CmdError::Other("no key provided"));
     }
     if !key.starts_with("dif_pk_") {
+        if key.starts_with("dif_site_") {
+            return Err(CmdError::Other(
+                "that is a site key — it belongs in the site script tag; dif/config.yaml needs the project key (dif_pk_…)",
+            ));
+        }
         if key.starts_with("dif_") {
             return Err(CmdError::Other(
                 "that looks like a secret server key — only a publishable key (dif_pk_…) belongs in dif/config.yaml",
@@ -93,6 +98,12 @@ mod tests {
     fn rejects_secret_key() {
         assert!(validate_publishable_key("dif_live_supersecret").is_err());
         assert!(validate_publishable_key("dif_test_supersecret").is_err());
+    }
+
+    #[test]
+    fn rejects_site_key_and_names_it() {
+        let e = validate_publishable_key("dif_site_abc123").unwrap_err();
+        assert!(e.to_string().contains("site key"), "{e}");
     }
 
     #[test]

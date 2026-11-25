@@ -987,7 +987,6 @@ bucketing:
 
 build:
   out: dif/generated
-  fail_on: [conflict, orphan_ref, missing_owner]
 "
     )
 }

@@ -189,11 +189,11 @@ pub(crate) fn link_project(
     };
     let detected = detect_github_repo(root);
 
-    // Projects can exist with no org, but creating one needs an org.
+    // With no org, the server makes a personal org on create.
     let orgless = orgs.is_empty() && args.project.is_none();
-    let orgless_projects = if orgless {
+    let orgless_projects = if orgless && !args.create {
         let projects = list_projects(&client, None).map_err(fail)?;
-        if args.create || projects.is_empty() {
+        if projects.is_empty() {
             return Err(no_org(&session.cloud_url));
         }
         projects
@@ -203,9 +203,10 @@ pub(crate) fn link_project(
 
     let choice = match (&args.project, args.create, &org) {
         (Some(slug), _, _) => Some(Choice::Existing(slug.clone())),
+        (None, true, _) if orgless => Some(Choice::Create(None)),
         _ if orgless && interactive => prompt_orgless(&orgless_projects),
-        (None, true, Some(o)) => Some(Choice::Create(o.clone())),
-        (None, true, None) if interactive => prompt_org(&orgs).map(Choice::Create),
+        (None, true, Some(o)) => Some(Choice::Create(Some(o.clone()))),
+        (None, true, None) if interactive => prompt_org(&orgs).map(|o| Choice::Create(Some(o))),
         _ if interactive => prompt(&client, &orgs, org.clone()).map_err(fail)?,
         _ => None,
     };
@@ -244,7 +245,10 @@ pub(crate) fn link_project(
             (slug, org, false, resp)
         }
         Choice::Create(org) => {
-            let mut body = json!({ "org": org, "name": args.name.as_deref().unwrap_or(folder) });
+            let mut body = json!({ "name": args.name.as_deref().unwrap_or(folder) });
+            if let Some(org) = &org {
+                body["org"] = json!(org);
+            }
             if let Some(repo) = &detected {
                 body["repo_full_name"] = json!(repo);
             }
@@ -254,12 +258,17 @@ pub(crate) fn link_project(
             let resp = client
                 .post("/v1/cli/projects", &body)
                 .map_err(|e| match e {
-                    ApiError::Status { status: 404, .. } => {
-                        Failure::new("org_not_found", 2, format!("no org {org} for this login"))
-                    }
+                    ApiError::Status { status: 404, .. } => Failure::new(
+                        "org_not_found",
+                        2,
+                        format!("no org {} for this login", org.as_deref().unwrap_or("")),
+                    ),
                     e => fail(e),
                 })?;
             let slug = resp["slug"].as_str().ok_or_else(bad_body)?.to_string();
+            let org = org
+                .or_else(|| resp["org"]["slug"].as_str().map(String::from))
+                .unwrap_or_default();
             (slug, org, true, resp)
         }
     };
@@ -301,8 +310,9 @@ fn no_org(cloud_url: &str) -> Failure {
         "no_org",
         2,
         format!(
-            "your dif.sh login has no org, so dif can't create a project; \
-             create or join an org at {cloud_url}, then run dif connect"
+            "your dif.sh login has no org and no projects; \
+             run dif connect --create to make a personal org and project, \
+             or create or join an org at {cloud_url}"
         ),
     )
 }
@@ -321,7 +331,7 @@ fn prompt_orgless(projects: &[Value]) -> Option<Choice> {
 
 enum Choice {
     Existing(String),
-    Create(String),
+    Create(Option<String>),
 }
 
 fn bad_body() -> Failure {
@@ -346,7 +356,7 @@ fn prompt(
     items.push("Create a new project".to_string());
     Ok(match pick("Which project?", &items) {
         Some(i) if i < projects.len() => Some(Choice::Existing(slug(&projects[i]))),
-        Some(_) => Some(Choice::Create(org)),
+        Some(_) => Some(Choice::Create(Some(org))),
         None => None,
     })
 }
@@ -453,7 +463,7 @@ mod tests {
             "/v1/cli/projects" => (
                 201,
                 format!(
-                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                    r#"{{"slug":"shop","project_key":"{KEY}","org":{{"slug":"chris","created":true}},"repo":{{"status":"unlinked"}}}}"#
                 ),
             ),
             _ => (404, r#"{"error":"not_found"}"#.into()),
@@ -500,19 +510,6 @@ mod tests {
     }
 
     #[test]
-    fn creating_with_no_orgs_is_a_no_org_error() {
-        let server = no_org_server(ORGLESS);
-        let tmp = tempfile::tempdir().unwrap();
-        let env = env_with_token(Some(&server.url));
-        let a = Args {
-            create: true,
-            ..args()
-        };
-        let f = link_project(tmp.path(), &a, &env, false, "shop").unwrap_err();
-        assert_eq!(f.code, "no_org");
-    }
-
-    #[test]
     fn no_orgs_still_links_an_existing_project() {
         let server = no_org_server(ORGLESS);
         let tmp = tempfile::tempdir().unwrap();
@@ -534,6 +531,52 @@ mod tests {
         let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
         assert_eq!(f.code, "needs_selection");
         assert_eq!(f.to_json()["projects"][0]["slug"], "niftic");
+    }
+
+    const IN_ORG: &str =
+        r#"{"projects":[{"slug":"site","name":"Site","org":"niftic","repo":"acme/site"}]}"#;
+
+    fn create_server_with(projects: &'static str) -> FakeServer {
+        FakeServer::start(move |req| match (req.method.as_str(), req.path.as_str()) {
+            (_, "/v1/cli/whoami") => (200, r#"{"orgs":[]}"#.into()),
+            ("POST", "/v1/cli/projects") => (
+                201,
+                format!(
+                    r#"{{"slug":"shop","project_key":"{KEY}","org":{{"slug":"chris","created":true}},"repo":{{"status":"unlinked"}}}}"#
+                ),
+            ),
+            (_, p) if p.starts_with("/v1/cli/projects") => (200, projects.into()),
+            _ => (404, r#"{"error":"not_found"}"#.into()),
+        })
+    }
+
+    #[test]
+    fn project_only_orgs_are_not_offered_for_create() {
+        let server = create_server_with(IN_ORG);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let f = link_project(tmp.path(), &args(), &env, false, "shop").unwrap_err();
+        let json = f.to_json();
+        assert_eq!(f.code, "needs_selection");
+        assert_eq!(json["orgs"], json!([]));
+        assert_eq!(json["projects"][0]["slug"], "site");
+    }
+
+    #[test]
+    fn create_with_no_org_lets_the_server_make_a_personal_org() {
+        let server = create_server_with(IN_ORG);
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_token(Some(&server.url));
+        let a = Args {
+            create: true,
+            ..args()
+        };
+        let link = link_project(tmp.path(), &a, &env, false, "shop").unwrap();
+        assert_eq!((link.org.as_str(), link.created), ("chris", true));
+        let requests = server.requests.lock().unwrap();
+        let create = requests.iter().find(|r| r.method == "POST").unwrap();
+        let body: Value = serde_json::from_str(&create.body).unwrap();
+        assert!(body.get("org").is_none(), "{body}");
     }
 
     #[test]
@@ -662,7 +705,7 @@ mod tests {
             "/v1/cli/projects" => (
                 201,
                 format!(
-                    r#"{{"slug":"shop","project_key":"{KEY}","repo":{{"status":"unlinked"}}}}"#
+                    r#"{{"slug":"shop","project_key":"{KEY}","org":{{"slug":"chris","created":true}},"repo":{{"status":"unlinked"}}}}"#
                 ),
             ),
             _ => (404, r#"{"error":"not_found"}"#.into()),
