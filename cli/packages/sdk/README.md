@@ -45,6 +45,42 @@ the `Authorization` header, and `/v1/batch` refuses one in the URL.
 Passing an explicit top-level `publishableKey` to `dif.init` still works and
 overrides the one baked into `events` — handy for per-environment keys.
 
+## Anonymous visitors
+
+An experiment needs a user id to bucket a visitor. With no id, `dif()`
+shows control and sends no exposure. Outside production, the SDK warns
+once in the console when this happens.
+
+For visitors who are not signed in, such as on a marketing site, set
+`anonymousUserId: true`:
+
+```ts
+dif.init({
+  events,
+  userId: () => currentUser?.id ?? null,
+  anonymousUserId: true,
+});
+```
+
+When `userId` gives `null` (or you omit it), the SDK reads the `dif_uid`
+cookie in the browser. On the first visit it mints a random id and sets
+the cookie: first-party, one year, `path=/`, `SameSite=Lax`, `Secure` on
+HTTPS, not `httpOnly`. Later visits reuse it, so a visitor keeps one
+variant. Set `anonymousCookieName` to use another cookie name.
+
+- Page views carry `anon: true` with this option, so dif counts a
+  visitor, not a known user. Call `dif.identify(user.id)` when someone
+  signs in to send their real id without `anon`.
+- On a server there is no cookie jar, so the SDK mints nothing and SSR
+  renders control. To bucket on the server too, mint the cookie in your
+  middleware and pass it as `userId`.
+- With `consent: "required"`, the SDK does not read or set the cookie
+  until `dif.consent(true)`. Until then the visitor has no user id:
+  experiments show control and send no exposure, with no warning. After
+  `dif.consent(true)` the SDK reads or mints the cookie and uses it.
+- Decide with your own legal advice whether the cookie needs consent in
+  your market.
+
 ## Wiring audiences
 
 Every entry in `dif/config.yaml`'s `audience_attributes` is paired with a
@@ -137,7 +173,8 @@ Set `consent: "required"` to hold every event until the visitor answers.
 Page views, tracks and exposures wait, up to 50 events. Call
 `dif.consent(true)` to send them. `dif.consent(false)` drops them and
 all later events. Call `dif.consent()` after `dif.init`. An earlier call
-is ignored.
+is ignored. With `anonymousUserId: true`, the `dif_uid` cookie also waits
+for `dif.consent(true)`; see "Anonymous visitors".
 
 ```ts
 dif.init({ publishableKey, userId, consent: "required" });

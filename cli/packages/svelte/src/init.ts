@@ -5,7 +5,7 @@ import type { DifInitConfig } from "@dif.sh/sdk";
 import type { DifData } from "./context.js";
 
 export interface InitDifOptions
-  extends Omit<DifInitConfig, "userId" | "attributes" | "anonymousUserId"> {
+  extends Omit<DifInitConfig, "userId" | "attributes" | "anonymousUserId" | "anonymousCookieName"> {
   /** The `DifData` returned by `difLoad` (gives the stable `difUid` + server attributes). */
   data?: DifData;
   /** Cookie name. Default `"dif_uid"`. */
@@ -45,13 +45,13 @@ export function initDif(opts: InitDifOptions): void {
   // Cookie-name precedence: explicit option, then the name the server's
   // difLoad actually used (carried in DifData), then the default.
   const { data, cookieName = opts.data?.cookieName ?? "dif_uid", allowOverrides, preview, ...rest } = opts;
-  const seeded = data?.difUid ?? null;
+  const seeded = data?.difUid;
   const attrs = data?.attributes ?? {};
   dif.init({
     ...rest,
-    userId: () => seeded ?? readCookie(cookieName),
-    // The cookie id is minted here, so it is a visitor and not a user.
+    ...(seeded !== undefined && { userId: () => seeded }),
     anonymousUserId: true,
+    anonymousCookieName: cookieName,
     attributes: () => ({ ...attrs }),
     overrides: data?.overrides ?? {},
   } as DifInitConfig);
@@ -63,10 +63,4 @@ export function initDif(opts: InitDifOptions): void {
     syncOverrides({ allow: allowOverrides !== false });
     if (preview !== false) mountDifPreview();
   }
-}
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-  return m ? decodeURIComponent(m[1]!) : null;
 }

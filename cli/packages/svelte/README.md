@@ -20,11 +20,15 @@ npm i @dif.sh/sdk @dif.sh/svelte
 
 This package sets a first-party cookie, `dif_uid` (a random id, one year, not
 `httpOnly`). It is the id that experiment bucketing uses, so the server and the
-client assign the same variant. Page views from `initDif({ pageViews: "auto" })`
+client assign the same variant. `difLoad()` sets it on the server. `initDif()`
+turns on the core SDK's `anonymousUserId`, which reads the same cookie and mints
+it in the browser when `difLoad()` did not run. Page views from `initDif({ pageViews: "auto" })`
 carry it as the user id, marked anonymous (`anon`): dif counts it as a visitor,
 not as a signed-in user. If you need no cookie, use the dif tracking script for
-page views and do not call `difLoad()`. Decide with your own legal advice
-whether the cookie needs consent in your market.
+page views and do not call `difLoad()`. With `consent: "required"`, `initDif()`
+reads or mints the cookie only after `dif.consent(true)`; `difLoad()` does not
+check consent. Decide with your own legal advice whether the cookie needs
+consent in your market.
 
 ## Usage
 

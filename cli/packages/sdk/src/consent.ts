@@ -27,6 +27,11 @@ export function consent(granted: boolean): void {
   for (const send of queued) send();
 }
 
+/** True when the gate is off or the visitor said yes. */
+export function consentGranted(): boolean {
+  return !required || answer === true;
+}
+
 /** Runs `send` now, holds it, or drops it. */
 export function gated(send: () => void): void {
   if (!required || answer === true) {

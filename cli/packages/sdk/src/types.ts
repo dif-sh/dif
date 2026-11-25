@@ -101,11 +101,12 @@ export interface DifInitConfig {
   /** Where page views go. Defaults to https://ingest.difdb.com. */
   ingestUrl?: string;
   /**
-   * `true` when `userId` returns an id the app minted for a visitor,
-   * such as a cookie value, and not a signed-in user. Page views then
-   * carry `anon: true`, so dif counts a visitor, not a known user.
+   * `true` mints a visitor cookie when `userId` gives null.
+   * Page views with a resolver or cookie id carry `anon: true`.
    */
   anonymousUserId?: boolean;
+  /** Cookie for the `anonymousUserId` visitor id. Defaults to `"dif_uid"`. */
+  anonymousCookieName?: string;
   /**
    * `"required"` holds all events until `dif.consent(true)`.
    * `dif.consent(false)` drops them. Defaults to no gate.
