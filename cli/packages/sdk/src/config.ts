@@ -18,6 +18,7 @@ import type {
   Sink,
 } from "./types.js";
 import { requireConsent } from "./consent.js";
+import { DEFAULT_VISITOR_COOKIE, visitorId } from "./visitor.js";
 
 export type { DifInitConfig };
 
@@ -146,7 +147,7 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
           );
         }
       }
-      if (merged.userId === undefined && !noUserIdWarned) {
+      if (merged.userId === undefined && merged.anonymousUserId !== true && !noUserIdWarned) {
         noUserIdWarned = true;
         if (typeof console !== "undefined") {
           console.warn(
@@ -159,12 +160,15 @@ export function setState(cfg: DifInitConfig | DifConfig): void {
   }
 
   const resolve = merged.userId ?? (() => null);
+  const anonymousUserId = merged.anonymousUserId === true;
+  const cookie = merged.anonymousCookieName ?? DEFAULT_VISITOR_COOKIE;
+  const visitor = anonymousUserId ? () => visitorId(cookie) : () => null;
   state = {
     project: merged.project ?? null,
     publishableKey,
     apiUrl,
-    userId: () => identifiedUserId() ?? resolve(),
-    anonymousUserId: merged.anonymousUserId === true,
+    userId: () => identifiedUserId() ?? resolve() ?? visitor(),
+    anonymousUserId,
     attributes: merged.attributes ?? (() => ({})),
     sinks,
     trackHandler,

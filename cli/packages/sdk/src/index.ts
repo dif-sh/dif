@@ -18,6 +18,7 @@ import { consent, __resetConsent } from "./consent.js";
 import { track } from "./track.js";
 import { page, type PageOptions } from "./page.js";
 import { identify, __resetIdentity } from "./identify.js";
+import { __resetVisitor } from "./visitor.js";
 import { startPageViews, __resetPageViews } from "./page-views.js";
 import { __tapElements, setElementSink } from "./elements.js";
 import { __resetBatchState } from "./sinks/batch.js";
@@ -95,6 +96,7 @@ export function __reset(): void {
   __tapElements(null);
   __resetBatchState();
   __resetIdentity();
+  __resetVisitor();
   __resetPageViews();
   __resetConsent();
 }

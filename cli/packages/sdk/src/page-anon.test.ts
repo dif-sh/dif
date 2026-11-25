@@ -68,9 +68,16 @@ describe("page views with a minted id", () => {
     assert.equal((sent[0] as { anon?: boolean }).anon, true);
   });
 
-  it("sends no anon when there is no user id", () => {
+  it("marks the minted cookie id anon when the resolver gives null", () => {
     dif.init({ publishableKey: KEY, userId: () => null, anonymousUserId: true });
     dif.page();
+    assert.match((sent[0] as { user_id?: string }).user_id ?? "", /^[0-9a-f-]{36}$/);
+    assert.equal((sent[0] as { anon?: boolean }).anon, true);
+  });
+
+  it("sends no anon when there is no user id", () => {
+    dif.init({ publishableKey: KEY, userId: () => null });
+    dif.page({ anon: true });
     assert.equal("anon" in sent[0]!, false);
   });
 });
