@@ -408,7 +408,7 @@ These are cloud verbs. They need a login (`dif auth login`) and a `dif/` workspa
 ```
 
 ### `dif site check --env <live|test> [--wait <seconds>] [--project <slug>]`
-It opens the check window, then reads the result. With `--wait`, it polls every 10 seconds until events arrive or the time ends. Output is the install-check object plus `ok` and `project`. `null` counts stay `null`.
+It opens the check window, then reads the result. With `--wait`, it polls every 10 seconds until events arrive or the time ends. Output is the install-check object plus `ok` and `project`. `null` counts stay `null`. If no events arrive before `--wait` ends, it still exits 0. Read `status` and the counts; the exit code does not say whether events arrived.
 
 ### `dif events [--since <1h|24h|7d>] [--plan] [--project <slug>]`
 `--since` defaults to `24h`. Output has `ok`, `project`, `since` and `events`, with rows as the route sends them.
@@ -426,12 +426,17 @@ Exit 0 is success. Exit 2 is a usage or setup error. Exit 1 is a Cloud refusal o
 | `error` | Exit | When |
 |---|---|---|
 | `no_workspace` | 2 | No `dif/` here. |
+| `not_logged_in` | 2 | No login. Run `dif auth login`. |
+| `token_invalid` | 2 | The token expired or was revoked. |
 | `needs_selection` | 2 | The project slug is unclear. Pass `--project`. |
-| `usage` | 2 | A bad `--origin` or too many origins. |
+| `usage` | 2 | A bad `--origin`, too many origins, or a `--project` slug that is not letters, digits and `-`. |
 | `no_tracking_plan` | 2 | `--plan`, and `dif/tracking-plan.yaml` does not exist or is not valid. |
 | `missing_scope` | 2 | The token predates the new scopes. Run `dif auth login` again. |
 | `project_not_found` | 2 | No project with that slug for this login. |
 | `bad_request` | 2 | Cloud refused the request. |
+| `forbidden` | 1 | The token lacks the role or scope. |
+| `rate_limited` | 1 | Too many requests. Wait `retry_after` seconds. |
+| `cloud_unreachable` | 1 | The network call failed. This never means zero events. |
 | `not_project_manager` | 1 | Only a project owner or admin can change site settings. |
 | `site_analytics_unavailable` | 1 | Site analytics is not on for this project. |
 | `site_not_set_up` | 1 | No site key for this env. Run `dif site setup`. |

@@ -98,10 +98,10 @@ cd "$TMPDIR/setup-evals" && mkdir eval-html && cd eval-html
 for p in index pricing contact; do
   printf '<!doctype html>\n<html><head><meta charset="utf-8"><title>%s</title></head>\n<body><h1>%s</h1><a href="/contact.html">Contact</a></body></html>\n' "$p" "$p" > "$p.html"
 done
-dif init --yes
+dif init --yes --framework sdk
 ```
 
-There is no framework, so `dif init` has no `package.json` to detect. In the "Which framework does your app use?" question, pick "JavaScript / TypeScript" (the plain SDK; there is no "none" option).
+There is no framework, so `dif init` has no `package.json` to detect. `--yes` skips the questions, so pass `--framework sdk` (the plain SDK; there is no "none" option).
 
 Expected: the script tag in each of the three files (there is no shared layout). No CSP change. No SDK.
 
@@ -151,7 +151,7 @@ Pass:
 ### 5b. Project in `mode: custom`
 
 ```sh
-dif init   # answer: Where should events go? -> Your own handlers
+dif init --yes --events custom
 grep -n "mode:" dif/config.yaml    # mode: custom
 ```
 
