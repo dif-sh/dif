@@ -19,11 +19,17 @@ Add `--json` to every `dif site`, `dif events` and `dif auth` command. Branch on
 
 ## Step 0. Preflight
 
-1. Read `dif/config.yaml`. If it does not exist, stop and tell the person to run `dif init`.
+1. Read `dif/config.yaml`. If it does not exist, the project has no dif workspace. Do not run `dif init` for analytics. Use the analytics-only path below.
 2. Look at the `events:` block.
    - `mode: custom`: events go to the person's own handlers, not to dif analytics. Ask which they want. To switch, use the `dif-connect-cloud` skill, then come back here. To stay custom, do only Steps 4, 5 and 8, and skip item 3 below.
    - `mode: cloud` with no `key`: use the `dif-connect-cloud` skill first, then come back.
 3. Run `dif auth status --json`. If `logged_in` is false, use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back here.
+
+**Analytics-only path (no `dif/config.yaml`).** `dif site setup` and `dif site check` work without a workspace, but they need `--project <slug>`. `dif events` and `dif validate` need a workspace, so skip them.
+
+1. Run `dif auth status --json`. If `logged_in` is false, run `dif auth login`, then come back here.
+2. Run `dif site check --env live --json` with no `--project`. It fails with `needs_selection` and lists the login's projects. Ask the person which project, even if there is only one. Add `--project <slug>` to every `dif site` command after that.
+3. Do Steps 1, 2, 3, 6, 7 and 8. In Step 3, the SDK and `events.url` notes do not apply unless the app already uses `@dif.sh/sdk`. In Step 7, skip items 2 and 3 and use only `dif site check`. In Step 8, report the `dif site check` counts in place of the table. Do not write `dif/tracking-plan.yaml`.
 
 ## Step 1. Read the app
 
@@ -52,7 +58,7 @@ Find these before you change anything:
    - `--env test`: put `key` in a file only your dev server reads, for example `.env.development.local` for Vite or Next.js. A production build never reads that file. First run `git check-ignore <file>`. If it prints nothing, add the file to `.gitignore` and tell the person. Use the key for `data-key` locally. Never commit it.
    - Only when `key` is `null`: ask the person to copy the key for that env from Settings → Site in dif analytics. Use the key they give you the same way.
    - Never guess a key or build one.
-4. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
+4. On `needs_selection`, ask the person which project, then run again with `--project <slug>`. With no `dif/` workspace, every `dif site` command needs `--project <slug>`.
 5. Fallbacks:
    - `not_logged_in` or `token_invalid`: use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back and run the same command again.
    - `missing_scope`: the login is from before this feature. Run `dif auth status --json`. If `source` is `env`, the token comes from `DIF_TOKEN`: ask the person to replace it with a new token, and stop. Otherwise do Steps 2 and 3 of `dif-connect-cloud` (skip Step 1), then come back and run the same command again. Try again at most once.

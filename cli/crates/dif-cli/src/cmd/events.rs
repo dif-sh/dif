@@ -41,7 +41,7 @@ pub fn run(args: Args, json: bool) -> Result<ExitCode, CmdError> {
     }
     let env = CloudEnv::from_process();
     let (client, session, slug) =
-        match project_session(&workspace.root, args.project.as_deref(), &env) {
+        match project_session(Some(&workspace.root), args.project.as_deref(), &env) {
             Ok(t) => t,
             Err(f) => return Ok(f.report(json)),
         };

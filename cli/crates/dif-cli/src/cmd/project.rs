@@ -92,12 +92,24 @@ enum Resolve {
     Fail(Failure),
 }
 
-fn resolve_inner(client: &Client, root: &Path, flag: Option<&str>) -> Result<String, Resolve> {
+/// With no workspace root, only the flag picks a project.
+fn resolve_inner(
+    client: &Client,
+    root: Option<&Path>,
+    flag: Option<&str>,
+) -> Result<String, Resolve> {
     if let Some(slug) = flag {
         check_slug("project", slug).map_err(Resolve::Fail)?;
         return Ok(slug.to_string());
     }
     let projects = list_projects(client, None).map_err(Resolve::Api)?;
+    let Some(root) = root else {
+        return Err(Resolve::Fail(needs_selection(
+            &[],
+            &projects,
+            "choose a project: pass --project <slug>",
+        )));
+    };
     if let Some(slug) = pick_by_repo(&projects, detect_github_repo(root).as_deref()) {
         return Ok(slug);
     }
@@ -130,7 +142,7 @@ fn pick_by_repo(projects: &[Value], repo: Option<&str>) -> Option<String> {
 
 /// Session, client and slug for a project-scoped verb.
 pub(crate) fn project_session(
-    root: &Path,
+    root: Option<&Path>,
     flag: Option<&str>,
     env: &CloudEnv,
 ) -> Result<(Client, Session, String), Failure> {
@@ -156,12 +168,12 @@ mod tests {
         Client::new(&server.url, Some("dif_cli_x".into()))
     }
 
-    fn resolve_project(
+    fn resolve_project<'a>(
         client: &Client,
-        root: &Path,
+        root: impl Into<Option<&'a Path>>,
         flag: Option<&str>,
     ) -> Result<String, crate::cloud::Failure> {
-        resolve_inner(client, root, flag).map_err(|e| match e {
+        resolve_inner(client, root.into(), flag).map_err(|e| match e {
             Resolve::Api(e) => e.into_failure(),
             Resolve::Fail(f) => f,
         })
@@ -223,6 +235,27 @@ mod tests {
         let f = resolve_project(&client(&server), tmp.path(), None).unwrap_err();
         assert_eq!((f.code, f.exit), ("needs_selection", 2));
         assert_eq!(f.to_json()["projects"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn no_workspace_flag_wins_without_a_request() {
+        let server = FakeServer::start(|_| (500, "{}".into()));
+        let slug = resolve_project(&client(&server), None, Some("mine")).unwrap();
+        assert_eq!(slug, "mine");
+        assert!(server.paths().is_empty());
+    }
+
+    #[test]
+    fn no_workspace_without_flag_lists_even_one_project() {
+        let server = FakeServer::start(|_| {
+            (
+                200,
+                r#"{"projects":[{"slug":"only","name":"O","org":"a","repo":null}]}"#.into(),
+            )
+        });
+        let f = resolve_project(&client(&server), None, None).unwrap_err();
+        assert_eq!((f.code, f.exit), ("needs_selection", 2));
+        assert_eq!(f.to_json()["projects"][0]["slug"], "only");
     }
 
     #[test]
