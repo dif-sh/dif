@@ -163,9 +163,28 @@ fn normalize_origin(raw: &str) -> Result<String, Failure> {
     if rest.contains('@') || rest.chars().any(char::is_whitespace) {
         return Err(bad("is not a plain host"));
     }
-    let (host, port) = match rest.rsplit_once(':') {
-        Some((h, p)) => (h, Some(p)),
-        None => (rest, None),
+    let (host, port) = if let Some(inner) = rest.strip_prefix('[') {
+        // Bracketed IPv6 host, then an optional port.
+        let (addr, tail) = inner
+            .split_once(']')
+            .ok_or_else(|| bad("has an open bracket"))?;
+        if addr.is_empty()
+            || !addr
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() || b == b':' || b == b'.')
+        {
+            return Err(bad("has a bad IPv6 host"));
+        }
+        let port = match tail {
+            "" => None,
+            t => Some(t.strip_prefix(':').ok_or_else(|| bad("has a bad port"))?),
+        };
+        (&rest[..addr.len() + 2], port)
+    } else {
+        match rest.rsplit_once(':') {
+            Some((h, p)) => (h, Some(p)),
+            None => (rest, None),
+        }
     };
     if host.is_empty() {
         return Err(bad("has no host"));
@@ -300,6 +319,22 @@ mod tests {
             normalize_origin(" HTTP://Localhost ").unwrap(),
             "http://localhost"
         );
+    }
+
+    #[test]
+    fn normalize_origin_handles_ipv6_hosts() {
+        assert_eq!(normalize_origin("http://[::1]").unwrap(), "http://[::1]");
+        assert_eq!(
+            normalize_origin("http://[::1]:5173").unwrap(),
+            "http://[::1]:5173"
+        );
+        for raw in ["http://[::1", "http://[::1]x", "http://[::1]:", "http://[]"] {
+            assert_eq!(
+                usage(normalize_origin(raw).unwrap_err()),
+                ("usage", 2),
+                "{raw}"
+            );
+        }
     }
 
     #[test]
