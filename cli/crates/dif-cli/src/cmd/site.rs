@@ -128,6 +128,7 @@ fn print_human(cmd: &SiteCommand, value: &Value) {
                 a.env.as_str(),
                 origins.join(", ")
             );
+            println!("{}", key_line(value));
         }
         SiteCommand::Check(_) => {
             for line in value["lines"].as_array().into_iter().flatten() {
@@ -136,6 +137,14 @@ fn print_human(cmd: &SiteCommand, value: &Value) {
                 }
             }
         }
+    }
+}
+
+/// A null key means the cloud did not keep the key text.
+fn key_line(value: &Value) -> String {
+    match value["key"].as_str() {
+        Some(k) => format!("key: {k}"),
+        None => "key: not available — copy it from Settings → Site".into(),
     }
 }
 
@@ -381,6 +390,37 @@ mod tests {
         );
         assert_eq!(out["ok"], true);
         assert_eq!(out["project"], "acme");
+    }
+
+    #[test]
+    fn setup_passes_key_through_unchanged() {
+        let a = setup_args(vec!["https://example.com".into()]);
+        for (body, want) in [
+            (
+                r#"{"key":"dif_pk_live_ab12_xyz"}"#,
+                json!("dif_pk_live_ab12_xyz"),
+            ),
+            (r#"{"key":null}"#, Value::Null),
+        ] {
+            let server = FakeServer::start(move |_| (200, body.into()));
+            let out = setup(&client(&server), "acme", &a).unwrap();
+            assert_eq!(out["key"], want);
+            assert!(out.as_object().unwrap().contains_key("key"));
+        }
+    }
+
+    #[test]
+    fn key_line_shows_key_or_fallback() {
+        assert_eq!(
+            key_line(&json!({"key":"dif_pk_live_ab12_xyz"})),
+            "key: dif_pk_live_ab12_xyz"
+        );
+        for v in [json!({"key":null}), json!({})] {
+            assert_eq!(
+                key_line(&v),
+                "key: not available — copy it from Settings → Site"
+            );
+        }
     }
 
     #[test]

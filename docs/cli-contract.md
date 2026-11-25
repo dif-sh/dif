@@ -333,9 +333,9 @@ Scope: `site:manage`. The caller must be a project owner or admin.
 // request
 { "env": "live", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "replace": false }
 // 200
-{ "env": "live", "prefix": "dif_pk_live_ab12", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+{ "env": "live", "prefix": "dif_pk_live_ab12", "key": "dif_pk_live_ab12_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
 ```
-`env` is `live` or `test` and is required. `allowed_origins` has 1 to 32 origins, each `scheme://host[:port]` with no path and no trailing slash. A test env accepts only localhost, 127.0.0.1, `[::1]`, `*.localhost` and `*.test`. `rate_limit_per_min` is optional (1 to 60000). `replace` is optional and defaults to `false`, which adds to the stored list.
+`env` is `live` or `test` and is required. `allowed_origins` has 1 to 32 origins, each `scheme://host[:port]` with no path and no trailing slash. A test env accepts only localhost, 127.0.0.1, `[::1]`, `*.localhost` and `*.test`. `rate_limit_per_min` is optional (1 to 60000). `replace` is optional and defaults to `false`, which adds to the stored list. `key` is the full publishable key for `env`, or `null` only when the stored key text was not kept.
 
 ### `POST /v1/cli/projects/:slug/site/install-check`
 Scope: `site:manage`. It opens the 10-minute check window.
@@ -402,9 +402,9 @@ These are cloud verbs. They need a login (`dif auth login`) and a `dif/` workspa
 **Project slug.** `--project <slug>`, else the project whose `repo` matches the git remote, else the only project the login can see, else `needs_selection` (exit 2, same shape as section 5).
 
 ### `dif site setup --env <live|test> --origin <origin>… [--rate-limit <n>] [--replace] [--project <slug>]`
-`--origin` repeats, with at most 32 values. The CLI checks each origin before any request. Output is the route object plus `ok` and `project`.
+`--origin` repeats, with at most 32 values. The CLI checks each origin before any request. Output is the route object plus `ok` and `project`. `key` is the full publishable key for `env`, or `null` for old keys whose text was not kept. In human mode the CLI prints it after the ✓ line. It never writes the key to a file.
 ```json
-{ "ok": true, "project": "acme", "env": "live", "prefix": "dif_pk_live_ab12", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
+{ "ok": true, "project": "acme", "env": "live", "prefix": "dif_pk_live_ab12", "key": "dif_pk_live_ab12_…", "allowed_origins": ["https://example.com"], "rate_limit_per_min": 6000, "enabled": true }
 ```
 
 ### `dif site check --env <live|test> [--wait <seconds>] [--project <slug>]`

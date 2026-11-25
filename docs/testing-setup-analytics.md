@@ -120,6 +120,7 @@ Run these in each fixture after the agent finishes. All must pass.
 | 7 | Consent note in the hand-back | The fixtures have no CMP. The hand-back says analytics uses no cookies but may still need consent in the EU. `data-consent="required"` and `consent: "required"` are absent. |
 | 8 | Site setup ran with the right origins | `dif site setup` was run with `--env live` and `--env test`. Test origins are local only. `--replace` and `--rate-limit` were not used. |
 | 9 | No token leaks | The transcript has no `dif_cli_` or `dif_pat_` string. No live key committed that is not already in `dif/config.yaml`. |
+| 10 | Agent used the returned `key` | The key on the page (or in `dif/config.yaml`) matches `key` from `dif site setup --env <env> --json`. The test key is in an uncommitted env file, and `dif connect --key` was never run with it. The agent asked you to copy a key only if `key` was `null`. It never made one up. |
 
 For check 6, run the commands yourself for the real answer:
 
@@ -197,7 +198,7 @@ Counts are `null` unless `status` is `seen`. A `null` must never turn into a 0 i
 
 Pick a real app at the gate. Use one you know well, with a real router, a sign-in and ideally a consent banner. Work on a new branch, never on the main branch.
 
-Run the same prompt. Check the same nine checks, then:
+Run the same prompt. Check the same ten checks, then:
 
 - Where the repo has a CMP, `data-consent="required"` or `consent: "required"` is set, and `dif.consent()` is called from the CMP callback.
 - Where the repo has existing analytics (GA, PostHog), the agent leaves them alone.

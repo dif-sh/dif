@@ -14,7 +14,7 @@ Put it in `<head>` of every page, once. In a layout, put it in the root layout o
 
 | Attribute | When |
 |---|---|
-| `data-key` | Always. The live key in production, the test key locally. Use the keys from the check in Step 2 of the skill. |
+| `data-key` | Always. The live key in production, the test key locally. Use the `key` from Step 2 of the skill. Keep the test key out of committed files. |
 | `data-domains` | Always. The production hostnames. Other hosts send nothing. |
 | `data-spa="hash"` | Only for `#/route` routers. The default follows `pushState`. |
 | `data-user-id` | The signed-in user's id, rendered by the server. Leave it out for visitors. |
@@ -49,7 +49,7 @@ dif.init({
 ```
 
 - `dif build` writes `dif/generated/client.ts` and `dif/generated/events.ts`. Fix the import paths for where the files sit.
-- The key comes from `dif/config.yaml`. If the check in Step 2 of the skill gave a different live key, run `dif connect --key <key> --json`, then `dif build`. For the test key, pass `publishableKey` to `dif.init` from a local env var.
+- The key comes from `dif/config.yaml`. If the live `key` from Step 2 of the skill differs from it, run `dif connect --key <key> --json`, then `dif build`. For the test key, pass `publishableKey` to `dif.init` from a local env var that is not committed. Never `dif connect` a test key.
 - Track with `dif.track(name, { props, value, currency })`.
 - React: `<DifProvider config={{ …, pageViews: "auto" }}>`. Svelte: `initDif({ pageViews: "auto" })`.
 - Consent: add `consent: "required"`. Right after `dif.init`, call `dif.consent()` with the CMP's current state. Also call it from the CMP's change callback.

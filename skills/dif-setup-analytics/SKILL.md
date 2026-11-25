@@ -46,11 +46,11 @@ Find these before you change anything:
    dif site setup --env test --origin http://localhost:5173 --json
    ```
    Use the dev server's real port. `--env test` takes only local origins.
-3. Check the key. The result has `prefix`, the start of the key that dif analytics allows for that env. The key in `dif/config.yaml` (`events.key`) may be a different key.
-   - `--env live`: if `events.key` starts with `prefix`, use that key. If it does not, ask the person to copy the full live publishable key from Settings → Site in dif analytics.
-   - `--env test`: always ask the person to copy the full test publishable key from Settings → Site.
-   - Use the key they give you for the script tag's `data-key` or the local env file. On the SDK path with a new live key, run `dif connect --key <key> --json`, then `dif build`, so the config and the generated files match. Never `dif connect` a test key: pass it to `dif.init` as `publishableKey` from a local env var.
-   - Never guess a key, and never build one from `prefix`.
+3. Use the key. The result has `key`, the full publishable key for that env. Publishable keys are public. The key in `dif/config.yaml` (`events.key`) may be a different key.
+   - `--env live`: if `key` differs from `events.key`, use `key`. On the SDK path, run `dif connect --key <key> --json`, then `dif build`, so the config and the generated files match. On the script-tag path, use it as `data-key`, and commit it like the config key.
+   - `--env test`: put `key` in a local env file that is not committed. Pass it as `data-key` locally, or to `dif.init({ publishableKey })` from that env var. Never run `dif connect --key` with a test key.
+   - Only when `key` is `null`: ask the person to copy the full key for that env from Settings → Site in dif analytics, and use the key they give you the same way.
+   - Never guess a key or build one.
 4. On `needs_selection`, ask the person which project, then run again with `--project <slug>`.
 5. Fallbacks:
    - `not_logged_in` or `token_invalid`: use Steps 1 to 3 of the `dif-connect-cloud` skill, then come back and run the same command again.
