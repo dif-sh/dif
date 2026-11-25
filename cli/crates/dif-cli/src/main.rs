@@ -50,7 +50,17 @@ enum Command {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            let hint = update_hint(&e);
+            let _ = e.print();
+            if let Some(hint) = hint {
+                eprintln!("\n{hint}");
+            }
+            return ExitCode::from(e.exit_code() as u8);
+        }
+    };
     let json = cli.json;
     let result = match cli.command {
         Command::Init(args) => cmd::init::run(args, json),
@@ -100,5 +110,42 @@ fn main() -> ExitCode {
             }
             ExitCode::from(1)
         }
+    }
+}
+
+/// The docs can describe flags that an older CLI does not know.
+fn update_hint(e: &clap::Error) -> Option<String> {
+    use clap::error::ErrorKind::{InvalidSubcommand, UnknownArgument};
+    matches!(e.kind(), UnknownArgument | InvalidSubcommand).then(|| {
+        format!(
+            "This is dif {}. If the docs show this option, update the CLI:\n  npm install -g @dif.sh/cli@latest",
+            env!("CARGO_PKG_VERSION")
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_err(args: &[&str]) -> clap::Error {
+        Cli::try_parse_from(args).unwrap_err()
+    }
+
+    #[test]
+    fn unknown_flag_suggests_an_update() {
+        let hint = update_hint(&parse_err(&["dif", "init", "--made-up"])).unwrap();
+        assert!(hint.contains(env!("CARGO_PKG_VERSION")), "{hint}");
+        assert!(hint.contains("npm install -g @dif.sh/cli@latest"), "{hint}");
+    }
+
+    #[test]
+    fn unknown_verb_suggests_an_update() {
+        assert!(update_hint(&parse_err(&["dif", "made-up"])).is_some());
+    }
+
+    #[test]
+    fn other_usage_errors_get_no_update_hint() {
+        assert!(update_hint(&parse_err(&["dif", "new"])).is_none());
     }
 }
