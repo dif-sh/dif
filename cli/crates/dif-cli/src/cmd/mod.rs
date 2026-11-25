@@ -7,6 +7,9 @@ pub mod conclude;
 pub mod connect;
 pub mod init;
 pub mod new;
+// Callers arrive with `dif site` and `dif events`.
+#[allow(dead_code)]
+pub mod project;
 pub mod qa;
 pub mod scaffold_audiences;
 pub mod validate;

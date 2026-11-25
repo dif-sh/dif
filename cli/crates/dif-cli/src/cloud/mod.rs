@@ -8,7 +8,7 @@ pub mod fake_server;
 use console::style;
 use serde_json::{json, Map, Value};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub use credentials::{CloudEnv, Session, Source};
 
@@ -24,6 +24,8 @@ pub enum ApiError {
         status: u16,
         code: Option<String>,
         retry_after: Option<u64>,
+        /// The server's `hint` string, if it sent one.
+        hint: Option<String>,
     },
     /// A 2xx answer whose body is not a JSON object.
     BadBody,
@@ -55,30 +57,92 @@ impl ApiError {
                 status,
                 code,
                 retry_after,
-            } => match status {
-                401 => Failure::new(
-                    "token_invalid",
-                    2,
-                    "the token was rejected; run dif auth login",
-                ),
-                403 => Failure::new("forbidden", 1, "the token lacks the role or scope"),
-                429 => {
-                    let mut f = Failure::new("rate_limited", 1, "too many requests; retry later");
-                    if let Some(secs) = retry_after {
-                        f = f.with("retry_after", json!(secs));
-                    }
-                    f
+                hint,
+            } => {
+                let mapped = site_route_failure(status, code.as_deref());
+                if let Some(f) = mapped {
+                    return match hint {
+                        Some(h) => f.with("hint", json!(h)),
+                        None => f,
+                    };
                 }
-                _ => Failure::new(
-                    "cloud_error",
-                    1,
-                    format!(
-                        "dif analytics answered HTTP {status} ({})",
-                        code.as_deref().unwrap_or("no error code")
+                match status {
+                    401 => Failure::new(
+                        "token_invalid",
+                        2,
+                        "the token was rejected; run dif auth login",
                     ),
-                ),
-            },
+                    403 => Failure::new("forbidden", 1, "the token lacks the role or scope"),
+                    429 => {
+                        let mut f =
+                            Failure::new("rate_limited", 1, "too many requests; retry later");
+                        if let Some(secs) = retry_after {
+                            f = f.with("retry_after", json!(secs));
+                        }
+                        f
+                    }
+                    _ => Failure::new(
+                        "cloud_error",
+                        1,
+                        format!(
+                            "dif analytics answered HTTP {status} ({})",
+                            code.as_deref().unwrap_or("no error code")
+                        ),
+                    ),
+                }
+            }
         }
+    }
+}
+
+/// Codes of the `/v1/cli/projects/:slug/...` routes only.
+fn site_route_failure(status: u16, code: Option<&str>) -> Option<Failure> {
+    let (name, exit, msg): (&'static str, u8, &str) = match (status, code?) {
+        (403, "missing_scope") => (
+            "missing_scope",
+            2,
+            "this login can't do that yet; run dif auth login again",
+        ),
+        (403, "not_project_manager") => (
+            "not_project_manager",
+            1,
+            "only a project owner or admin can change site settings",
+        ),
+        (403, "site_analytics_unavailable") => (
+            "site_analytics_unavailable",
+            1,
+            "site analytics is not available for this project yet",
+        ),
+        (404, "project_not_found") => (
+            "project_not_found",
+            2,
+            "no project with that slug for this login",
+        ),
+        (400, "bad_request") => ("bad_request", 2, "dif analytics refused the request"),
+        (409, "site_not_set_up") => (
+            "site_not_set_up",
+            1,
+            "site analytics has no key for this env yet",
+        ),
+        _ => return None,
+    };
+    Some(Failure::new(name, exit, msg))
+}
+
+/// Time source for waits. Tests swap in a fake.
+pub trait Clock {
+    fn now(&self) -> Instant;
+    fn sleep(&self, d: Duration);
+}
+
+pub struct RealClock;
+
+impl Clock for RealClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+    fn sleep(&self, d: Duration) {
+        std::thread::sleep(d);
     }
 }
 
@@ -146,6 +210,7 @@ fn read(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result
         status,
         code: field("error").and_then(|v| v.as_str().map(String::from)),
         retry_after: retry_after.or_else(|| field("retry_after").and_then(|v| v.as_u64())),
+        hint: field("hint").and_then(|v| v.as_str().map(String::from)),
     })
 }
 
@@ -221,7 +286,16 @@ mod tests {
             status,
             code: None,
             retry_after: None,
+            hint: None,
         }
+    }
+
+    fn server_error(status: u16, body: &'static str) -> Failure {
+        let server = FakeServer::start(move |_| (status, body.into()));
+        Client::new(&server.url, None)
+            .get("/v1/cli/projects/x/site")
+            .unwrap_err()
+            .into_failure()
     }
 
     fn env_with_file(dir: &std::path::Path, token: Option<&str>) -> CloudEnv {
@@ -276,5 +350,70 @@ mod tests {
             .into_failure();
         assert_eq!((f.code, f.exit), ("rate_limited", 1));
         assert_eq!(f.to_json()["retry_after"], 30);
+    }
+
+    #[test]
+    fn missing_scope_is_exit_2_with_hint() {
+        let f = server_error(403, r#"{"error":"missing_scope","hint":"dif auth login"}"#);
+        assert_eq!((f.code, f.exit), ("missing_scope", 2));
+        assert_eq!(f.to_json()["hint"], "dif auth login");
+    }
+
+    #[test]
+    fn missing_scope_keeps_the_file_credential() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_with_file(tmp.path(), None);
+        let session = env.session().unwrap();
+        let e = ApiError::Status {
+            status: 403,
+            code: Some("missing_scope".into()),
+            retry_after: None,
+            hint: None,
+        };
+        let f = rejected(&env, &session, e);
+        assert_eq!(f.code, "missing_scope");
+        assert!(env.load_credential().is_some());
+    }
+
+    #[test]
+    fn other_403_is_still_forbidden() {
+        let f = server_error(403, r#"{"error":"nope"}"#);
+        assert_eq!((f.code, f.exit), ("forbidden", 1));
+    }
+
+    #[test]
+    fn manager_and_analytics_403s_are_exit_1() {
+        let f = server_error(403, r#"{"error":"not_project_manager"}"#);
+        assert_eq!((f.code, f.exit), ("not_project_manager", 1));
+        let f = server_error(403, r#"{"error":"site_analytics_unavailable"}"#);
+        assert_eq!((f.code, f.exit), ("site_analytics_unavailable", 1));
+    }
+
+    #[test]
+    fn project_not_found_and_bad_request_are_exit_2() {
+        let f = server_error(404, r#"{"error":"project_not_found"}"#);
+        assert_eq!((f.code, f.exit), ("project_not_found", 2));
+        let f = server_error(400, r#"{"error":"bad_request","hint":"origins"}"#);
+        assert_eq!((f.code, f.exit), ("bad_request", 2));
+        assert_eq!(f.to_json()["hint"], "origins");
+    }
+
+    #[test]
+    fn site_not_set_up_is_exit_1() {
+        let f = server_error(409, r#"{"error":"site_not_set_up"}"#);
+        assert_eq!((f.code, f.exit), ("site_not_set_up", 1));
+    }
+
+    #[test]
+    fn unauthenticated_401_is_token_invalid() {
+        let f = server_error(401, r#"{"error":"unauthenticated"}"#);
+        assert_eq!((f.code, f.exit), ("token_invalid", 2));
+    }
+
+    #[test]
+    fn events_503_is_cloud_error() {
+        let f = server_error(503, r#"{"error":"unavailable"}"#);
+        assert_eq!((f.code, f.exit), ("cloud_error", 1));
+        assert!(f.message.contains("unavailable"));
     }
 }
