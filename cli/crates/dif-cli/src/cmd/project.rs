@@ -71,6 +71,8 @@ fn parse_github_remote(url: &str) -> Option<String> {
     Some(format!("{owner}/{repo}"))
 }
 
+// Callers arrive with `dif events`.
+#[allow(dead_code)]
 /// The project slug for a cloud verb.
 /// Flag, then git remote, then the only project.
 pub(crate) fn resolve_project(

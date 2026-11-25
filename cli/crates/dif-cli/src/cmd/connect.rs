@@ -366,7 +366,7 @@ fn pick(prompt: &str, items: &[String]) -> Option<usize> {
     select.initial_value(0).interact().ok()
 }
 
-fn report_no_workspace(json: bool) {
+pub(crate) fn report_no_workspace(json: bool) {
     if json {
         let payload = serde_json::json!({ "ok": false, "error": "no_workspace" });
         println!("{}", serde_json::to_string_pretty(&payload).unwrap());
